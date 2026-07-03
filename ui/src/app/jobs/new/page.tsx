@@ -20,6 +20,7 @@ import SimpleJob from './SimpleJob';
 import AdvancedConfigEditor from '@/components/AdvancedConfigEditor';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { apiClient } from '@/utils/api';
+import PresetManager from '@/components/PresetManager'; // fork addition, see FORK_NOTES.md
 
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -252,6 +253,10 @@ export default function TrainingForm() {
           </>
         )}
 
+        {/* fork addition, see FORK_NOTES.md */}
+        <div className="hidden md:block pr-2 flex-shrink-0">
+          <PresetManager jobConfig={jobConfig} setJobConfig={setJobConfig} />
+        </div>
         <div className="pr-1 sm:pr-2 flex-shrink-0">
           <Button
             className="text-gray-200 bg-gray-800 px-2 sm:px-3 py-1 rounded-md text-xs sm:text-base"

@@ -24,6 +24,7 @@ git push origin main
 ## Fork-only files (never conflict)
 
 - `PLAN.md`, `FORK_NOTES.md`
+- `start.bat` — double-click launcher for the UI (`start.bat rebuild` after pulling upstream)
 - `presets/` — preset config files (drop-in JSON/YAML)
 - `ui/src/server/presetsPath.ts`
 - `ui/src/server/datasetFiles.ts`

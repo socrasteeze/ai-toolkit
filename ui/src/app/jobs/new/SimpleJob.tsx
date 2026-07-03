@@ -30,6 +30,7 @@ import AddSingleImageModal, { openAddImageModal } from '@/components/AddSingleIm
 import SampleControlImage from '@/components/SampleControlImage';
 import { FlipHorizontal2, FlipVertical2 } from 'lucide-react';
 import { handleModelArchChange } from './utils';
+import StepSuggestion from '@/components/StepSuggestion'; // fork addition, see FORK_NOTES.md
 import { IoFlaskSharp } from 'react-icons/io5';
 import { isMac } from '@/helpers/basic';
 
@@ -608,6 +609,8 @@ export default function SimpleJob({
                   min={1}
                   required
                 />
+                {/* fork addition, see FORK_NOTES.md */}
+                <StepSuggestion jobConfig={jobConfig} setJobConfig={setJobConfig} />
               </div>
               <div>
                 <SelectInput

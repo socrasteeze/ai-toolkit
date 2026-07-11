@@ -28,13 +28,16 @@ git push origin main
 - `presets/` — preset config files (drop-in JSON/YAML)
 - `ui/src/server/presetsPath.ts`
 - `ui/src/server/datasetFiles.ts`
+- `ui/src/server/imageSize.ts` — header-only image dimension reader (png/jpg/webp)
 - `ui/src/app/api/presets/route.ts`
 - `ui/src/app/api/presets/[name]/route.ts`
 - `ui/src/app/api/datasets/count/route.ts`
+- `ui/src/app/api/datasets/analyze/route.ts` — dimension histogram + caption coverage
 - `ui/src/utils/presets.ts`
-- `ui/src/utils/stepSuggestion.ts`
+- `ui/src/utils/stepSuggestion.ts` — step heuristics + exposure gauge + bucket analysis + arch recipes
+- `ui/src/utils/buckets.ts` — TS port of `toolkit/buckets.py::get_bucket_for_image_size`
 - `ui/src/components/PresetManager.tsx`
-- `ui/src/components/StepSuggestion.tsx`
+- `ui/src/components/StepSuggestion.tsx` — step suggestion + dataset analyzer panel
 
 ## Duplication watch (re-check after each upstream merge)
 
@@ -44,3 +47,9 @@ git push origin main
 - `ui/src/utils/presets.ts` mirrors the "set required fields" logic from the import flow in
   `ui/src/app/jobs/new/page.tsx` (`sqlite_db_path`, `training_folder`, `device`,
   `performance_log_every`). If upstream adds a required field there, add it here too.
+- `ui/src/utils/buckets.ts` is a port of `toolkit/buckets.py::get_bucket_for_image_size`
+  (divisibility = dataset `bucket_tolerance`, default 64 in `toolkit/config_modules.py`).
+  If upstream changes the bucketing math, re-port it or the analyzer's bucket predictions
+  drift from what the trainer actually builds.
+- `ui/src/server/imageSize.ts` must cover the same image-extension whitelist as
+  `datasetFiles.ts` (currently png/jpg/jpeg/webp).

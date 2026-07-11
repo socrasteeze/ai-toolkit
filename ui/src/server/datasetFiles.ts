@@ -6,6 +6,8 @@ import path from 'path';
 // (ui/src/app/api/datasets/listImages/route.ts) and the trainer's own enumeration
 // (toolkit/data_loader.py skips the _controls folder) — keep them in sync.
 
+import { getImageDimensions } from './imageSize';
+
 const imageExtensions = ['.png', '.jpg', '.jpeg', '.webp'];
 const videoExtensions = ['.mp4', '.avi', '.mov', '.mkv', '.wmv', '.m4v', '.flv'];
 const audioExtensions = ['.mp3', '.wav', '.flac', '.ogg'];
@@ -44,4 +46,76 @@ export const countDatasetFiles = async (dir: string): Promise<DatasetFileCounts>
   }
   counts.totalCount = counts.imageCount + counts.videoCount + counts.audioCount;
   return counts;
+};
+
+export interface DatasetImageAnalysis {
+  imageCount: number;
+  // "WxH" -> number of images at that exact source size
+  dimensionCounts: Record<string, number>;
+  // images with no caption file of any of the caption extensions next to them
+  missingCaptions: number;
+  // images whose header could not be parsed for dimensions
+  unreadable: number;
+}
+
+// caption files the trainer accepts sit next to the image with the same stem
+const captionExtensions = ['.txt', '.json', '.caption'];
+
+const listImageFiles = async (dir: string): Promise<string[]> => {
+  const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+  const files: string[] = [];
+  const subdirs: string[] = [];
+  for (const entry of entries) {
+    const name = entry.name;
+    if (name.startsWith('.')) continue;
+    if (entry.isDirectory()) {
+      if (name === '_controls') continue;
+      subdirs.push(path.join(dir, name));
+    } else if (entry.isFile() && imageExtensions.includes(path.extname(name).toLowerCase())) {
+      files.push(path.join(dir, name));
+    }
+  }
+  const nested = await Promise.all(subdirs.map(listImageFiles));
+  return files.concat(...nested);
+};
+
+export const analyzeDatasetImages = async (dir: string): Promise<DatasetImageAnalysis> => {
+  const files = await listImageFiles(dir);
+  const analysis: DatasetImageAnalysis = {
+    imageCount: files.length,
+    dimensionCounts: {},
+    missingCaptions: 0,
+    unreadable: 0,
+  };
+
+  // bounded concurrency — datasets can hold thousands of images
+  const CONCURRENCY = 16;
+  let next = 0;
+  const worker = async () => {
+    while (next < files.length) {
+      const file = files[next++];
+      const stem = file.slice(0, file.length - path.extname(file).length);
+      const [dims, captions] = await Promise.all([
+        getImageDimensions(file),
+        Promise.all(
+          captionExtensions.map(ext =>
+            fs.promises.access(stem + ext).then(
+              () => true,
+              () => false,
+            ),
+          ),
+        ),
+      ]);
+      if (dims) {
+        const key = `${dims.width}x${dims.height}`;
+        analysis.dimensionCounts[key] = (analysis.dimensionCounts[key] || 0) + 1;
+      } else {
+        analysis.unreadable++;
+      }
+      if (!captions.some(Boolean)) analysis.missingCaptions++;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, files.length) }, worker));
+
+  return analysis;
 };

@@ -27,8 +27,7 @@ git push origin main
 ## Fork-only files (never conflict)
 
 - `PLAN.md`, `FORK_NOTES.md`
-- `ANIMA_INTEGRATION_SPEC.md` — spec for Anima 2B model port + TrainFlow QoL consolidation (not yet started)
-- `docs/ANIMA_INTEGRATION_UNDERSTANDING.md` — agent's read-back of the spec: constraints, gates, overlap with existing fork features
+- `ANIMA_INTEGRATION_SPEC.md` — spec for Anima 2B model port + TrainFlow QoL consolidation (COMPLETE; kept as the requirements record, see its status banner)
 - `docs/anima_delta_catalog.md` — A1 recon artifact: Anima 2B architecture/training-math/LoRA-key catalog + ai-toolkit port mapping (key finding: Anima support is native upstream kohya sd-scripts v0.10.5, not TrainFlow-authored)
 - `extensions_built_in/diffusion_models/anima/` — Anima 2B model extension (Phase 4): vendored MiniTrainDIT + LLM adapter (`src/anima_transformer.py`), `AnimaModel` with sd-scripts LoRA key export (`anima_model.py`), preview pipeline (`src/pipeline.py`)
 - `scripts/dump_lora_keys.py` — A3 helper: dump or diff LoRA safetensors keys+shapes (exit 0 only on zero mismatch)

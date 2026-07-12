@@ -16,9 +16,10 @@ on top of upstream without modifying upstream's training code.
   it records *why* numbers are what they are and which are still contested/unverified, not
   just what they are.
 
-For anything Anima-related, also read `ANIMA_INTEGRATION_SPEC.md` (the overall plan and its
-gates) and `docs/anima_delta_catalog.md` (the A1 recon: architecture, training math, LoRA
-key format, and the user's resolved decisions in §9).
+For anything Anima-related, also read `ANIMA_INTEGRATION_SPEC.md` (the original requirements
+and gates — now all passed, kept as the historical record) and `docs/anima_delta_catalog.md`
+(the A1 recon: architecture, training math, LoRA key format, and the user's resolved
+decisions in §9).
 
 ## Fork hygiene rules (apply to any future change)
 
@@ -60,14 +61,15 @@ top of `PLAN.md`'s Phase 3 section:
 
 ## Current state of the Anima 2B port (Phase 4 / spec Workstream A)
 
-Status as of 2026-07-12: **Workstream A is complete — A1 through A4 all passed.**
-A3: zero key/shape diff + user-confirmed SwarmUI load. A4: matched-hyperparameter
-loss-curve/sample parity vs TrainFlow and the Prodigy behavior check both pass —
-see `docs/anima_a4_parity.md` (gate artifact, incl. the four documented benign
-Prodigy construction differences). **Workstream C gate also passed** — background
-preset measured at 30–33% of 32GB steady / 43% peak (`docs/profiles.md`).
-Remaining: Workstream B QoL ports, then optional B5 UI integration and TrainFlow
-retirement.
+**Status as of 2026-07-12: the entire `ANIMA_INTEGRATION_SPEC.md` is complete.**
+Every workstream and gate passed: A1–A4 (model port + both hard/quality gates), B1–B5
+(all QoL tools, including the UI panel), and C (VRAM profile gate). The only spec item
+left is TrainFlow retirement, which the user is handling separately — leave
+`W:\GitHub\Anima-TrainFlow` untouched (it still hosts the A3/A4 reference artifacts).
+There is no remaining Anima work queued; treat this section as historical context, not
+a to-do list. Gate artifacts: `docs/anima_delta_catalog.md` (A1),
+`docs/anima_a4_parity.md` (A4), `docs/profiles.md` (C). Full verification checklist
+with dates: `PLAN.md` Phase 4.
 
 What exists and where:
 
@@ -97,15 +99,10 @@ What exists and where:
 - Training env: repo `.venv` (torch 2.10+cu130 + `requirements.txt`). A2 smoke artifact:
   `output/anima_a2_smoke/` (gitignored). A3 reference:
   `Anima-TrainFlow/training/output/a3_ref/a3_ref.safetensors`.
-
-Next steps, in order (gates in `ANIMA_INTEGRATION_SPEC.md`):
-
-1. **Workstream B is complete incl. B5**: B1 `scripts/preflight.py`, B2
-   `scripts/auto_caption.py`, B3 `scripts/smart_prep.py` (deps:
-   `scripts/requirements-qol.txt`), B4 = UI advisor, B5 = Dataset Tools panel on the
-   dataset page (`DatasetTools.tsx` + `api/datasets/tools` + `server/datasetTools.ts`).
-   Pre-flight in the UI is advisory-only by decision — do not wire it to block job
-   submission without revisiting PLAN.md's B5 note.
-2. **Remaining**: TrainFlow retirement (user is handling the README separately —
-   leave `W:\GitHub\Anima-TrainFlow` untouched; it still hosts the A3/A4 reference
-   artifacts).
+- Workstream B QoL tools: `scripts/preflight.py` (B1), `scripts/auto_caption.py` (B2,
+  WD14 tagger, deps in `scripts/requirements-qol.txt`), `scripts/smart_prep.py` (B3,
+  U2Net crop, same deps), the existing `stepSuggestion.ts` advisor (B4), and the
+  `DatasetTools.tsx` panel (B5, wraps B1–B3 via `api/datasets/tools` +
+  `server/datasetTools.ts`). B5's pre-flight is **advisory-only by deliberate
+  decision** — do not wire it to block job submission without revisiting PLAN.md's
+  B5 note (that would touch upstream's job-start route).

@@ -1,5 +1,12 @@
 # SPEC: Anima 2B Integration + QoL Consolidation → ai-toolkit Fork
 
+> **STATUS: COMPLETE** (2026-07-12). Every workstream and gate below shipped and
+> passed. This doc is kept as the original requirements record — for current state,
+> read `CLAUDE.md` first, then `PLAN.md` Phase 4 for the verification checklist and
+> gate artifacts (`docs/anima_delta_catalog.md`, `docs/anima_a4_parity.md`,
+> `docs/profiles.md`). Only TrainFlow retirement (item 8) is intentionally left to
+> the user, who is handling it separately.
+
 **Target repo:** `socrasteeze/ai-toolkit` (fork of `ostris/ai-toolkit`)
 **Reference repo:** `socrasteeze/Anima-TrainFlow` (fork of `ThetaCursed/Anima-TrainFlow`)
 **Objective:** Single trainer for all target architectures — SDXL/IllustriousXL, FLUX.2 Klein (4B/9B), Krea 2, Anima 2B — with TrainFlow's QoL features ported in. Retire TrainFlow to reference-only status on completion.
@@ -112,16 +119,21 @@ Implementation notes:
 
 ---
 
-## Execution Order & Gates
+## Execution Order & Gates — all PASSED, artifacts in `PLAN.md` Phase 4
 
-1. **A1** delta catalog → review checkpoint (present findings before writing model code).
-2. **A2** model class → gate: end-to-end run completes.
-3. **A3** key parity → HARD GATE: zero key diff + user confirms Comfy/Swarm load.
-4. **A4** quality parity → gate: loss curves/output comparable to TrainFlow.
-5. **B1–B4** QoL CLI tools (can begin in parallel with A2+, independent code paths).
-6. **C** profiles → gate: measured VRAM under target in `background` mode during a live run.
-7. **B5** UI integration (optional, last).
-8. Retire TrainFlow: mark repo README as reference-only, link to toolkit fork.
+1. [x] **A1** delta catalog → `docs/anima_delta_catalog.md`.
+2. [x] **A2** model class → end-to-end run completed.
+3. [x] **A3** key parity → HARD GATE: zero key diff + user-confirmed SwarmUI load.
+4. [x] **A4** quality parity → `docs/anima_a4_parity.md` (loss curves + samples within
+   noise, Prodigy behavior verified).
+5. [x] **B1–B4** QoL CLI tools → `scripts/preflight.py`, `auto_caption.py`,
+   `smart_prep.py`; B4 reconciled into the existing `stepSuggestion.ts` advisor.
+6. [x] **C** profiles → `docs/profiles.md` (background preset: 30–33% steady /
+   43% peak of 32GB, target was ≤60–70%).
+7. [x] **B5** UI integration → `DatasetTools.tsx` panel (pre-flight kept
+   advisory-only by deliberate decision, see PLAN.md Phase 4 note).
+8. [ ] Retire TrainFlow: user is handling this separately; `Anima-TrainFlow`
+   clone stays untouched (it hosts the A3/A4 reference artifacts).
 
 ## Ground Rules for the Agent
 

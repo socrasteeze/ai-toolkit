@@ -1,12 +1,14 @@
 # Fork Enhancement Plan
 
-Phase 1 (shipped): Presets + Suggested Step Count.
-Phase 2 (this plan): Dataset Analyzer + Per-Arch Training Advisor, ported from
-[socrasteeze/Anima-TrainFlow](https://github.com/socrasteeze/Anima-TrainFlow).
-
 Personal-use enhancements for this fork of [ostris/ai-toolkit](https://github.com/ostris/ai-toolkit).
-This document is the implementation plan; `FORK_NOTES.md` tracks the actual merge surface
-against upstream.
+This document is the design history — *why* things are the way they are, phase by phase.
+`FORK_NOTES.md` tracks the actual merge surface against upstream; `CLAUDE.md` is the
+entry point for a new session.
+
+Status: **Phases 1–4 all shipped.** Phase 1: presets + step suggestion. Phase 2: dataset
+analyzer + per-arch advisor. Phase 3: research-backed recipe overhaul. Phase 4: Anima 2B
+port (`ANIMA_INTEGRATION_SPEC.md`, now complete — see its status banner). Nothing is
+queued; this is a reference doc, not a task list.
 
 ## Context
 
@@ -330,7 +332,7 @@ touching anything Anima. Summary of what Phase 4 added:
       and `--warn-only` overrides. Wiring into the UI job-launch path is deferred to
       B5 (that path is upstream code — new touchpoint needs its own decision).
 - [x] B4: already reconciled — `ui/src/utils/stepSuggestion.ts` covers it (incl. the
-      Anima recipe); no competing CLI built, per `docs/ANIMA_INTEGRATION_UNDERSTANDING.md`.
+      Anima recipe); no competing CLI built.
 - [x] B2 WD14 auto-caption: `scripts/auto_caption.py` (2026-07-12, deps approved by
       user) — faithful port of TrainFlow's WDTagger (wd-eva02-large-tagger-v3, same
       preprocessing/thresholds/tag assembly incl. kaomoji + paren escaping), plus

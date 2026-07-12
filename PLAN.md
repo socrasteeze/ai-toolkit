@@ -182,3 +182,73 @@ it where relevant instead of porting Anima's Prodigy pinning.
 - Gauge bands move when steps/batch change; Apply buttons write the right config paths.
 - New presets load through the Preset modal and produce a well-formed job config.
 - `git diff upstream/main --stat` still shows only the two Phase 1 upstream files.
+
+---
+
+# Phase 3: Research-backed recipes (dataset-size scaling + scheduler)
+
+The Phase 2 recipe table above (one fixed LR/rank/batch per arch, no scheduler field at
+all) was pure guesswork carried over from Anima-TrainFlow's single-model defaults. This
+phase replaced it after actually researching current (2025-2026) community/official
+training guides per arch, via multiple parallel research agents. See conversation history
+around 2026-07-12 for full per-source findings and confidence levels; the summary below is
+what actually changed in code.
+
+## What changed in `ui/src/utils/stepSuggestion.ts`
+
+1. **`ARCH_RECIPES` is now keyed by dataset-size tier**, not a single fixed recipe per arch.
+   `getSizeTier(itemCount)` buckets into `small` (<30 images) / `medium` (<150) / `large`
+   (150+), matching the "small sets overfit at high rank/LR, large sets tolerate more
+   capacity" pattern that recurred across every researched guide. `getArchRecipe(arch,
+   itemCount, modelPath)` takes the already-computed `itemCount` and returns
+   tier-appropriate rank/alpha/LR.
+2. **Illustrious-XL and Pony Diffusion are detected from `model.name_or_path`**, not arch —
+   both are SDXL-architecture checkpoints (`model.arch: "sdxl"`), so there's no arch key to
+   distinguish them. `illustriousOrPonyRecipe()` pattern-matches the checkpoint path
+   (`illustrious`, `pony` substrings) and returns a distinct recipe:
+   - Illustrious: adamw8bit + **constant** scheduler, rank 64/alpha 32 (large sets), booru
+     captions. The optimizer choice is genuinely contested in the source guides (one camp
+     found Prodigy works poorly on Illustrious, another still prefers Prodigy+cosine) —
+     constant was chosen as the documented safer default, not because consensus settled it.
+   - Pony: adamw8bit + cosine, rank 32/alpha 16 (most-repeated but not universal), booru/e621
+     captions. The `score_9`/`score_8_up` quality-tag convention is explicitly contested —
+     notes warn against blindly including `score_9` on mixed-quality training images.
+   - Vanilla SDXL (no name match) keeps its own separate, more conservative recipe.
+3. **Added an `lr_scheduler` suggestion** — this trainer had *zero* UI exposure for LR
+   scheduler anywhere before this change (`toolkit/config_modules.py` silently defaults to
+   `'constant'` if the config never sets it). Recipes now suggest cosine for
+   SDXL-family/SD1.5, constant for the Flux family — this is architecture-dependent per the
+   research, not a single global default.
+4. **Added `flux2_klein_4b`/`flux2_klein_9b` recipes** (ai-toolkit already has native model
+   support for these arches). Explicitly flagged in the notes as unverified FLUX.1-proxy
+   numbers, since essentially no FLUX.2-specific tuning literature exists yet as of this
+   writing.
+5. **Krea 2's recipe is unchanged in substance** (research found the existing numbers were
+   already consistent with the thin evidence base available — the model is ~6 weeks old),
+   but the notes now say explicitly that no source states a scheduler recommendation for it,
+   rather than silently reusing a scheduler default that isn't backed by anything.
+
+## Research confidence, condensed
+
+- **High confidence / consensus**: SDXL/Illustrious/Pony resolution (1024), booru vs
+  natural-language caption split by checkpoint family, cosine-vs-constant scheduler split
+  between SDXL-family and Flux-family, "small dataset → lower rank/LR" direction (though not
+  the exact numbers).
+- **Genuinely contested, not resolved by this change**: exact SDXL-family rank (guides range
+  8-128), Illustrious optimizer (Prodigy vs AdamW8bit), whether Pony captions should include
+  `score_9`.
+- **Thin/no evidence, flagged rather than guessed**: Krea 2 scheduler, any Flux2/Flux2-Klein-
+  specific numbers (proxied from FLUX.1 instead), Qwen-Image/Z-Image scheduler.
+
+## Verification checklist (Phase 3)
+
+- `npx tsc --noEmit` passes for `ui/src/utils/stepSuggestion.ts` and
+  `ui/src/components/StepSuggestion.tsx` (pre-existing `.next/types` route-param errors
+  elsewhere in the repo are unrelated staleness, not caused by this change).
+- Select a checkpoint with "illustrious" or "pony" in `model.name_or_path` under an `sdxl`
+  arch → advisor shows the checkpoint-specific recipe, not the vanilla-SDXL one.
+- Change dataset size across the 30/150 item thresholds → rank/alpha/LR in the Apply buttons
+  change accordingly.
+- Apply the scheduler button → `config.process[0].train.lr_scheduler` appears in the
+  generated job config (verify in the actual `.job_config.json`, since the UI's `TrainConfig`
+  type doesn't declare this field — `setJobConfig` sets it as a plain dot-path regardless).

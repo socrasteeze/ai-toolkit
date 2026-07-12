@@ -35,6 +35,9 @@ git push origin main
 - `ui/src/app/api/datasets/analyze/route.ts` — dimension histogram + caption coverage
 - `ui/src/utils/presets.ts`
 - `ui/src/utils/stepSuggestion.ts` — step heuristics + exposure gauge + bucket analysis + arch recipes
+  (dataset-size-tiered rank/LR/scheduler, Illustrious/Pony detected by checkpoint name since they
+  share `arch: "sdxl"` with vanilla SDXL — see the researched-recipe writeup in conversation history
+  for source confidence per number; several values are flagged low-confidence/contested in the notes)
 - `ui/src/utils/buckets.ts` — TS port of `toolkit/buckets.py::get_bucket_for_image_size`
 - `ui/src/components/PresetManager.tsx`
 - `ui/src/components/StepSuggestion.tsx` — step suggestion + dataset analyzer panel

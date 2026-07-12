@@ -192,7 +192,8 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
     return resolutionAdvice(merged.dimensionCounts, resolutions);
   }, [merged, resolutions]);
 
-  const recipe = useMemo(() => getArchRecipe(arch), [arch]);
+  const modelPath = process.model.name_or_path || '';
+  const recipe = useMemo(() => getArchRecipe(arch, itemCount, modelPath), [arch, itemCount, modelPath]);
   const hasAnalysis = Object.keys(analyses).length > 0;
 
   if (!suggestion) return null;

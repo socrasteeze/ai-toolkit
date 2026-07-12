@@ -303,7 +303,14 @@ touching anything Anima. Summary of what Phase 4 added:
 - [x] A3 key/shape parity: `scripts/dump_lora_keys.py` reports zero mismatch vs a
       TrainFlow/sd-scripts reference LoRA (`Anima-TrainFlow/training/output/a3_ref/a3_ref.safetensors`,
       20 steps via vendored `anima_train_network.py` + `networks.lora_anima`).
-      Both dumps: 840 keys. **Still pending user ComfyUI/SwarmUI load confirmation**
-      (remaining half of the A3 HARD GATE).
-- [ ] A4: loss-curve/sample parity vs TrainFlow (same data/seed/hypers), Prodigy check.
+      Both dumps: 840 keys. User confirmed 2026-07-12 that the toolkit-trained LoRA
+      loads and applies in SwarmUI without errors — **A3 HARD GATE passed in full**.
+- [x] A4: loss-curve/sample parity vs TrainFlow — PASS (2026-07-12). Matched 400-step
+      AdamW runs (`a4_ref` in TrainFlow, `config/train_anima_a4_parity.yaml` here):
+      loss curves statistically indistinguishable (first-half means 0.1783 vs 0.1812;
+      overall gap within ~1.8σ of per-step noise), samples equivalent at 100..400.
+      Prodigy: identical prodigyopt 1.1.2 class both sides; matched 100-step runs both
+      adapt d off the 1e-6 floor to the same order (4.8e-6 vs 2.5e-6). Known benign
+      diffs (toolkit pins eps=1e-6, lr<0.1 auto-bump, no d*lr logging, prodigyopt-vs-
+      TrainFlow default args) documented in `docs/anima_a4_parity.md` (gate artifact).
 - [ ] C gate: measured VRAM under target in a live background-preset run.

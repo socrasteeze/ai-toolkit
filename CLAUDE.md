@@ -60,9 +60,12 @@ top of `PLAN.md`'s Phase 3 section:
 
 ## Current state of the Anima 2B port (Phase 4 / spec Workstream A)
 
-Status as of 2026-07-12: **A1, A2 (incl. GPU e2e), and A3 key/shape parity are done.**
-Remaining A3 half: **you** confirm the toolkit LoRA loads in ComfyUI/SwarmUI.
-Next engineering gate after that: **A4** (quality/parity curves).
+Status as of 2026-07-12: **Workstream A is complete — A1 through A4 all passed.**
+A3: zero key/shape diff + user-confirmed SwarmUI load. A4: matched-hyperparameter
+loss-curve/sample parity vs TrainFlow and the Prodigy behavior check both pass —
+see `docs/anima_a4_parity.md` (gate artifact, incl. the four documented benign
+Prodigy construction differences). Next gates: Workstream C VRAM measurement, then
+Workstream B QoL ports.
 
 What exists and where:
 
@@ -95,12 +98,8 @@ What exists and where:
 
 Next steps, in order (gates in `ANIMA_INTEGRATION_SPEC.md`):
 
-1. **A3 remaining**: user loads `output/anima_a2_smoke/anima_a2_smoke.safetensors` in
-   ComfyUI/SwarmUI and confirms it applies.
-2. **A4**: matched-hyperparameter parity run vs TrainFlow (loss curves + samples), verify
-   Prodigy behavior matches.
-3. **Workstream C gate**: measure VRAM in a live `background`-preset run (target ≤60–70%
+1. **Workstream C gate**: measure VRAM in a live `background`-preset run (target ≤60–70%
    of 32GB).
-4. **Workstream B**: QoL CLI ports (preflight, WD14 tagger, U2Net prep) — note B1/B4
+2. **Workstream B**: QoL CLI ports (preflight, WD14 tagger, U2Net prep) — note B1/B4
    partially exist as UI features already; reconcile, don't duplicate (see
    `docs/ANIMA_INTEGRATION_UNDERSTANDING.md`).

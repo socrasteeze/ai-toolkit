@@ -100,6 +100,8 @@ What exists and where:
 
 Next steps, in order (gates in `ANIMA_INTEGRATION_SPEC.md`):
 
-1. **Workstream B**: QoL CLI ports (preflight, WD14 tagger, U2Net prep) — note B1/B4
-   partially exist as UI features already; reconcile, don't duplicate (see
-   `docs/ANIMA_INTEGRATION_UNDERSTANDING.md`).
+1. **Workstream B remainder**: B1 (`scripts/preflight.py`) and B4 (UI advisor) are
+   done/reconciled. B2 (WD14 auto-caption) + B3 (U2Net smart prep) are BLOCKED on the
+   user approving heavyweight deps (onnxruntime + tagger model / U2Net weights) —
+   spec ground rule. Then optional B5 UI integration (incl. wiring preflight into the
+   job-launch path) and TrainFlow retirement (README → reference-only).

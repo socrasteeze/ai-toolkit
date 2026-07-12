@@ -322,3 +322,15 @@ touching anything Anima. Summary of what Phase 4 added:
       `get_prompt_embeds` as None/False (SampleConfig.neg defaults to False) via
       DiffusionTrainer.cache_sample_prompts — now coerced to the empty prompt in
       `anima_model.py` (matches sd-scripts' unconditional input).
+- [x] B1 pre-flight validator: `scripts/preflight.py` (2026-07-12) — bare-folder or
+      `--config job.yaml` mode; errors (exit 1) on missing folder/no images/corrupt
+      images/missing captions/bad local model paths, warnings on oversized (≥2048px,
+      non-fatal here since the toolkit buckets+downscales — deliberate departure from
+      TrainFlow's hard block), empty captions, stray files; `--allow-missing-captions`
+      and `--warn-only` overrides. Wiring into the UI job-launch path is deferred to
+      B5 (that path is upstream code — new touchpoint needs its own decision).
+- [x] B4: already reconciled — `ui/src/utils/stepSuggestion.ts` covers it (incl. the
+      Anima recipe); no competing CLI built, per `docs/ANIMA_INTEGRATION_UNDERSTANDING.md`.
+- [ ] B2 (WD14 auto-caption) / B3 (U2Net smart prep): genuinely new; BLOCKED on user
+      approving the heavyweight deps (onnxruntime + tagger model / U2Net weights) per
+      spec ground rule "ask before adding heavyweight dependencies".

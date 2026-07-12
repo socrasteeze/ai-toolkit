@@ -1,0 +1,8 @@
+# Extra deps for the fork's QoL dataset tools (scripts/auto_caption.py,
+# scripts/smart_prep.py). Not needed for training itself, so kept out of the
+# upstream requirements.txt:
+#     pip install -r scripts/requirements-qol.txt
+# onnxruntime-gpu uses the CUDA/cuDNN DLLs bundled with the torch wheel (the
+# scripts add torch/lib to the DLL search path); swap for `onnxruntime` if you
+# want CPU-only.
+onnxruntime-gpu

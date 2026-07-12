@@ -100,8 +100,9 @@ What exists and where:
 
 Next steps, in order (gates in `ANIMA_INTEGRATION_SPEC.md`):
 
-1. **Workstream B remainder**: B1 (`scripts/preflight.py`) and B4 (UI advisor) are
-   done/reconciled. B2 (WD14 auto-caption) + B3 (U2Net smart prep) are BLOCKED on the
-   user approving heavyweight deps (onnxruntime + tagger model / U2Net weights) —
-   spec ground rule. Then optional B5 UI integration (incl. wiring preflight into the
-   job-launch path) and TrainFlow retirement (README → reference-only).
+1. **Workstream B is complete**: B1 `scripts/preflight.py`, B2 `scripts/auto_caption.py`,
+   B3 `scripts/smart_prep.py` (deps: `scripts/requirements-qol.txt`, user-approved
+   onnxruntime-gpu), B4 reconciled as already-covered by the UI advisor.
+2. **Remaining (optional)**: B5 UI "Dataset Tools" panel (incl. wiring preflight into
+   the job-launch path — an upstream touchpoint, decide deliberately), then TrainFlow
+   retirement (README → reference-only, link here).

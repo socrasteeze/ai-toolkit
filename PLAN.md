@@ -331,6 +331,15 @@ touching anything Anima. Summary of what Phase 4 added:
       B5 (that path is upstream code — new touchpoint needs its own decision).
 - [x] B4: already reconciled — `ui/src/utils/stepSuggestion.ts` covers it (incl. the
       Anima recipe); no competing CLI built, per `docs/ANIMA_INTEGRATION_UNDERSTANDING.md`.
-- [ ] B2 (WD14 auto-caption) / B3 (U2Net smart prep): genuinely new; BLOCKED on user
-      approving the heavyweight deps (onnxruntime + tagger model / U2Net weights) per
-      spec ground rule "ask before adding heavyweight dependencies".
+- [x] B2 WD14 auto-caption: `scripts/auto_caption.py` (2026-07-12, deps approved by
+      user) — faithful port of TrainFlow's WDTagger (wd-eva02-large-tagger-v3, same
+      preprocessing/thresholds/tag assembly incl. kaomoji + paren escaping), plus
+      `--trigger-word` prepend and HF auto-download. Live-tested on sample images,
+      GPU via onnxruntime-gpu + torch-bundled CUDA DLLs (os.add_dll_directory).
+- [x] B3 U2Net smart prep: `scripts/smart_prep.py` (2026-07-12) — TrainFlow's
+      SmartCropper (head-first saliency crop, log-AR bucket match, 64px bucket lattice)
+      made non-destructive (in_dir→out_dir per spec, caption sidecars copied; TrainFlow
+      mutated in place with a backup dir). u2net.onnx auto-downloads to
+      `~/.cache/ai-toolkit/`. Live-tested on the 3 oversized 3840px sample images →
+      correct 768x512 bucket, subject preserved. Deps in `scripts/requirements-qol.txt`
+      (onnxruntime-gpu), deliberately not in upstream requirements.txt.

@@ -20,10 +20,19 @@ git push origin main
 |---|---|---|
 | `ui/src/app/jobs/new/page.tsx` | +1 import, +1 JSX line mounting `<PresetManager/>` in the TopBar | Re-add the mount next to the "Import Config" button if upstream restructures the TopBar |
 | `ui/src/app/jobs/new/SimpleJob.tsx` | +1 import, +1 JSX line mounting `<StepSuggestion/>` under the Steps `NumberInput` | Re-add directly below the Steps field if upstream moves it |
+| `extensions_built_in/diffusion_models/__init__.py` | +1 import (`from .anima import AnimaModel`), +1 entry in `AI_TOOLKIT_MODELS` | Re-add both lines if upstream reworks the registration list |
+| `ui/src/app/jobs/new/options.ts` | +1 `modelArchs` entry (`name: 'anima'`), deliberately kept as the LAST entry before the `.sort(` call | Re-append at the end of the array on conflict |
 
 ## Fork-only files (never conflict)
 
 - `PLAN.md`, `FORK_NOTES.md`
+- `ANIMA_INTEGRATION_SPEC.md` — spec for Anima 2B model port + TrainFlow QoL consolidation (not yet started)
+- `docs/ANIMA_INTEGRATION_UNDERSTANDING.md` — agent's read-back of the spec: constraints, gates, overlap with existing fork features
+- `docs/anima_delta_catalog.md` — A1 recon artifact: Anima 2B architecture/training-math/LoRA-key catalog + ai-toolkit port mapping (key finding: Anima support is native upstream kohya sd-scripts v0.10.5, not TrainFlow-authored)
+- `extensions_built_in/diffusion_models/anima/` — Anima 2B model extension (Phase 4): vendored MiniTrainDIT + LLM adapter (`src/anima_transformer.py`), `AnimaModel` with sd-scripts LoRA key export (`anima_model.py`), preview pipeline (`src/pipeline.py`)
+- `config/examples/train_lora_anima_2b.yaml`
+- `presets/anima_lora_performance.json`, `presets/anima_lora_background.json`
+- `ui/src/utils/stepSuggestion.ts` also carries the Anima recipe in `ARCH_RECIPES` (fork file, listed above)
 - `start.bat` — double-click launcher for the UI (`start.bat rebuild` after pulling upstream)
 - `presets/` — preset config files (drop-in JSON/YAML)
 - `ui/src/server/presetsPath.ts`

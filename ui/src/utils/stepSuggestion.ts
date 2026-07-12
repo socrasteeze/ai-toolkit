@@ -323,6 +323,25 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'FLUX.2 Klein 9B: unverified — no FLUX.2-specific recipe exists yet, these are FLUX.1 community defaults used as a proxy. ' +
       'Needs more VRAM than the 4B variant; 48GB is a practical minimum. Natural-language captions.',
   }),
+  // Anima 2B (fork-only arch): unusually well-sourced — the numbers below are the model
+  // author's own published recipe (Circlestone Labs finetuning tips + his diffusion-pipe
+  // example config), not community guesswork. See docs/anima_delta_catalog.md §9.
+  anima: tier => ({
+    settings: [
+      // author: "for a rank 32 LoRA, start with 2e-5 and adjust" — scaled down for tiny sets
+      lrSetting(tier === 'small' ? 0.000015 : 0.00002),
+      rankSetting(tier === 'small' ? 16 : 32),
+      alphaSetting(tier === 'small' ? 16 : 32),
+      batchSetting(1),
+      rec('grad accum 4', 'config.process[0].train.gradient_accumulation', 4),
+      schedulerSetting('constant'),
+    ],
+    notes:
+      'Anima 2B: plain adamw (author\'s config), LR 2e-5 at rank 32, batch 1 with grad accumulation 4 — this is the ' +
+      'model author\'s own recipe, the most authoritative of any arch here. Never train the LLM adapter (default off): ' +
+      'it shapes all text conditioning and degrades easily. Anima is a base model with no aesthetic tuning to overcome — ' +
+      '"a light touch is all you need". Danbooru-style tag captions work well (anime-focused base).',
+  }),
 };
 ARCH_RECIPES.flex = ARCH_RECIPES.flux;
 ARCH_RECIPES.chroma = ARCH_RECIPES.flux;

@@ -252,3 +252,49 @@ what actually changed in code.
 - Apply the scheduler button → `config.process[0].train.lr_scheduler` appears in the
   generated job config (verify in the actual `.job_config.json`, since the UI's `TrainConfig`
   type doesn't declare this field — `setJobConfig` sets it as a plain dot-path regardless).
+
+# Phase 4: Anima 2B architecture port (Workstream A2 of ANIMA_INTEGRATION_SPEC.md)
+
+Recon (A1) and design history live in `docs/anima_delta_catalog.md` — read it before
+touching anything Anima. Summary of what Phase 4 added:
+
+- `extensions_built_in/diffusion_models/anima/` — fork-only model extension:
+  - `src/anima_transformer.py`: vendored Cosmos-Predict2 MiniTrainDIT + LLM adapter,
+    ported byte-identical (per-class AST diff) from kohya sd-scripts v0.10.5
+    (`library/anima_models.py`), with sd-scripts-only infra (block swap, unsloth
+    offload, fp8 hooks, custom attention dispatch) removed. Plain SDPA attention
+    (bit-exact to the source's attn_mode="torch" path). `rebuild_buffers()` exists
+    because the model is constructed on the meta device and RoPE tables are not
+    stored in checkpoints.
+  - `anima_model.py`: AnimaModel (arch "anima"). Dual tokenization (Qwen3 + T5 @512,
+    the T5 ids are adapter query tokens, never encoded), Qwen3 last_hidden_state
+    zeroed at padding, VAE = diffusers AutoencoderKLQwenImage with per-channel
+    mean/std and deterministic mode() (parity: do NOT change to sample()),
+    rectified-flow target noise−latents, t = timestep/1000. LoRA export/load remaps
+    toolkit PEFT keys to kohya sd-scripts keys (`lora_unet_*` + synthesized alpha ==
+    rank, since toolkit PEFT LoRA trains at scale 1.0) — this is spec hard gate A3;
+    foreign alphas are folded into lora_up on load.
+  - `AnimaFlowMatchScheduler`: adds `model_kwargs.sigmoid_scale` (author trains 1.3)
+    to the sigmoid timestep sampler.
+- Registered in `extensions_built_in/diffusion_models/__init__.py` (upstream file,
+  +1 import +1 list entry — recorded in FORK_NOTES.md).
+- UI arch entry appended last in `ui/src/app/jobs/new/options.ts` (upstream file);
+  recipe added to ARCH_RECIPES in `ui/src/utils/stepSuggestion.ts` (fork file). The
+  Anima recipe is the model author's own published numbers (rank 32, adamw 2e-5,
+  batch 1 + accum 4, adapter frozen) — highest confidence of any arch.
+- `config/examples/train_lora_anima_2b.yaml`, `presets/anima_lora_performance.json`,
+  `presets/anima_lora_background.json` (background = author's config + low_vram,
+  default for shared-GPU use per spec Workstream C).
+- Default LoRA targeting mirrors sd-scripts: target class `Block` only + configs set
+  `network_kwargs.ignore_if_contains: ["adaln_modulation"]`. The LLM adapter is never
+  LoRA-targeted (author: easy to degrade).
+
+## Verification checklist (Phase 4)
+
+- [x] Smoke test (scratchpad, bare torch): meta-load + rebuild_buffers, forward fwd/bwd
+      with grad checkpointing, config auto-detect, LoRA key round-trip incl. alpha.
+- [ ] A2 gate: end-to-end LoRA run on `anima_sample_training/` completes.
+- [ ] A3 HARD GATE: `scripts/dump_lora_keys.py` zero-diff vs a TrainFlow-produced LoRA
+      + user confirms ComfyUI/SwarmUI load.
+- [ ] A4: loss-curve/sample parity vs TrainFlow (same data/seed/hypers), Prodigy check.
+- [ ] C gate: measured VRAM under target in a live background-preset run.

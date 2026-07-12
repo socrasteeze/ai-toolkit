@@ -1216,6 +1216,29 @@ export const modelArchs: ModelArch[] = [
       'model.qie.match_target_res',
     ],
   },
+  {
+    // fork-only arch (Anima 2B port) — keep as the last entry so upstream
+    // merges only ever conflict on the line above
+    name: 'anima',
+    label: 'Anima 2B',
+    group: 'image',
+    defaults: {
+      // default updates when [selected, unselected] in the UI
+      'config.process[0].model.name_or_path': ['circlestone-labs/Anima', defaultNameOrPath],
+      'config.process[0].sample.sampler': ['flowmatch', 'flowmatch'],
+      'config.process[0].sample.guidance_scale': [7.5, 4],
+      'config.process[0].train.noise_scheduler': ['flowmatch', 'flowmatch'],
+      'config.process[0].train.timestep_type': ['sigmoid', 'sigmoid'],
+      // model author's recipe: rank-32 LoRA @ 2e-5, adapter frozen,
+      // sigmoid_scale 1.3 (his diffusion-pipe example config)
+      'config.process[0].train.lr': [0.00002, 0.0001],
+      'config.process[0].model.model_kwargs': [{ sigmoid_scale: 1.3 }, {}],
+      // mirror sd-scripts' default exclusion of the AdaLN modulation linears
+      'config.process[0].network.network_kwargs.ignore_if_contains': [['adaln_modulation'], []],
+    },
+    disableSections: ['network.conv'],
+    additionalSections: ['model.low_vram'],
+  },
 ].sort((a, b) => {
   // Sort by label, case-insensitive
   return a.label.localeCompare(b.label, undefined, { sensitivity: 'base' });

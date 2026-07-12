@@ -1,0 +1,77 @@
+{
+  "job": "extension",
+  "config": {
+    "name": "preset",
+    "process": [
+      {
+        "type": "diffusion_trainer",
+        "training_folder": "output",
+        "device": "cuda",
+        "trigger_word": null,
+        "network": {
+          "type": "lora",
+          "linear": 32,
+          "linear_alpha": 32,
+          "network_kwargs": {
+            "ignore_if_contains": ["adaln_modulation"]
+          }
+        },
+        "save": {
+          "dtype": "fp16",
+          "save_every": 250,
+          "max_step_saves_to_keep": 4,
+          "save_format": "safetensors",
+          "push_to_hub": false
+        },
+        "datasets": [
+          {
+            "folder_path": "/path/to/images/folder",
+            "caption_ext": "txt",
+            "caption_dropout_rate": 0,
+            "resolution": [512, 768, 1024],
+            "num_repeats": 1,
+            "cache_latents_to_disk": true
+          }
+        ],
+        "train": {
+          "batch_size": 1,
+          "steps": 2000,
+          "gradient_accumulation": 4,
+          "train_unet": true,
+          "train_text_encoder": false,
+          "gradient_checkpointing": true,
+          "cache_text_embeddings": true,
+          "unload_text_encoder": false,
+          "noise_scheduler": "flowmatch",
+          "optimizer": "adamw",
+          "timestep_type": "sigmoid",
+          "lr": 0.00002,
+          "dtype": "bf16"
+        },
+        "model": {
+          "name_or_path": "circlestone-labs/Anima",
+          "arch": "anima",
+          "quantize": false,
+          "quantize_te": false,
+          "low_vram": true,
+          "model_kwargs": {
+            "sigmoid_scale": 1.3
+          }
+        },
+        "sample": {
+          "sampler": "flowmatch",
+          "sample_every": 250,
+          "width": 1024,
+          "height": 1024,
+          "guidance_scale": 7.5,
+          "sample_steps": 30
+        }
+      }
+    ]
+  },
+  "meta": {
+    "name": "[name]",
+    "version": "1.0",
+    "description": "Anima 2B LoRA, background profile (default): batch 1 + grad accumulation 4 (the author's own config — same effective batch as performance), latent + text-embed caching on, low_vram so idle components park on CPU. Leaves VRAM headroom for concurrent desktop use; expect roughly 2-3x the wall-clock of the performance preset. Verify actual VRAM in a live run (spec gate C)."
+  }
+}

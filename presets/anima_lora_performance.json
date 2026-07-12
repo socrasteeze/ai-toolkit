@@ -1,0 +1,76 @@
+{
+  "job": "extension",
+  "config": {
+    "name": "preset",
+    "process": [
+      {
+        "type": "diffusion_trainer",
+        "training_folder": "output",
+        "device": "cuda",
+        "trigger_word": null,
+        "network": {
+          "type": "lora",
+          "linear": 32,
+          "linear_alpha": 32,
+          "network_kwargs": {
+            "ignore_if_contains": ["adaln_modulation"]
+          }
+        },
+        "save": {
+          "dtype": "fp16",
+          "save_every": 250,
+          "max_step_saves_to_keep": 4,
+          "save_format": "safetensors",
+          "push_to_hub": false
+        },
+        "datasets": [
+          {
+            "folder_path": "/path/to/images/folder",
+            "caption_ext": "txt",
+            "caption_dropout_rate": 0,
+            "resolution": [512, 768, 1024],
+            "num_repeats": 1,
+            "cache_latents_to_disk": true
+          }
+        ],
+        "train": {
+          "batch_size": 4,
+          "steps": 2000,
+          "gradient_accumulation": 1,
+          "train_unet": true,
+          "train_text_encoder": false,
+          "gradient_checkpointing": true,
+          "cache_text_embeddings": true,
+          "noise_scheduler": "flowmatch",
+          "optimizer": "adamw",
+          "timestep_type": "sigmoid",
+          "lr": 0.00002,
+          "dtype": "bf16"
+        },
+        "model": {
+          "name_or_path": "circlestone-labs/Anima",
+          "arch": "anima",
+          "quantize": false,
+          "quantize_te": false,
+          "low_vram": false,
+          "model_kwargs": {
+            "sigmoid_scale": 1.3
+          }
+        },
+        "sample": {
+          "sampler": "flowmatch",
+          "sample_every": 250,
+          "width": 1024,
+          "height": 1024,
+          "guidance_scale": 7.5,
+          "sample_steps": 30
+        }
+      }
+    ]
+  },
+  "meta": {
+    "name": "[name]",
+    "version": "1.0",
+    "description": "Anima 2B LoRA, performance profile: full bf16, no quantization, batch 4 — sized for a 32GB card with nothing else running. Author's recipe (rank 32, AdamW 2e-5, sigmoid_scale 1.3, LLM adapter frozen). Use the background preset when sharing the GPU with desktop work."
+  }
+}

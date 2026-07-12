@@ -1,0 +1,76 @@
+---
+# Anima 2B LoRA training (fork-only arch — see docs/anima_delta_catalog.md)
+#
+# Recipe follows the model author's (Circlestone Labs / tdrussell) finetuning
+# tips: rank 32, AdamW at 2e-5, LLM adapter frozen (never LoRA'd by default),
+# sigmoid timestep sampling with sigmoid_scale 1.3. "A light touch is all you
+# need" — Anima is a base model with no aesthetic tuning to overcome.
+job: extension
+config:
+  name: "my_first_anima_lora_v1"
+  process:
+    - type: 'sd_trainer'
+      training_folder: "output"
+      device: cuda:0
+#      trigger_word: "p3r5on"
+      network:
+        type: "lora"
+        linear: 32
+        linear_alpha: 32
+        network_kwargs:
+          # mirror sd-scripts' default: no LoRA on the AdaLN modulation linears
+          ignore_if_contains:
+            - "adaln_modulation"
+      save:
+        dtype: float16
+        save_every: 250
+        max_step_saves_to_keep: 4
+      datasets:
+        - folder_path: "/path/to/images/folder"
+          caption_ext: "txt"
+          cache_latents_to_disk: true
+          resolution: [ 512, 768, 1024 ]
+      train:
+        batch_size: 1
+        cache_text_embeddings: true
+        steps: 2000
+        gradient_accumulation: 1
+        train_unet: true
+        train_text_encoder: false
+        gradient_checkpointing: true
+        noise_scheduler: "flowmatch"
+        timestep_type: "sigmoid"
+        optimizer: "adamw"
+        lr: 2e-5
+        dtype: bf16
+      model:
+        # local .safetensors path, "circlestone-labs/Anima" (downloads
+        # anima-base-v1.0), or "circlestone-labs/Anima/<checkpoint>.safetensors"
+        name_or_path: "circlestone-labs/Anima"
+        arch: "anima"
+        # Anima 2B fits comfortably in bf16 — no quantization needed on 16GB+
+        quantize: false
+        quantize_te: false
+        model_kwargs:
+          # widens the logit-normal timestep distribution (author trains at 1.3;
+          # kohya sd-scripts' default is 1.0)
+          sigmoid_scale: 1.3
+      sample:
+        sampler: "flowmatch"
+        sample_every: 250
+        width: 1024
+        height: 1024
+        prompts:
+          - "woman with red hair, playing chess at the park, bomb going off in the background"
+          - "a woman holding a coffee cup, in a beanie, sitting at a cafe"
+          - "a bear building a log cabin in the snow covered mountains"
+          - "hipster man with a beard, building a chair, in a wood shop"
+        neg: ""
+        seed: 42
+        walk_seed: true
+        # Anima's reference sampler defaults: CFG 7.5, 30 steps, flow shift 3.0
+        guidance_scale: 7.5
+        sample_steps: 30
+meta:
+  name: "[name]"
+  version: '1.0'

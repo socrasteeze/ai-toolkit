@@ -100,9 +100,12 @@ What exists and where:
 
 Next steps, in order (gates in `ANIMA_INTEGRATION_SPEC.md`):
 
-1. **Workstream B is complete**: B1 `scripts/preflight.py`, B2 `scripts/auto_caption.py`,
-   B3 `scripts/smart_prep.py` (deps: `scripts/requirements-qol.txt`, user-approved
-   onnxruntime-gpu), B4 reconciled as already-covered by the UI advisor.
-2. **Remaining (optional)**: B5 UI "Dataset Tools" panel (incl. wiring preflight into
-   the job-launch path — an upstream touchpoint, decide deliberately), then TrainFlow
-   retirement (README → reference-only, link here).
+1. **Workstream B is complete incl. B5**: B1 `scripts/preflight.py`, B2
+   `scripts/auto_caption.py`, B3 `scripts/smart_prep.py` (deps:
+   `scripts/requirements-qol.txt`), B4 = UI advisor, B5 = Dataset Tools panel on the
+   dataset page (`DatasetTools.tsx` + `api/datasets/tools` + `server/datasetTools.ts`).
+   Pre-flight in the UI is advisory-only by decision — do not wire it to block job
+   submission without revisiting PLAN.md's B5 note.
+2. **Remaining**: TrainFlow retirement (user is handling the README separately —
+   leave `W:\GitHub\Anima-TrainFlow` untouched; it still hosts the A3/A4 reference
+   artifacts).

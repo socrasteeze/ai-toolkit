@@ -13,6 +13,7 @@ import { apiClient } from '@/utils/api';
 import useSettings from '@/hooks/useSettings';
 import { pathJoin } from '@/utils/basic';
 import AutoCaptionButton from '@/components/AutoCaptionButton';
+import DatasetTools from '@/components/DatasetTools'; // fork addition, see FORK_NOTES.md
 import CaptionMonitor from '@/components/CaptionMonitor';
 import { CreatableSelectInput } from '@/components/formInputs';
 
@@ -150,6 +151,8 @@ export default function DatasetPage({ params }: { params: { datasetName: string 
             setIsAutoCaptioning={setIsAutoCaptioning}
             captionExt={captionExt}
           />
+          {/* fork addition, see FORK_NOTES.md */}
+          <DatasetTools datasetName={datasetName} onDatasetChanged={() => refreshImageList(datasetName)} />
           <Button
             className="text-white bg-slate-600 px-2 sm:px-3 py-1 rounded-md text-sm sm:text-base whitespace-nowrap"
             onClick={() => openImagesModal(datasetName, () => refreshImageList(datasetName))}

@@ -19,6 +19,7 @@ git push origin main
 | File | Change | Notes for conflict resolution |
 |---|---|---|
 | `ui/src/app/jobs/new/page.tsx` | +1 import, +1 JSX line mounting `<PresetManager/>` in the TopBar | Re-add the mount next to the "Import Config" button if upstream restructures the TopBar |
+| `ui/src/app/datasets/[datasetName]/page.tsx` | +1 import, +1 JSX line mounting `<DatasetTools/>` in the TopBar after `<AutoCaptionButton/>` | Re-add next to the Auto Caption button if upstream restructures the TopBar |
 | `ui/src/app/jobs/new/SimpleJob.tsx` | +1 import, +1 JSX line mounting `<StepSuggestion/>` under the Steps `NumberInput` | Re-add directly below the Steps field if upstream moves it |
 | `extensions_built_in/diffusion_models/__init__.py` | +1 import (`from .anima import AnimaModel`), +1 entry in `AI_TOOLKIT_MODELS` | Re-add both lines if upstream reworks the registration list |
 | `ui/src/app/jobs/new/options.ts` | +1 `modelArchs` entry (`name: 'anima'`), deliberately kept as the LAST entry before the `.sort(` call | Re-append at the end of the array on conflict |
@@ -37,6 +38,9 @@ git push origin main
 - `scripts/auto_caption.py` — B2 WD14 auto-captioner (wd-eva02-large-tagger-v3 via onnxruntime, HF auto-download, `--general-thresh/--char-thresh/--trigger-word/--overwrite`, multi-threaded, GPU w/ torch-bundled CUDA DLLs)
 - `scripts/smart_prep.py` — B3 U2Net subject-aware bucket resize/crop (optional prep tool, non-destructive in→out, `--buckets MINxMAX`, u2net.onnx auto-download to `~/.cache/ai-toolkit/`)
 - `scripts/requirements-qol.txt` — extra deps for B2/B3 (`onnxruntime-gpu`); deliberately NOT added to upstream `requirements.txt`
+- `ui/src/server/datasetTools.ts` — B5: spawns the QoL CLIs as child processes (uses upstream's `ui/cron/pythonPath.ts` resolver), buffers logs in-memory for polling; deliberately NOT a Prisma job
+- `ui/src/app/api/datasets/tools/route.ts` — B5: POST starts a preflight/caption/prep run for a dataset, GET polls by runId or datasetName
+- `ui/src/components/DatasetTools.tsx` — B5: "Dataset Tools" TopBar button + modal on the dataset page (WD14 tagger options, smart-prep buckets/output, advisory pre-flight, live log). Pre-flight is advisory only — it never blocks job submission (decision recorded in PLAN.md)
 - `config/examples/train_lora_anima_2b.yaml`
 - `presets/anima_lora_performance.json`, `presets/anima_lora_background.json`
 - `ui/src/utils/stepSuggestion.ts` also carries the Anima recipe in `ARCH_RECIPES` (fork file, listed above)

@@ -343,3 +343,15 @@ touching anything Anima. Summary of what Phase 4 added:
       `~/.cache/ai-toolkit/`. Live-tested on the 3 oversized 3840px sample images →
       correct 768x512 bucket, subject preserved. Deps in `scripts/requirements-qol.txt`
       (onnxruntime-gpu), deliberately not in upstream requirements.txt.
+- [x] B5 UI "Dataset Tools" panel (2026-07-12): `DatasetTools.tsx` (TopBar button +
+      modal on the dataset page) → fork-only `api/datasets/tools` route →
+      `server/datasetTools.ts` child-process runner (reuses upstream's
+      `cron/pythonPath.ts`; in-memory run registry, NOT a Prisma job — fork rule 2).
+      One new upstream touchpoint: the JSX mount in `datasets/[datasetName]/page.tsx`
+      (5th upstream-modified file, listed in FORK_NOTES). **Decision: pre-flight is
+      advisory-only** — a hard submission block would need an insertion in upstream's
+      `api/jobs/[jobID]/start/route.ts` + its caller; the advisory button gets ~90% of
+      the value with zero extra upstream surface. Upstream's own Auto Caption (VLM,
+      Prisma-job-based) coexists: the WD14 tagger covers the booru-tag use case.
+      Verified: tsc clean, live API run of preflight against a real dataset via dev
+      server (spawn → log stream → exit code all correct).

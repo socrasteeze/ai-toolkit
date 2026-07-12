@@ -60,9 +60,9 @@ top of `PLAN.md`'s Phase 3 section:
 
 ## Current state of the Anima 2B port (Phase 4 / spec Workstream A)
 
-Status as of 2026-07-12: **A1 (recon), A2 (implementation), and the A2 exit gate
-(end-to-end GPU LoRA run) are done.** Next is **A3 HARD GATE** (key parity vs a
-TrainFlow LoRA + ComfyUI/SwarmUI load).
+Status as of 2026-07-12: **A1, A2 (incl. GPU e2e), and A3 key/shape parity are done.**
+Remaining A3 half: **you** confirm the toolkit LoRA loads in ComfyUI/SwarmUI.
+Next engineering gate after that: **A4** (quality/parity curves).
 
 What exists and where:
 
@@ -71,6 +71,8 @@ What exists and where:
   sd-scripts v0.10.5; do not "clean it up" beyond the documented toolkit-integration
   dtype casts needed for bf16 weight storage (see PLAN.md Phase 4 A2 notes).
   `anima_model.py` holds AnimaModel and the LoRA key converters.
+- `scripts/dump_lora_keys.py` — dump one LoRA or diff two; exit 0 only on zero
+  key/shape mismatch (A3 automated check).
 - Parity invariants that must NOT be changed casually (they exist to match kohya
   sd-scripts, which ComfyUI and the user's existing LoRAs depend on):
   - VAE encode uses the deterministic `latent_dist.mode()`, not `sample()` (Qwen-Image in
@@ -88,13 +90,13 @@ What exists and where:
   sd-scripts = ground truth for behavior questions); author's sample dataset + his
   diffusion-pipe config in `anima_sample_training/` (gitignored, 153 img/caption pairs).
 - Training env: repo `.venv` (torch 2.10+cu130 + `requirements.txt`). A2 smoke artifact:
-  `output/anima_a2_smoke/` (gitignored).
+  `output/anima_a2_smoke/` (gitignored). A3 reference:
+  `Anima-TrainFlow/training/output/a3_ref/a3_ref.safetensors`.
 
 Next steps, in order (gates in `ANIMA_INTEGRATION_SPEC.md`):
 
-1. **A3 HARD GATE**: write `scripts/dump_lora_keys.py`; produce a reference LoRA by running
-   TrainFlow for ~20 steps (user approved self-producing it); zero key/shape diff required,
-   then user manually confirms ComfyUI/SwarmUI load.
+1. **A3 remaining**: user loads `output/anima_a2_smoke/anima_a2_smoke.safetensors` in
+   ComfyUI/SwarmUI and confirms it applies.
 2. **A4**: matched-hyperparameter parity run vs TrainFlow (loss curves + samples), verify
    Prodigy behavior matches.
 3. **Workstream C gate**: measure VRAM in a live `background`-preset run (target ≤60–70%

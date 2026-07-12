@@ -300,7 +300,10 @@ touching anything Anima. Summary of what Phase 4 added:
       preview autocast in `src/pipeline.py`, bf16 timestep/AdaLN dtype casts in
       `anima_transformer.py`, force Long for T5/Qwen3 ids+masks in
       `anima_model.get_noise_prediction` (cache path was promoting them to bf16).
-- [ ] A3 HARD GATE: `scripts/dump_lora_keys.py` zero-diff vs a TrainFlow-produced LoRA
-      + user confirms ComfyUI/SwarmUI load.
+- [x] A3 key/shape parity: `scripts/dump_lora_keys.py` reports zero mismatch vs a
+      TrainFlow/sd-scripts reference LoRA (`Anima-TrainFlow/training/output/a3_ref/a3_ref.safetensors`,
+      20 steps via vendored `anima_train_network.py` + `networks.lora_anima`).
+      Both dumps: 840 keys. **Still pending user ComfyUI/SwarmUI load confirmation**
+      (remaining half of the A3 HARD GATE).
 - [ ] A4: loss-curve/sample parity vs TrainFlow (same data/seed/hypers), Prodigy check.
 - [ ] C gate: measured VRAM under target in a live background-preset run.

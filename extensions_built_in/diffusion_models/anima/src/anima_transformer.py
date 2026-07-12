@@ -573,6 +573,10 @@ class TimestepEmbedding(nn.Module):
         torch.nn.init.trunc_normal_(self.linear_2.weight, std=std, a=-3 * std, b=3 * std)
 
     def forward(self, sample: torch.Tensor) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        # Match Linear weight dtype when the caller keeps sinusoids in float32
+        # (common) while the module is stored in bf16/fp16.
+        if sample.dtype != self.linear_1.weight.dtype:
+            sample = sample.to(dtype=self.linear_1.weight.dtype)
         emb = self.linear_1(sample)
         emb = self.activation(emb)
         emb = self.linear_2(emb)
@@ -1195,6 +1199,15 @@ class AnimaTransformer2DModel(nn.Module):
             timesteps_B_T = timesteps_B_T.unsqueeze(1)
         t_embedding_B_T_D, adaln_lora_B_T_3D = self.t_embedder(timesteps_B_T)
         t_embedding_B_T_D = self.t_embedding_norm(t_embedding_B_T_D)
+        # Toolkit stores DiT weights in the train dtype (bf16). With AdaLN-LoRA,
+        # emb_B_T_D is the raw sinusoidal (float) and Block runs AdaLN under
+        # autocast(enabled=False) when not fp16 — so embeddings must match the
+        # weight dtype. sd-scripts usually keeps float32 weights + autocast.
+        compute_dtype = x_B_T_H_W_D.dtype
+        if t_embedding_B_T_D.dtype != compute_dtype:
+            t_embedding_B_T_D = t_embedding_B_T_D.to(dtype=compute_dtype)
+        if adaln_lora_B_T_3D is not None and adaln_lora_B_T_3D.dtype != compute_dtype:
+            adaln_lora_B_T_3D = adaln_lora_B_T_3D.to(dtype=compute_dtype)
 
         block_kwargs = {
             "rope_emb_L_1_1_D": rope_emb_L_1_1_D,

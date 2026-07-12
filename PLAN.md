@@ -293,7 +293,13 @@ touching anything Anima. Summary of what Phase 4 added:
 
 - [x] Smoke test (scratchpad, bare torch): meta-load + rebuild_buffers, forward fwd/bwd
       with grad checkpointing, config auto-detect, LoRA key round-trip incl. alpha.
-- [ ] A2 gate: end-to-end LoRA run on `anima_sample_training/` completes.
+- [x] A2 gate: end-to-end LoRA run on `anima_sample_training/` completes
+      (2026-07-12: `config/train_anima_a2_smoke.yaml` — 20 steps, batch 1, 512,
+      `output/anima_a2_smoke/anima_a2_smoke.safetensors` with sd-scripts
+      `lora_unet_*` keys + alpha). Runtime fixes landed with the gate:
+      preview autocast in `src/pipeline.py`, bf16 timestep/AdaLN dtype casts in
+      `anima_transformer.py`, force Long for T5/Qwen3 ids+masks in
+      `anima_model.get_noise_prediction` (cache path was promoting them to bf16).
 - [ ] A3 HARD GATE: `scripts/dump_lora_keys.py` zero-diff vs a TrainFlow-produced LoRA
       + user confirms ComfyUI/SwarmUI load.
 - [ ] A4: loss-curve/sample parity vs TrainFlow (same data/seed/hypers), Prodigy check.

@@ -60,16 +60,17 @@ top of `PLAN.md`'s Phase 3 section:
 
 ## Current state of the Anima 2B port (Phase 4 / spec Workstream A)
 
-Status as of 2026-07-12: **A1 (recon) and A2 (implementation) are done; the A2 exit gate —
-an end-to-end training run — has NOT been run yet.** The code is smoke-tested (meta-device
-load, forward/backward, LoRA key round-trip) but has never trained on a GPU.
+Status as of 2026-07-12: **A1 (recon), A2 (implementation), and the A2 exit gate
+(end-to-end GPU LoRA run) are done.** Next is **A3 HARD GATE** (key parity vs a
+TrainFlow LoRA + ComfyUI/SwarmUI load).
 
 What exists and where:
 
 - `extensions_built_in/diffusion_models/anima/` — the model extension. The DiT in
   `src/anima_transformer.py` is vendored byte-identical (per-class AST diff) from kohya
-  sd-scripts v0.10.5; do not "clean it up". `anima_model.py` holds AnimaModel and the LoRA
-  key converters.
+  sd-scripts v0.10.5; do not "clean it up" beyond the documented toolkit-integration
+  dtype casts needed for bf16 weight storage (see PLAN.md Phase 4 A2 notes).
+  `anima_model.py` holds AnimaModel and the LoRA key converters.
 - Parity invariants that must NOT be changed casually (they exist to match kohya
   sd-scripts, which ComfyUI and the user's existing LoRAs depend on):
   - VAE encode uses the deterministic `latent_dist.mode()`, not `sample()` (Qwen-Image in
@@ -86,19 +87,18 @@ What exists and where:
 - Reference material: TrainFlow clone expected at `W:\GitHub\Anima-TrainFlow` (vendored
   sd-scripts = ground truth for behavior questions); author's sample dataset + his
   diffusion-pipe config in `anima_sample_training/` (gitignored, 153 img/caption pairs).
+- Training env: repo `.venv` (torch 2.10+cu130 + `requirements.txt`). A2 smoke artifact:
+  `output/anima_a2_smoke/` (gitignored).
 
 Next steps, in order (gates in `ANIMA_INTEGRATION_SPEC.md`):
 
-1. **A2 gate**: set up the Python training env (repo `requirements.txt`; no venv exists in
-   this checkout yet — global Python has torch 2.10 but not the toolkit deps) and complete
-   a short LoRA run on `anima_sample_training/` without error.
-2. **A3 HARD GATE**: write `scripts/dump_lora_keys.py`; produce a reference LoRA by running
+1. **A3 HARD GATE**: write `scripts/dump_lora_keys.py`; produce a reference LoRA by running
    TrainFlow for ~20 steps (user approved self-producing it); zero key/shape diff required,
    then user manually confirms ComfyUI/SwarmUI load.
-3. **A4**: matched-hyperparameter parity run vs TrainFlow (loss curves + samples), verify
+2. **A4**: matched-hyperparameter parity run vs TrainFlow (loss curves + samples), verify
    Prodigy behavior matches.
-4. **Workstream C gate**: measure VRAM in a live `background`-preset run (target ≤60–70%
+3. **Workstream C gate**: measure VRAM in a live `background`-preset run (target ≤60–70%
    of 32GB).
-5. **Workstream B**: QoL CLI ports (preflight, WD14 tagger, U2Net prep) — note B1/B4
+4. **Workstream B**: QoL CLI ports (preflight, WD14 tagger, U2Net prep) — note B1/B4
    partially exist as UI features already; reconcile, don't duplicate (see
    `docs/ANIMA_INTEGRATION_UNDERSTANDING.md`).

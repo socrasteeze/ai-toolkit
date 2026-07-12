@@ -319,15 +319,17 @@ class AnimaModel(BaseModel):
         context = torch.stack(
             [e.to(device, dtype) for e in text_embeddings.text_embeds], dim=0
         )
+        # Masks/ids must stay integer — cache/load + train-dtype casts can turn
+        # them into bf16, which breaks nn.Embedding in the LLM adapter.
         source_attention_mask = torch.stack(
             [m.to(device) for m in text_embeddings.qwen3_attn_mask], dim=0
-        )
+        ).to(dtype=torch.long)
         target_input_ids = torch.stack(
             [i.to(device) for i in text_embeddings.t5_input_ids], dim=0
-        )
+        ).to(dtype=torch.long)
         target_attention_mask = torch.stack(
             [m.to(device) for m in text_embeddings.t5_attn_mask], dim=0
-        )
+        ).to(dtype=torch.long)
 
         latents_5d = latent_model_input.to(device, dtype).unsqueeze(2)  # (B, C, 1, h, w)
         padding_mask = torch.zeros(

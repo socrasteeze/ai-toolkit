@@ -4,8 +4,8 @@ Produced 2026-07-12 from file-level recon of `socrasteeze/Anima-TrainFlow` (vend
 sd-scripts backend), cross-checked against `tdrussell/diffusion-pipe`'s independent Anima
 implementation and surveyed against this repo's integration points. This document scopes
 Workstreams A2–A4 of `ANIMA_INTEGRATION_SPEC.md`. **Status: A1 reviewed and approved
-2026-07-12 (decisions in §9); A2 implementation landed the same day — see PLAN.md
-Phase 4 for what was built. Next gates: A2 end-to-end run, then A3 key parity.**
+2026-07-12 (decisions in §9); A2 implementation + A2 end-to-end GPU gate landed the
+same day — see PLAN.md Phase 4. Next gate: A3 key parity.**
 
 ---
 

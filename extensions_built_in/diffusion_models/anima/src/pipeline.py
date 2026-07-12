@@ -20,9 +20,9 @@ from diffusers.utils.torch_utils import randn_tensor
 def stack_embeds(embeds, device, dtype):
     """Anima conditioning tensors are fixed-length (512) — plain stack."""
     context = torch.stack([e.to(device, dtype) for e in embeds.text_embeds], dim=0)
-    source_mask = torch.stack([m.to(device) for m in embeds.qwen3_attn_mask], dim=0)
-    t5_ids = torch.stack([i.to(device) for i in embeds.t5_input_ids], dim=0)
-    t5_mask = torch.stack([m.to(device) for m in embeds.t5_attn_mask], dim=0)
+    source_mask = torch.stack([m.to(device) for m in embeds.qwen3_attn_mask], dim=0).to(dtype=torch.long)
+    t5_ids = torch.stack([i.to(device) for i in embeds.t5_input_ids], dim=0).to(dtype=torch.long)
+    t5_mask = torch.stack([m.to(device) for m in embeds.t5_attn_mask], dim=0).to(dtype=torch.long)
     return context, source_mask, t5_ids, t5_mask
 
 
@@ -76,6 +76,13 @@ class AnimaPipeline:
         if do_cfg:
             uncond = stack_embeds(unconditional_embeds, device, dtype)
 
+        # Match sd-scripts anima_train_utils.sample_image_inference: DiT
+        # forward runs under autocast so Timesteps (float32 sinusoids) can feed
+        # bf16/fp16 TimestepEmbedding linears. Without this, sampling crashes
+        # with "float != BFloat16" on linear_1.
+        device_type = device.type if isinstance(device, torch.device) else "cuda"
+        use_amp = dtype in (torch.float16, torch.bfloat16)
+
         for t in timesteps:
             t01 = (t / 1000.0).to(device, dtype=torch.float32).expand(latents.shape[0])
             latents_5d = latents.to(dtype).unsqueeze(2)
@@ -97,10 +104,11 @@ class AnimaPipeline:
                     source_attention_mask=source_mask,
                 ).squeeze(2)
 
-            v = predict(cond)
-            if do_cfg:
-                v_uncond = predict(uncond)
-                v = v_uncond + guidance_scale * (v - v_uncond)
+            with torch.autocast(device_type=device_type, dtype=dtype, enabled=use_amp):
+                v = predict(cond)
+                if do_cfg:
+                    v_uncond = predict(uncond)
+                    v = v_uncond + guidance_scale * (v - v_uncond)
 
             latents = scheduler.step(v.to(torch.float32), t, latents, return_dict=False)[0]
 

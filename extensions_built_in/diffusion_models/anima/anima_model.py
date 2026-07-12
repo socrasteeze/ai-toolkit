@@ -247,8 +247,15 @@ class AnimaModel(BaseModel):
     # Prompt encoding
     # ------------------------------------------------------------------
     def get_prompt_embeds(self, prompt) -> AdvancedPromptEmbeds:
+        # a missing negative prompt arrives as None or False (SampleConfig.neg
+        # defaults to False; DiffusionTrainer's cache_sample_prompts encodes it
+        # verbatim) — encode it as the empty prompt, matching sd-scripts'
+        # unconditional input
+        if prompt is None or isinstance(prompt, bool):
+            prompt = ""
         if isinstance(prompt, str):
             prompt = [prompt]
+        prompt = ["" if (p is None or isinstance(p, bool)) else p for p in prompt]
 
         text_encoder = self.text_encoder[0]
         tokenizer = self.tokenizer[0]

@@ -313,4 +313,12 @@ touching anything Anima. Summary of what Phase 4 added:
       adapt d off the 1e-6 floor to the same order (4.8e-6 vs 2.5e-6). Known benign
       diffs (toolkit pins eps=1e-6, lr<0.1 auto-bump, no d*lr logging, prodigyopt-vs-
       TrainFlow default args) documented in `docs/anima_a4_parity.md` (gate artifact).
-- [ ] C gate: measured VRAM under target in a live background-preset run.
+- [x] C gate: measured VRAM under target in a live background-preset run — PASS
+      (2026-07-12, artifact `docs/profiles.md`): 120-step run of the background
+      preset settings (res [512,768,1024], batch 1 + accum 4, low_vram, 1024
+      sampling), nvidia-smi every 2s: steady-state 9.9–10.7 GB (30–33% of 32GB),
+      peak 14.1 GB (43%) during 1024×1024 sample gen. Target was ≤60–70%.
+      The gate run also flushed out a bug: a missing sample `neg` reaches
+      `get_prompt_embeds` as None/False (SampleConfig.neg defaults to False) via
+      DiffusionTrainer.cache_sample_prompts — now coerced to the empty prompt in
+      `anima_model.py` (matches sd-scripts' unconditional input).

@@ -21,17 +21,19 @@ git push origin main
 | `ui/src/app/jobs/new/page.tsx` | +1 import, +1 JSX line mounting `<PresetManager/>` in the TopBar | Re-add the mount next to the "Import Config" button if upstream restructures the TopBar |
 | `ui/src/app/datasets/[datasetName]/page.tsx` | +1 import, +1 JSX line mounting `<DatasetTools/>` in the TopBar after `<AutoCaptionButton/>` | Re-add next to the Auto Caption button if upstream restructures the TopBar |
 | `ui/src/app/jobs/new/SimpleJob.tsx` | +1 import, +1 JSX line mounting `<StepSuggestion/>` under the Steps `NumberInput` | Re-add directly below the Steps field if upstream moves it |
-| `extensions_built_in/diffusion_models/__init__.py` | +1 import (`from .anima import AnimaModel`), +1 entry in `AI_TOOLKIT_MODELS`. Upstream now has its OWN identical-looking lines for its own Anima (see below) — after a merge, make sure the file has exactly ONE AnimaModel import/entry (ours) | Re-add both lines if upstream reworks the registration list |
-| `ui/src/app/jobs/new/options.ts` | +1 `modelArchs` entry (`name: 'anima'`), deliberately kept as the LAST entry before the `.sort(` call. Upstream now ships its own `name: 'anima'` entry near the top of the array — DELETE upstream's on every merge, keep ours | Re-append at the end of the array on conflict |
-| `extensions_built_in/diffusion_models/anima/` | **Upstream collision (since upstream #860, merged 2026-07-16):** upstream added its own diffusers-based Anima in this same directory (`anima.py`, exporting `AnimaModel` + `AnimaPromptEmbeds` from the package `__init__.py`). We keep OUR sd-scripts-parity port and delete upstream's `anima.py` + their `__init__.py` re-exports on every merge. Upstream's `toolkit/prompt_utils.py` has a guarded `AnimaPromptEmbeds` loader path that imports from this package — it only triggers for embed caches written by upstream's implementation, so it stays as-is (dead code for us) | On merge: `git checkout --ours` the package `__init__.py`, `git rm` upstream's `anima.py`, dedupe the two registration files above |
+(The fork previously also modified `extensions_built_in/diffusion_models/__init__.py`,
+`ui/src/app/jobs/new/options.ts`, and owned `extensions_built_in/diffusion_models/anima/`
+for the Phase 4 Anima port. Upstream shipped its own Anima support (ostris#860), so on
+2026-07-16 the fork's port was sunset and those three are now byte-identical to
+upstream — see PLAN.md Phase 4 for the history. The fork's Anima *enhancements* live on
+in fork-only files: the presets, the example config, and the advisor recipe.)
 
 ## Fork-only files (never conflict)
 
 - `PLAN.md`, `FORK_NOTES.md`
 - `ANIMA_INTEGRATION_SPEC.md` — spec for Anima 2B model port + TrainFlow QoL consolidation (COMPLETE; kept as the requirements record, see its status banner)
 - `docs/anima_delta_catalog.md` — A1 recon artifact: Anima 2B architecture/training-math/LoRA-key catalog + ai-toolkit port mapping (key finding: Anima support is native upstream kohya sd-scripts v0.10.5, not TrainFlow-authored)
-- `extensions_built_in/diffusion_models/anima/` — Anima 2B model extension (Phase 4): vendored MiniTrainDIT + LLM adapter (`src/anima_transformer.py`), `AnimaModel` with sd-scripts LoRA key export (`anima_model.py`), preview pipeline (`src/pipeline.py`). **No longer conflict-free** — upstream added its own Anima in this directory; see the merge-surface table above
-- `scripts/dump_lora_keys.py` — A3 helper: dump or diff LoRA safetensors keys+shapes (exit 0 only on zero mismatch)
+- `scripts/dump_lora_keys.py` — A3 helper: dump or diff LoRA safetensors keys+shapes (exit 0 only on zero mismatch). Outlived the fork's Anima port (sunset 2026-07-16) — still useful for checking any LoRA's key format
 - `docs/anima_a4_parity.md` — A4 gate artifact: matched-run loss-curve/sample comparison vs TrainFlow + Prodigy behavior check (PASS, with documented benign optimizer-construction differences)
 - `docs/profiles.md` — performance/background profile explainer + Workstream C gate artifact (measured Anima background-preset VRAM: 30–33% steady, 43% peak of 32GB — PASS)
 - `scripts/preflight.py` — B1 dataset pre-flight validator (bare folder or `--config job.yaml`; exit 1 on missing captions/corrupt images/bad paths, warnings for oversized/stray files, `--warn-only` override)

@@ -323,7 +323,7 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'FLUX.2 Klein 9B: unverified — no FLUX.2-specific recipe exists yet, these are FLUX.1 community defaults used as a proxy. ' +
       'Needs more VRAM than the 4B variant; 48GB is a practical minimum. Natural-language captions.',
   }),
-  // Anima 2B (fork-only arch): unusually well-sourced — the numbers below are the model
+  // Anima 2B (native upstream arch since ostris#860): unusually well-sourced — the numbers below are the model
   // author's own published recipe (Circlestone Labs finetuning tips + his diffusion-pipe
   // example config), not community guesswork. See docs/anima_delta_catalog.md §9.
   anima: tier => ({

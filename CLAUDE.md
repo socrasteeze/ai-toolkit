@@ -24,10 +24,10 @@ decisions in §9).
 ## Fork hygiene rules (apply to any future change)
 
 1. New functionality goes in new files. Upstream files should only ever get small,
-   easy-to-reapply insertions (currently four files: JSX mounts in
-   `ui/src/app/jobs/new/page.tsx` and `SimpleJob.tsx`, the AnimaModel registration in
-   `extensions_built_in/diffusion_models/__init__.py`, and the Anima arch entry in
-   `ui/src/app/jobs/new/options.ts` — see `FORK_NOTES.md` for the exact lines).
+   easy-to-reapply insertions (currently three files, all single JSX mounts:
+   `ui/src/app/jobs/new/page.tsx`, `ui/src/app/jobs/new/SimpleJob.tsx`, and
+   `ui/src/app/datasets/[datasetName]/page.tsx` — see `FORK_NOTES.md` for the exact
+   lines).
 2. No Prisma schema changes for fork features — presets are files on disk (`presets/`), not
    DB rows.
 3. After any change, verify `git diff upstream/main --stat` still only shows the upstream
@@ -59,46 +59,36 @@ top of `PLAN.md`'s Phase 3 section:
   scheduler dropdown is ever added to the main form, keep the advisor's suggestion in sync
   with it rather than fighting it.
 
-## Current state of the Anima 2B port (Phase 4 / spec Workstream A)
+## Anima 2B: upstream-native since 2026-07-16 (fork port SUNSET)
 
-**Status as of 2026-07-12: the entire `ANIMA_INTEGRATION_SPEC.md` is complete.**
-Every workstream and gate passed: A1–A4 (model port + both hard/quality gates), B1–B5
-(all QoL tools, including the UI panel), and C (VRAM profile gate). The only spec item
-left is TrainFlow retirement, which the user is handling separately — leave
-`W:\GitHub\Anima-TrainFlow` untouched (it still hosts the A3/A4 reference artifacts).
-There is no remaining Anima work queued; treat this section as historical context, not
-a to-do list. Gate artifacts: `docs/anima_delta_catalog.md` (A1),
-`docs/anima_a4_parity.md` (A4), `docs/profiles.md` (C). Full verification checklist
-with dates: `PLAN.md` Phase 4.
+The fork's Phase 4 Anima port (vendored sd-scripts transformer, A1–A4 gates all passed
+2026-07-12) was **retired on 2026-07-16** after upstream shipped its own diffusers-based
+Anima support (ostris#860). `extensions_built_in/diffusion_models/anima/`,
+`diffusion_models/__init__.py`, and `options.ts` are byte-identical to upstream again —
+do not resurrect the port on future merges. Full history and the port→upstream
+adaptation notes: `PLAN.md` Phase 4 ("Upstream Anima collision → fork port SUNSET").
+The spec (`ANIMA_INTEGRATION_SPEC.md`) and gate artifacts (`docs/anima_delta_catalog.md`,
+`docs/anima_a4_parity.md`, `docs/profiles.md`) describe the RETIRED port — historical
+record only. TrainFlow retirement is the user's own task; leave
+`W:\GitHub\Anima-TrainFlow` untouched.
 
-What exists and where:
+What remains fork-side for Anima (all adapted to upstream's implementation):
 
-- `extensions_built_in/diffusion_models/anima/` — the model extension. The DiT in
-  `src/anima_transformer.py` is vendored byte-identical (per-class AST diff) from kohya
-  sd-scripts v0.10.5; do not "clean it up" beyond the documented toolkit-integration
-  dtype casts needed for bf16 weight storage (see PLAN.md Phase 4 A2 notes).
-  `anima_model.py` holds AnimaModel and the LoRA key converters.
-- `scripts/dump_lora_keys.py` — dump one LoRA or diff two; exit 0 only on zero
-  key/shape mismatch (A3 automated check).
-- Parity invariants that must NOT be changed casually (they exist to match kohya
-  sd-scripts, which ComfyUI and the user's existing LoRAs depend on):
-  - VAE encode uses the deterministic `latent_dist.mode()`, not `sample()` (Qwen-Image in
-    this repo samples — Anima deliberately differs).
-  - Dual tokenization, both padded to 512; T5 token ids are adapter inputs, never encoded.
-  - LoRA export = sd-scripts keys (`lora_unet_<path with _>.lora_down/lora_up.weight` +
-    per-module `alpha` == rank). This is spec HARD GATE A3.
-  - LoRA targets class `Block` only; the LLM adapter is never trained (model author's
-    explicit instruction); configs must carry
-    `network.network_kwargs.ignore_if_contains: ["adaln_modulation"]`.
-- Presets `presets/anima_lora_{performance,background}.json` carry the model author's
-  recipe (rank 32, adamw 2e-5, sigmoid_scale 1.3 via `model.model_kwargs`); `background`
-  (batch 1 + accum 4, low_vram) is the default for this shared 5090 machine.
-- Reference material: TrainFlow clone expected at `W:\GitHub\Anima-TrainFlow` (vendored
-  sd-scripts = ground truth for behavior questions); author's sample dataset + his
-  diffusion-pipe config in `anima_sample_training/` (gitignored, 153 img/caption pairs).
-- Training env: repo `.venv` (torch 2.10+cu130 + `requirements.txt`). A2 smoke artifact:
-  `output/anima_a2_smoke/` (gitignored). A3 reference:
-  `Anima-TrainFlow/training/output/a3_ref/a3_ref.safetensors`.
+- Presets `presets/anima_lora_{performance,background}.json` (v2.0) and
+  `config/examples/train_lora_anima_2b.yaml` — the model author's recipe (rank 32,
+  adamw 2e-5, adapter frozen) expressed in upstream's terms: diffusers-name
+  `ignore_if_contains` list replacing sd-scripts' `["adaln_modulation"]`, and NO
+  `sigmoid_scale` (upstream's implementation doesn't support it — don't re-add it to
+  `model_kwargs`, it would be silently ignored). `background` (batch 1 + accum 4,
+  low_vram) is the default for this shared 5090 machine.
+- The advisor recipe in `stepSuggestion.ts` (`ARCH_RECIPES.anima`) — numbers unchanged,
+  implementation-agnostic.
+- `scripts/dump_lora_keys.py` — generic LoRA key dump/diff tool; outlived the port.
+- Existing sd-scripts-format LoRAs still load (upstream converts on load); new exports
+  use upstream's comfy-style keys.
+- Training env: repo `.venv` (torch 2.10+cu130 + `requirements.txt`). Upstream's Anima
+  needs the diffusers commit pinned in `requirements_base.txt` — reinstall requirements
+  before the first Anima run after the sunset.
 - Workstream B QoL tools: `scripts/preflight.py` (B1), `scripts/auto_caption.py` (B2,
   WD14 tagger, deps in `scripts/requirements-qol.txt`), `scripts/smart_prep.py` (B3,
   U2Net crop, same deps), the existing `stepSuggestion.ts` advisor (B4), and the

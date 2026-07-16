@@ -1,10 +1,13 @@
 ---
-# Anima 2B LoRA training (fork-only arch — see docs/anima_delta_catalog.md)
+# Anima 2B LoRA training (native upstream arch since ostris#860)
 #
 # Recipe follows the model author's (Circlestone Labs / tdrussell) finetuning
-# tips: rank 32, AdamW at 2e-5, LLM adapter frozen (never LoRA'd by default),
-# sigmoid timestep sampling with sigmoid_scale 1.3. "A light touch is all you
-# need" — Anima is a base model with no aesthetic tuning to overcome.
+# tips: rank 32, AdamW at 2e-5, LLM adapter frozen (upstream's default —
+# set model_kwargs.train_text_conditioner: true to unfreeze, not recommended).
+# "A light touch is all you need" — Anima is a base model with no aesthetic
+# tuning to overcome. Note: the author's sigmoid_scale 1.3 timestep widening
+# from his diffusion-pipe config has no equivalent in upstream's
+# implementation; plain sigmoid timestep sampling is the closest available.
 job: extension
 config:
   name: "my_first_anima_lora_v1"
@@ -18,9 +21,17 @@ config:
         linear: 32
         linear_alpha: 32
         network_kwargs:
-          # mirror sd-scripts' default: no LoRA on the AdaLN modulation linears
+          # mirror sd-scripts' Block-only targeting: no LoRA on the AdaLN
+          # modulation linears, patch/time embedders, or final projection
+          # (diffusers module names used by upstream's Anima)
           ignore_if_contains:
-            - "adaln_modulation"
+            - "norm1.linear"
+            - "norm2.linear"
+            - "norm3.linear"
+            - "norm_out.linear"
+            - "patch_embed"
+            - "time_embed"
+            - "proj_out"
       save:
         dtype: float16
         save_every: 250
@@ -44,17 +55,12 @@ config:
         lr: 2e-5
         dtype: bf16
       model:
-        # local .safetensors path, "circlestone-labs/Anima" (downloads
-        # anima-base-v1.0), or "circlestone-labs/Anima/<checkpoint>.safetensors"
-        name_or_path: "circlestone-labs/Anima"
+        # diffusers-layout repo (or a local diffusers-format directory)
+        name_or_path: "circlestone-labs/Anima-Base-v1.0-Diffusers"
         arch: "anima"
         # Anima 2B fits comfortably in bf16 — no quantization needed on 16GB+
         quantize: false
         quantize_te: false
-        model_kwargs:
-          # widens the logit-normal timestep distribution (author trains at 1.3;
-          # kohya sd-scripts' default is 1.0)
-          sigmoid_scale: 1.3
       sample:
         sampler: "flowmatch"
         sample_every: 250

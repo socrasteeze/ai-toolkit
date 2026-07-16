@@ -358,19 +358,46 @@ touching anything Anima. Summary of what Phase 4 added:
       Verified: tsc clean, live API run of preflight against a real dataset via dev
       server (spawn → log stream → exit code all correct).
 
-## Upstream Anima collision (2026-07-16 merge)
+## Upstream Anima collision → fork port SUNSET (2026-07-16)
 
 Upstream landed its own Anima support (ostris#860 + a sampling-bar fix) the day after
 this phase completed: a diffusers-based implementation (`CosmosTransformer3DModel` via a
 pinned diffusers commit) in the SAME directory (`extensions_built_in/diffusion_models/
 anima/anima.py`) with the SAME `arch = "anima"` key and its own diffusers→comfy LoRA key
-conversion. **Decision (user, 2026-07-16): keep the fork's sd-scripts-parity port,
-delete upstream's `anima.py` on every merge.** Rationale: the fork's port passed the
-A3/A4 parity gates against kohya sd-scripts, and the user's existing LoRAs, ComfyUI/
-SwarmUI workflow, and presets (sigmoid_scale 1.3 via `model.model_kwargs`) depend on its
-exact key format and training semantics; upstream's implementation is unverified against
-those. Merge-time resolution steps live in `FORK_NOTES.md`'s merge-surface table.
-Benign upstream leftovers we keep: the `'anima'` entry in `toolkit/config_modules.py`'s
-`ModelArch` literal, and a guarded `AnimaPromptEmbeds` loader path in
-`toolkit/prompt_utils.py` that only triggers for embed caches written by upstream's
-implementation (dead code for us).
+conversion. The initial merge that day kept the fork's port, but the user reversed that
+the same day: **Decision (user, 2026-07-16, final): sunset the fork's port and adopt
+upstream's implementation wholesale** — `extensions_built_in/diffusion_models/anima/`,
+`diffusion_models/__init__.py`, and `options.ts` are byte-identical to upstream again,
+and the vendored sd-scripts transformer (`anima_model.py`, `src/`) is deleted. The
+Phase 4 gate artifacts (`docs/anima_delta_catalog.md`, `docs/anima_a4_parity.md`,
+`docs/profiles.md`, `ANIMA_INTEGRATION_SPEC.md`) remain as historical record of the
+retired port.
+
+The fork's Anima *enhancements* were ported onto upstream's implementation:
+
+- `presets/anima_lora_{performance,background}.json` (v2.0) and
+  `config/examples/train_lora_anima_2b.yaml` now target
+  `circlestone-labs/Anima-Base-v1.0-Diffusers` and express the author's
+  "Block-only" LoRA targeting via `ignore_if_contains` with upstream's DIFFUSERS
+  module names (`norm1.linear`, `norm2.linear`, `norm3.linear`, `norm_out.linear`,
+  `patch_embed`, `time_embed`, `proj_out`) instead of sd-scripts'
+  `adaln_modulation`. Without this list, upstream LoRA-targets every linear in
+  `CosmosTransformer3DModel`, including the AdaLN modulation linears the author
+  excludes.
+- **Lost in translation:** the author's `sigmoid_scale: 1.3` timestep widening has
+  no equivalent in upstream's implementation (its `model_kwargs` only support
+  `train_text_conditioner` and `max_sequence_length`); presets fall back to plain
+  `timestep_type: sigmoid` and say so in their descriptions. If upstream ever adds
+  a timestep-scale knob, wire it back in.
+- The advisor recipe in `stepSuggestion.ts` (`ARCH_RECIPES.anima`) was already
+  implementation-agnostic (lr/rank/alpha/batch/accum numbers) and is unchanged.
+- The LLM adapter stays frozen by default in upstream's implementation too
+  (`train_text_conditioner` defaults to false) — the author's instruction holds.
+- Existing sd-scripts-format LoRAs still LOAD for resume/continue: upstream's
+  `convert_lora_weights_before_load` routes `diffusion_model.*` keys through
+  diffusers' `_convert_non_diffusers_anima_lora_to_diffusers`. New exports use
+  upstream's comfy-style key conversion (which, unlike the retired port, CAN emit
+  `adaln_modulation`/`final_layer`/embedder keys if the ignore list is dropped).
+- Upstream's Anima requires the diffusers commit pinned in `requirements_base.txt`
+  (c9438378...) — re-run `pip install -r requirements.txt` in the training venv
+  before the first post-sunset Anima run.

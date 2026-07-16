@@ -357,3 +357,20 @@ touching anything Anima. Summary of what Phase 4 added:
       Prisma-job-based) coexists: the WD14 tagger covers the booru-tag use case.
       Verified: tsc clean, live API run of preflight against a real dataset via dev
       server (spawn → log stream → exit code all correct).
+
+## Upstream Anima collision (2026-07-16 merge)
+
+Upstream landed its own Anima support (ostris#860 + a sampling-bar fix) the day after
+this phase completed: a diffusers-based implementation (`CosmosTransformer3DModel` via a
+pinned diffusers commit) in the SAME directory (`extensions_built_in/diffusion_models/
+anima/anima.py`) with the SAME `arch = "anima"` key and its own diffusers→comfy LoRA key
+conversion. **Decision (user, 2026-07-16): keep the fork's sd-scripts-parity port,
+delete upstream's `anima.py` on every merge.** Rationale: the fork's port passed the
+A3/A4 parity gates against kohya sd-scripts, and the user's existing LoRAs, ComfyUI/
+SwarmUI workflow, and presets (sigmoid_scale 1.3 via `model.model_kwargs`) depend on its
+exact key format and training semantics; upstream's implementation is unverified against
+those. Merge-time resolution steps live in `FORK_NOTES.md`'s merge-surface table.
+Benign upstream leftovers we keep: the `'anima'` entry in `toolkit/config_modules.py`'s
+`ModelArch` literal, and a guarded `AnimaPromptEmbeds` loader path in
+`toolkit/prompt_utils.py` that only triggers for embed caches written by upstream's
+implementation (dead code for us).

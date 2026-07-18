@@ -12,6 +12,19 @@ const imageExtensions = ['.png', '.jpg', '.jpeg', '.webp'];
 const videoExtensions = ['.mp4', '.avi', '.mov', '.mkv', '.wmv', '.m4v', '.flv'];
 const audioExtensions = ['.mp3', '.wav', '.flac', '.ogg'];
 
+// Validates a user-supplied top-level dataset folder name before it's joined onto the
+// datasets root. path.basename() alone is NOT sufficient here: path.basename('..')
+// returns '..' unchanged (it only strips leading directory components, it doesn't
+// resolve relative segments), so a bare ".." or "." value passes through untouched and
+// path.join(datasetsRoot, '..') escapes the datasets root entirely. Found via a live
+// curl test against the new browse route (2026-07-19) — see PLAN.md. Returns the name
+// unchanged if safe, or null if it isn't (caller should respond 400).
+export const sanitizeDatasetName = (name: string): string | null => {
+  if (!name || typeof name !== 'string') return null;
+  if (name.includes('/') || name.includes('\\') || name === '.' || name === '..') return null;
+  return name;
+};
+
 export interface DatasetFileCounts {
   imageCount: number;
   videoCount: number;

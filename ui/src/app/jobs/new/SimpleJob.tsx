@@ -31,6 +31,8 @@ import SampleControlImage from '@/components/SampleControlImage';
 import { FlipHorizontal2, FlipVertical2 } from 'lucide-react';
 import { handleModelArchChange } from './utils';
 import StepSuggestion from '@/components/StepSuggestion'; // fork addition, see FORK_NOTES.md
+// fork addition, see FORK_NOTES.md
+import DatasetFolderPickerModal, { openDatasetFolderPicker } from '@/components/DatasetFolderPickerModal';
 import { IoFlaskSharp } from 'react-icons/io5';
 import { isMac } from '@/helpers/basic';
 
@@ -918,6 +920,42 @@ export default function SimpleJob({
                         onChange={value => setJobConfig(value, `config.process[0].datasets[${i}].folder_path`)}
                         options={datasetOptions}
                       />
+                      {/* fork addition, see FORK_NOTES.md — the SelectInput above only lists
+                          top-level datasets and shows blank if folder_path points at a nested
+                          subfolder (its value won't match any option), so the actual current
+                          path is always shown here, plus a way to navigate into subfolders. */}
+                      {(() => {
+                        const selectedOption = (datasetOptions as SelectOption[]).find(
+                          (opt: SelectOption) =>
+                            dataset.folder_path === opt.value ||
+                            dataset.folder_path.startsWith(`${opt.value}/`) ||
+                            dataset.folder_path.startsWith(`${opt.value}\\`),
+                        );
+                        if (!selectedOption) return null;
+                        const currentSubPath = dataset.folder_path
+                          .slice(selectedOption.value.length)
+                          .replace(/^[\\/]+/, '')
+                          .replace(/\\/g, '/');
+                        return (
+                          <div className="flex items-center justify-between gap-2 mt-1">
+                            <span className="text-xs text-gray-500 truncate" title={dataset.folder_path}>
+                              {currentSubPath ? `${selectedOption.label}/${currentSubPath}` : selectedOption.label}
+                            </span>
+                            <button
+                              type="button"
+                              className="text-xs text-blue-400 hover:text-blue-300 underline shrink-0"
+                              onClick={() =>
+                                openDatasetFolderPicker(selectedOption.label, currentSubPath, subPath => {
+                                  const newPath = subPath ? `${selectedOption.value}/${subPath}` : selectedOption.value;
+                                  setJobConfig(newPath, `config.process[0].datasets[${i}].folder_path`);
+                                })
+                              }
+                            >
+                              Browse subfolders…
+                            </button>
+                          </div>
+                        );
+                      })()}
                       {modelArch?.additionalSections?.includes('datasets.control_path') && (
                         <SelectInput
                           label="Control Dataset"
@@ -1659,6 +1697,7 @@ export default function SimpleJob({
         {status === 'error' && <p className="text-red-500 text-center">Error saving training. Please try again.</p>}
       </form>
       <AddSingleImageModal />
+      <DatasetFolderPickerModal /> {/* fork addition, see FORK_NOTES.md */}
     </>
   );
 }

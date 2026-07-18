@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { getDatasetsRoot } from '@/server/settings';
-import { analyzeDatasetImages } from '@/server/datasetFiles';
+import { analyzeDatasetImages, sanitizeDatasetName } from '@/server/datasetFiles';
 
 // Fork-only route (see FORK_NOTES.md). Dimension/caption scan for a dataset — feeds the
 // dataset analyzer in the new-job form. Pure I/O: bucketing and advice are computed
@@ -16,7 +16,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'datasetName is required' }, { status: 400 });
   }
   // datasetName is a folder name under the datasets root; never allow traversal
-  const datasetFolder = path.join(datasetsPath, path.basename(datasetName));
+  const safeDatasetName = sanitizeDatasetName(datasetName);
+  if (!safeDatasetName) {
+    return NextResponse.json({ error: 'Invalid datasetName' }, { status: 400 });
+  }
+  const datasetFolder = path.join(datasetsPath, safeDatasetName);
 
   try {
     try {

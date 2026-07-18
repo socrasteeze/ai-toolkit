@@ -2,15 +2,17 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { getDatasetsRoot } from '@/server/settings';
-import { countDatasetFiles, sanitizeDatasetName } from '@/server/datasetFiles';
+import { countDatasetFiles, sanitizeDatasetName, resolveDatasetSubPath } from '@/server/datasetFiles';
 
-// Fork-only route (see FORK_NOTES.md). Lightweight file count for a dataset — used by the
-// step-count suggestion in the new-job form. Cheaper than listImages (no path list).
+// Fork-only route (see FORK_NOTES.md). Lightweight file count for a dataset (or a
+// subfolder within it, via optional subPath — see PLAN.md's dataset-folder-browser
+// entry) — used by the step-count suggestion in the new-job form. Cheaper than
+// listImages (no path list).
 
 export async function POST(request: Request) {
   const datasetsPath = await getDatasetsRoot();
   const body = await request.json();
-  const { datasetName } = body;
+  const { datasetName, subPath } = body;
   if (!datasetName || typeof datasetName !== 'string') {
     return NextResponse.json({ error: 'datasetName is required' }, { status: 400 });
   }
@@ -19,7 +21,11 @@ export async function POST(request: Request) {
   if (!safeDatasetName) {
     return NextResponse.json({ error: 'Invalid datasetName' }, { status: 400 });
   }
-  const datasetFolder = path.join(datasetsPath, safeDatasetName);
+  const datasetRoot = path.join(datasetsPath, safeDatasetName);
+  const datasetFolder = resolveDatasetSubPath(datasetRoot, subPath);
+  if (!datasetFolder) {
+    return NextResponse.json({ error: 'Invalid subPath' }, { status: 400 });
+  }
 
   try {
     try {

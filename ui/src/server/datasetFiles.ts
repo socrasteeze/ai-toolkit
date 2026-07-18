@@ -25,6 +25,26 @@ export const sanitizeDatasetName = (name: string): string | null => {
   return name;
 };
 
+// Resolves an optional "/"-joined subPath (from the folder-browser modal — see
+// browse/route.ts) onto a dataset root, for routes that need to scope an operation
+// (count, analyze, browse) to a nested folder within a dataset instead of the whole
+// thing. Segments are filtered before joining so ".." components can never survive into
+// the resolved path, then belt-and-suspenders confirmed to still resolve inside
+// datasetRoot. Returns the resolved absolute path, or null if subPath is invalid.
+export const resolveDatasetSubPath = (datasetRoot: string, subPath?: string): string | null => {
+  const segments: string[] =
+    typeof subPath === 'string' && subPath.length > 0
+      ? subPath.split('/').filter(seg => seg && seg !== '.' && seg !== '..')
+      : [];
+  const target = path.join(datasetRoot, ...segments);
+  const resolvedRoot = path.resolve(datasetRoot);
+  const resolvedTarget = path.resolve(target);
+  if (resolvedTarget !== resolvedRoot && !resolvedTarget.startsWith(resolvedRoot + path.sep)) {
+    return null;
+  }
+  return target;
+};
+
 export interface DatasetFileCounts {
   imageCount: number;
   videoCount: number;

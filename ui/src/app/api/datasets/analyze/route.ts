@@ -2,16 +2,18 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { getDatasetsRoot } from '@/server/settings';
-import { analyzeDatasetImages, sanitizeDatasetName } from '@/server/datasetFiles';
+import { analyzeDatasetImages, sanitizeDatasetName, resolveDatasetSubPath } from '@/server/datasetFiles';
 
-// Fork-only route (see FORK_NOTES.md). Dimension/caption scan for a dataset — feeds the
-// dataset analyzer in the new-job form. Pure I/O: bucketing and advice are computed
-// client-side so they react to batch/resolution changes without re-scanning.
+// Fork-only route (see FORK_NOTES.md). Dimension/caption scan for a dataset (or a
+// subfolder within it, via optional subPath — see PLAN.md's dataset-folder-browser
+// entry) — feeds the dataset analyzer in the new-job form. Pure I/O: bucketing and
+// advice are computed client-side so they react to batch/resolution changes without
+// re-scanning.
 
 export async function POST(request: Request) {
   const datasetsPath = await getDatasetsRoot();
   const body = await request.json();
-  const { datasetName } = body;
+  const { datasetName, subPath } = body;
   if (!datasetName || typeof datasetName !== 'string') {
     return NextResponse.json({ error: 'datasetName is required' }, { status: 400 });
   }
@@ -20,7 +22,11 @@ export async function POST(request: Request) {
   if (!safeDatasetName) {
     return NextResponse.json({ error: 'Invalid datasetName' }, { status: 400 });
   }
-  const datasetFolder = path.join(datasetsPath, safeDatasetName);
+  const datasetRoot = path.join(datasetsPath, safeDatasetName);
+  const datasetFolder = resolveDatasetSubPath(datasetRoot, subPath);
+  if (!datasetFolder) {
+    return NextResponse.json({ error: 'Invalid subPath' }, { status: 400 });
+  }
 
   try {
     try {

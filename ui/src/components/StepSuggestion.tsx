@@ -17,35 +17,45 @@ import {
   getArchRecipe,
 } from '@/utils/stepSuggestion';
 import { defaultDatasetConfig } from '@/app/jobs/new/jobConfig';
+import useSettings from '@/hooks/useSettings';
 
 type Props = {
   jobConfig: JobConfig;
   setJobConfig: (value: any, key: string) => void;
 };
 
-// counts are cached per dataset folder name for the lifetime of the page
+interface DatasetSelection {
+  key: string; // "datasetName" or "datasetName::subPath" — unique per selected folder
+  datasetName: string;
+  subPath: string; // "" for the dataset's own root
+  numRepeats: number;
+}
+
+// counts are cached per selection key ("datasetName" or "datasetName::subPath") for the
+// lifetime of the page
 const countCache = new Map<string, number>();
 const inFlight = new Map<string, Promise<number>>();
 
-const fetchCount = (datasetName: string): Promise<number> => {
-  if (countCache.has(datasetName)) {
-    return Promise.resolve(countCache.get(datasetName) as number);
+const fetchCount = (datasetName: string, subPath: string): Promise<number> => {
+  const key = subPath ? `${datasetName}::${subPath}` : datasetName;
+  if (countCache.has(key)) {
+    return Promise.resolve(countCache.get(key) as number);
   }
-  if (inFlight.has(datasetName)) {
-    return inFlight.get(datasetName) as Promise<number>;
+  if (inFlight.has(key)) {
+    return inFlight.get(key) as Promise<number>;
   }
   const promise = apiClient
-    .post('/api/datasets/count', { datasetName })
+    .post('/api/datasets/count', { datasetName, subPath })
     .then(res => {
       const total = res.data?.totalCount ?? 0;
-      countCache.set(datasetName, total);
+      countCache.set(key, total);
       return total;
     })
     .catch(() => -1)
     .finally(() => {
-      inFlight.delete(datasetName);
+      inFlight.delete(key);
     });
-  inFlight.set(datasetName, promise);
+  inFlight.set(key, promise);
   return promise;
 };
 
@@ -56,25 +66,39 @@ interface DatasetAnalysis {
   unreadable: number;
 }
 
-// analysis results cached per dataset folder name for the lifetime of the page
+// analysis results cached per selection key for the lifetime of the page
 const analysisCache = new Map<string, DatasetAnalysis>();
 
-const fetchAnalysis = async (datasetName: string): Promise<DatasetAnalysis | null> => {
-  if (analysisCache.has(datasetName)) return analysisCache.get(datasetName) as DatasetAnalysis;
+const fetchAnalysis = async (datasetName: string, subPath: string): Promise<DatasetAnalysis | null> => {
+  const key = subPath ? `${datasetName}::${subPath}` : datasetName;
+  if (analysisCache.has(key)) return analysisCache.get(key) as DatasetAnalysis;
   try {
-    const res = await apiClient.post('/api/datasets/analyze', { datasetName });
+    const res = await apiClient.post('/api/datasets/analyze', { datasetName, subPath });
     const analysis = res.data as DatasetAnalysis;
-    analysisCache.set(datasetName, analysis);
+    analysisCache.set(key, analysis);
     return analysis;
   } catch {
     return null;
   }
 };
 
-const folderPathToDatasetName = (folderPath: string): string | null => {
-  if (!folderPath || folderPath === defaultDatasetConfig.folder_path) return null;
-  const name = folderPath.split(/[\\/]/).filter(Boolean).pop();
-  return name || null;
+// Splits an absolute folder_path into the top-level dataset name (the first segment
+// under DATASETS_FOLDER) and the subPath below it, so counts/analysis reflect the
+// actually-selected folder — including a nested one picked via the folder-browser
+// modal — rather than always the whole top-level dataset. Previously this took just
+// the LAST path segment as "the dataset name", which broke for nested selections (it
+// queried for a dataset literally named after the subfolder, got a 404, and the whole
+// suggestion panel disappeared since itemCount fell to 0) — see PLAN.md.
+const deriveDatasetSelection = (folderPath: string, datasetsRoot: string): { datasetName: string; subPath: string } | null => {
+  if (!folderPath || !datasetsRoot || folderPath === defaultDatasetConfig.folder_path) return null;
+  const normalize = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '');
+  const root = normalize(datasetsRoot);
+  const full = normalize(folderPath);
+  if (full !== root && !full.startsWith(`${root}/`)) return null;
+  const rest = full.slice(root.length).replace(/^\/+/, '');
+  if (!rest) return null;
+  const [datasetName, ...subParts] = rest.split('/');
+  return { datasetName, subPath: subParts.join('/') };
 };
 
 // Read a value out of the job config by the same dotted/bracketed path syntax the
@@ -106,6 +130,7 @@ const bandColor: Record<string, string> = {
 };
 
 export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
+  const { settings } = useSettings();
   const process = jobConfig.config.process[0];
   const datasets = process.datasets || [];
   const arch = process.model.arch;
@@ -115,11 +140,16 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
 
   const datasetInputs = useMemo(() => {
     return datasets
-      .map(d => ({ name: folderPathToDatasetName(d.folder_path), numRepeats: d.num_repeats || 1 }))
-      .filter(d => d.name !== null) as { name: string; numRepeats: number }[];
-  }, [datasets]);
+      .map(d => {
+        const selection = deriveDatasetSelection(d.folder_path, settings.DATASETS_FOLDER);
+        if (!selection) return null;
+        const key = selection.subPath ? `${selection.datasetName}::${selection.subPath}` : selection.datasetName;
+        return { key, datasetName: selection.datasetName, subPath: selection.subPath, numRepeats: d.num_repeats || 1 };
+      })
+      .filter((d): d is DatasetSelection => d !== null);
+  }, [datasets, settings.DATASETS_FOLDER]);
 
-  const datasetsKey = datasetInputs.map(d => d.name).join('|');
+  const datasetsKey = datasetInputs.map(d => d.key).join('|');
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [analyses, setAnalyses] = useState<Record<string, DatasetAnalysis>>({});
   const [analyzing, setAnalyzing] = useState(false);
@@ -127,16 +157,17 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    const names = datasetInputs.map(d => d.name);
-    if (names.length === 0) {
+    if (datasetInputs.length === 0) {
       setCounts({});
       return;
     }
-    Promise.all(names.map(name => fetchCount(name).then(count => [name, count] as const))).then(results => {
+    Promise.all(
+      datasetInputs.map(d => fetchCount(d.datasetName, d.subPath).then(count => [d.key, count] as const)),
+    ).then(results => {
       if (cancelled) return;
       const next: Record<string, number> = {};
-      for (const [name, count] of results) {
-        next[name] = count;
+      for (const [key, count] of results) {
+        next[key] = count;
       }
       setCounts(next);
     });
@@ -148,7 +179,7 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
   const itemCount = useMemo(() => {
     let total = 0;
     for (const d of datasetInputs) {
-      const count = counts[d.name];
+      const count = counts[d.key];
       if (count === undefined || count < 0) continue;
       total += count * d.numRepeats;
     }
@@ -164,8 +195,8 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
     setShowAnalysis(true);
     const results: Record<string, DatasetAnalysis> = {};
     for (const d of datasetInputs) {
-      const analysis = await fetchAnalysis(d.name);
-      if (analysis) results[d.name] = analysis;
+      const analysis = await fetchAnalysis(d.datasetName, d.subPath);
+      if (analysis) results[d.key] = analysis;
     }
     setAnalyses(results);
     setAnalyzing(false);
@@ -179,7 +210,7 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
     let missingCaptions = 0;
     let unreadable = 0;
     for (const d of datasetInputs) {
-      const a = analyses[d.name];
+      const a = analyses[d.key];
       if (!a) continue;
       imageCount += a.imageCount * d.numRepeats;
       missingCaptions += a.missingCaptions;

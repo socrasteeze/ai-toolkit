@@ -1,4 +1,17 @@
 import processQueue from './actions/processQueue';
+
+// Safety net: this process is meant to run forever as the background queue
+// processor. Node terminates on an unhandled rejection by default, and
+// `npm run start` auto-restarts it (concurrently --restart-tries -1), so an
+// unhandled rejection here silently turns into a crash-restart loop instead
+// of a visible error — log and keep running instead.
+process.on('unhandledRejection', reason => {
+  console.error('[cron worker] Unhandled promise rejection (ignored to keep the queue processor alive):', reason);
+});
+process.on('uncaughtException', error => {
+  console.error('[cron worker] Uncaught exception (ignored to keep the queue processor alive):', error);
+});
+
 class CronWorker {
   interval: number;
   is_running: boolean;

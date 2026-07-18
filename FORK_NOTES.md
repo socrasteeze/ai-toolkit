@@ -20,7 +20,7 @@ git push origin main
 |---|---|---|
 | `ui/src/app/jobs/new/page.tsx` | +1 import, +1 JSX line mounting `<PresetManager/>` in the TopBar | Re-add the mount next to the "Import Config" button if upstream restructures the TopBar |
 | `ui/src/app/datasets/[datasetName]/page.tsx` | +1 import, +1 JSX line mounting `<DatasetTools/>` in the TopBar after `<AutoCaptionButton/>` | Re-add next to the Auto Caption button if upstream restructures the TopBar |
-| `ui/src/app/jobs/new/SimpleJob.tsx` | +1 import, +1 JSX line mounting `<StepSuggestion/>` under the Steps `NumberInput` | Re-add directly below the Steps field if upstream moves it |
+| `ui/src/app/jobs/new/SimpleJob.tsx` | +1 import, +1 JSX line mounting `<StepSuggestion/>` under the Steps `NumberInput`; +1 import and +1 JSX line mounting `<DatasetFolderPickerModal/>` next to `<AddSingleImageModal/>`; +1 small block under the "Target Dataset" `SelectInput` showing the resolved current path + a "Browse subfolders…" button (see PLAN.md's dataset-folder-browser entry, 2026-07-19) | Re-add the StepSuggestion mount below the Steps field; re-add the DatasetFolderPickerModal mount alongside AddSingleImageModal; re-add the path/browse block directly under the Target Dataset SelectInput if upstream restructures the dataset row |
 | `ui/cron/actions/startJob.ts` | Rewrote `startAndWatchJob` from an async-executor `new Promise` to a plain `async function` with the whole body in one try/catch (`markJobError` helper), and made the fire-and-forget call site (`startJob()`) attach `.catch()`. Fixes a WORKER-process crash: any exception in the unprotected setup code (DB reads, `fs.mkdirSync`/`writeFileSync`) became an unhandled promise rejection that Node treats as fatal, and `concurrently`'s infinite auto-restart turned that into a crash-restart loop that looks like a frozen console — see PLAN.md "Fix: WORKER process crash on job-launch errors (2026-07-17)" | If upstream rewrites this function, re-apply the try/catch restructuring rather than reverting to an async-executor Promise |
 | `ui/cron/worker.ts` | +2 top-level `process.on('unhandledRejection'/'uncaughtException', ...)` handlers that log and keep the process alive, added right after the import | Re-add near the top of the file if upstream restructures it; this is a safety net for the same crash-loop class of bug, not a substitute for fixing the specific cause |
 (The fork previously also modified `extensions_built_in/diffusion_models/__init__.py`,
@@ -58,6 +58,14 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
 - `ui/src/app/api/presets/[name]/route.ts`
 - `ui/src/app/api/datasets/count/route.ts`
 - `ui/src/app/api/datasets/analyze/route.ts` — dimension histogram + caption coverage
+- `ui/src/app/api/datasets/browse/route.ts` — non-recursive per-level folder listing +
+  breadcrumbs for a dataset (or a subfolder within it), used by the folder-browser modal
+  so a job can target a nested folder (e.g. `Dataset/Folder 1/Folder 1a`) instead of only
+  a top-level dataset (2026-07-19, see PLAN.md). `datasetName` is validated via
+  `sanitizeDatasetName` (datasetFiles.ts) before use, not `path.basename()` alone —
+  see the Duplication watch entry below, this matters for `count`/`analyze` too
+- `ui/src/components/DatasetFolderPickerModal.tsx` — breadcrumb folder-browser modal
+  (global-state, mirrors `AddSingleImageModal.tsx`'s open.../use() convention)
 - `ui/src/utils/presets.ts`
 - `ui/src/utils/stepSuggestion.ts` — step heuristics + exposure gauge + bucket analysis + arch recipes
   (dataset-size-tiered rank/LR/scheduler, Illustrious/Pony detected by checkpoint name since they
@@ -72,6 +80,12 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
 - `ui/src/server/datasetFiles.ts` duplicates the media-extension whitelist and `_controls`
   exclusion from `ui/src/app/api/datasets/listImages/route.ts` (route files can't export
   helpers). If upstream changes that list, mirror it.
+- `sanitizeDatasetName` (`datasetFiles.ts`) is the required validator for any route that
+  joins a client-supplied `datasetName` onto the datasets root — `path.basename()` alone
+  does NOT stop traversal (`path.basename('..')` returns `'..'` unchanged, letting
+  `path.join(datasetsRoot, '..')` escape the root entirely; confirmed via a live curl
+  test 2026-07-19, see PLAN.md). All three current consumers (`count`, `analyze`,
+  `browse` routes) use it — any new dataset route accepting `datasetName` must too.
 - `ui/src/utils/presets.ts` mirrors the "set required fields" logic from the import flow in
   `ui/src/app/jobs/new/page.tsx` (`sqlite_db_path`, `training_folder`, `device`,
   `performance_log_every`). If upstream adds a required field there, add it here too.

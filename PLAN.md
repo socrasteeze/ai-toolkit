@@ -547,3 +547,80 @@ PIDs (UI 99728 + worker 98996), both stopped, port 8675 confirmed free afterward
 QuickEdit itself isn't disabled by this (that's a per-console/registry setting); the
 offer to disable it stands, but `stop.bat` makes the frozen-terminal case recoverable
 regardless.
+
+## Dataset folder browser: nested subfolder selection (2026-07-19)
+
+**Problem (user report):** the "Target Dataset" field only lists top-level folders under
+the datasets root (`ui/src/app/api/datasets/list/route.ts` does one non-recursive
+`readdir` of the root). There was no way to target a nested folder like
+`Dataset/Folder 1/Folder 1a` — it never appeared as an option. Meanwhile the trainer
+(`toolkit/data_loader.py`, upstream, unmodified) walks whatever `folder_path` you give it
+fully recursively (`os.walk`), so selecting "Folder 1" silently trained on every image in
+every descendant subfolder too. The fix isn't to change the trainer's recursion (that's
+correct, expected behavior other configs rely on, and it's upstream-owned code) — it's to
+let the user navigate down and pick the exact folder they mean, so the existing recursive
+walk starts from the right place.
+
+**What shipped**, entirely fork-only except one small `SimpleJob.tsx` addition:
+
+- `ui/src/app/api/datasets/browse/route.ts` (new) — POST `{datasetName, subPath}`,
+  returns `{breadcrumbs, folders}` for one level (non-recursive `readdir`, mirrors
+  `list/route.ts`'s dotfile-skip + isDirectory filter, plus skips `_controls`). Each
+  navigation step is one shallow listing, so it stays fast at any depth.
+- `ui/src/components/DatasetFolderPickerModal.tsx` (new) — breadcrumb-navigable modal,
+  global-state (`createGlobalState` + `openDatasetFolderPicker(...)`), mirroring
+  `AddSingleImageModal.tsx`'s exact open/mount convention so it needs only one mount
+  point and no prop-drilling. Opens at whichever subfolder the field is currently
+  pointed at (not always back at the top), breadcrumbs let you jump back up any number
+  of levels, clicking a folder descends, "Select this folder" applies wherever you've
+  navigated to (not just leaves).
+- `SimpleJob.tsx` — one small addition under the existing "Target Dataset" `SelectInput`:
+  a text line showing the actual resolved current path, plus a "Browse subfolders…"
+  button. The existing flat dropdown is untouched (still the fast top-level picker).
+  The text line exists because of a real gotcha: `SelectInput` derives its displayed
+  value by matching `folder_path` against its flat `options` list — a nested path won't
+  match anything, so the dropdown would silently show blank even though the value is
+  set correctly. `datasetName`/`subPath` for the button are derived purely from
+  `datasetOptions` + the current `folder_path` (find the option whose value prefixes
+  `folder_path`, subtract it) — no new prop needed, no dependency on knowing
+  `DATASETS_FOLDER` directly in this file.
+
+**Security finding during live verification:** the plan's verification step (curl the
+new route with a `../` traversal payload) caught a real bug — not in the new route
+itself, but a *pre-existing* one in this pattern. `datasetName: ".."` successfully
+listed the parent of the datasets root. Root cause: `path.basename('..')` returns `'..'`
+unchanged (it only strips leading directory components, it doesn't resolve relative
+segments), so `path.join(datasetsRoot, path.basename(datasetName))` doesn't stop a bare
+`".."` or `"."` value at all. This exact pattern was already shipped in two existing
+fork routes (`count/route.ts`, `analyze/route.ts`) — copied from one to the other
+originally, so the same flaw existed in both, silently, since whichever commit added
+the first one. Multi-segment payloads like `"../../etc"` were incidentally safe (basename
+reduces them to just `"etc"`, a literal folder name that plausibly doesn't exist) — only
+the exact strings `".."` and `"."` passed through unsafely.
+
+Fixed with a shared `sanitizeDatasetName(name)` helper added to `datasetFiles.ts`
+(rejects any name containing `/`, `\`, or equal to `"."`/`".."`) and adopted by all three
+routes (`browse`, `count`, `analyze`) — a single source of truth instead of duplicating
+the check three times, so a future fourth `datasetName`-accepting route has an obvious
+function to reach for.
+
+**Verification performed:**
+- `tsc --noEmit` clean on every new/changed file, before and after the security fix.
+- Confirmed `Folder`/`Loader2`/`ChevronRight` are real `lucide-react` exports by grepping
+  its type declarations directly (an ad hoc `node -e require('lucide-react')` check
+  falsely suggested they were undefined — a CJS/ESM interop artifact of probing an
+  ESM-only package directly with `require()`, not a real problem; tsc's check against
+  the actual `.d.ts` files is the reliable signal here).
+- Live end-to-end test: launched a throwaway `next dev` on a scratch port against a real
+  dataset with real subfolders (`automatic_giraffe/{cache_text_encoder,latent_cache,
+  original_images}` under the machine's actual configured `DATASETS_FOLDER`), curled the
+  new route for the dataset root (correct 3-folder listing) and for a descended
+  subfolder (correct breadcrumbs, correct empty-folder-list leaf response).
+- Curled all three routes with `datasetName: ".."` and `"."` before the fix (root escape
+  confirmed on `browse`) and after the fix (all three correctly return 400), plus
+  confirmed the legitimate case still works post-fix.
+- Confirmed the upstream diff surface after the change contains exactly one upstream
+  file (`SimpleJob.tsx`) plus the new/changed fork-only files — nothing unexpected.
+- Reverted an unrelated `ui/package-lock.json` diff that `npx` commands touched as a
+  side effect (npm-version metadata churn, not a real dependency change) before
+  committing, to keep the change scoped to the feature.

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { getDatasetsRoot } from '@/server/settings';
-import { sanitizeDatasetName } from '@/server/datasetFiles';
+import { sanitizeDatasetName, resolveDatasetSubPath } from '@/server/datasetFiles';
 
 // Fork-only route (see FORK_NOTES.md). Lists the immediate subfolders of a dataset (or a
 // subfolder within it), for the folder-browser modal that lets a job target a nested
@@ -35,20 +35,16 @@ export async function POST(request: Request) {
   }
   const datasetRoot = path.join(datasetsRoot, safeDatasetName);
 
-  // subPath is a "/"-joined chain of folder names below the dataset root. Split, strip
-  // empty/dot segments, and rejoin with path.join so ".." components can never survive
-  // into the resolved path in the first place.
+  // subPath is a "/"-joined chain of folder names below the dataset root; segments are
+  // filtered the same way resolveDatasetSubPath filters them, so both agree on what's
+  // safe. Kept separately here (rather than derived from the resolved path) to build
+  // breadcrumbs/child paths without re-splitting an OS path back into "/"-joined form.
   const segments: string[] =
     typeof subPath === 'string' && subPath.length > 0
       ? subPath.split('/').filter(seg => seg && seg !== '.' && seg !== '..')
       : [];
-  const targetDir = path.join(datasetRoot, ...segments);
-
-  // Belt-and-suspenders traversal guard: confirm the resolved path is still inside the
-  // dataset root even after the segment filtering above.
-  const resolvedRoot = path.resolve(datasetRoot);
-  const resolvedTarget = path.resolve(targetDir);
-  if (resolvedTarget !== resolvedRoot && !resolvedTarget.startsWith(resolvedRoot + path.sep)) {
+  const targetDir = resolveDatasetSubPath(datasetRoot, subPath);
+  if (!targetDir) {
     return NextResponse.json({ error: 'Invalid path' }, { status: 400 });
   }
 

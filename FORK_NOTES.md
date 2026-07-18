@@ -56,8 +56,12 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
 - `ui/src/server/imageSize.ts` — header-only image dimension reader (png/jpg/webp)
 - `ui/src/app/api/presets/route.ts`
 - `ui/src/app/api/presets/[name]/route.ts`
-- `ui/src/app/api/datasets/count/route.ts`
-- `ui/src/app/api/datasets/analyze/route.ts` — dimension histogram + caption coverage
+- `ui/src/app/api/datasets/count/route.ts` — accepts an optional `subPath` (resolved via
+  `resolveDatasetSubPath`, datasetFiles.ts) to scope the count to a subfolder instead of
+  the whole top-level dataset, so it matches what a nested folder-browser selection will
+  actually train on (2026-07-19, see PLAN.md)
+- `ui/src/app/api/datasets/analyze/route.ts` — dimension histogram + caption coverage;
+  same optional `subPath` scoping as `count/route.ts`
 - `ui/src/app/api/datasets/browse/route.ts` — non-recursive per-level folder listing +
   breadcrumbs for a dataset (or a subfolder within it), used by the folder-browser modal
   so a job can target a nested folder (e.g. `Dataset/Folder 1/Folder 1a`) instead of only
@@ -73,7 +77,10 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
   for source confidence per number; several values are flagged low-confidence/contested in the notes)
 - `ui/src/utils/buckets.ts` — TS port of `toolkit/buckets.py::get_bucket_for_image_size`
 - `ui/src/components/PresetManager.tsx`
-- `ui/src/components/StepSuggestion.tsx` — step suggestion + dataset analyzer panel
+- `ui/src/components/StepSuggestion.tsx` — step suggestion + dataset analyzer panel.
+  Derives the dataset name/subPath to query via `deriveDatasetSelection`, which needs
+  `DATASETS_FOLDER` (fetched with `useSettings()`) to split `folder_path` correctly for
+  nested selections — see the Duplication watch entry on `resolveDatasetSubPath` below
 
 ## Duplication watch (re-check after each upstream merge)
 
@@ -86,6 +93,16 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
   `path.join(datasetsRoot, '..')` escape the root entirely; confirmed via a live curl
   test 2026-07-19, see PLAN.md). All three current consumers (`count`, `analyze`,
   `browse` routes) use it — any new dataset route accepting `datasetName` must too.
+- `resolveDatasetSubPath` (`datasetFiles.ts`) is the required resolver for any route that
+  scopes an operation to a nested folder within a dataset via an optional `subPath` —
+  `count`, `analyze`, and `browse` all use it; any new such route must too, rather than
+  reimplementing the segment-filter + traversal-guard logic inline again.
+- `deriveDatasetSelection` (`StepSuggestion.tsx`) must split `folder_path` the same way
+  `resolveDatasetSubPath`/the browse-modal's path construction agree on (first segment
+  after `DATASETS_FOLDER` = dataset name, everything after = subPath). If the datasets
+  root or the folder-browser's path-joining convention ever changes, update this too —
+  a top-level-only assumption here previously made the whole step-suggestion panel
+  disappear for nested selections (2026-07-19, see PLAN.md).
 - `ui/src/utils/presets.ts` mirrors the "set required fields" logic from the import flow in
   `ui/src/app/jobs/new/page.tsx` (`sqlite_db_path`, `training_folder`, `device`,
   `performance_log_every`). If upstream adds a required field there, add it here too.

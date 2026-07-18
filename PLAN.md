@@ -624,3 +624,69 @@ function to reach for.
 - Reverted an unrelated `ui/package-lock.json` diff that `npx` commands touched as a
   side effect (npm-version metadata churn, not a real dependency change) before
   committing, to keep the change scoped to the feature.
+
+## Fix: step suggestion disappeared for nested subfolder selections (2026-07-19)
+
+**Regression from the folder browser feature above.** Selecting a nested folder via the
+new "Browse subfolders…" modal made the step-suggestion panel vanish entirely, instead
+of just failing to show a number.
+
+**Root cause:** `StepSuggestion.tsx`'s `folderPathToDatasetName` derived the dataset name
+to query by taking the *last* path segment of `folder_path` — correct for a top-level
+selection (`.../automatic_giraffe` → `automatic_giraffe`, matching the actual top-level
+dataset name), but wrong for a nested one (`.../automatic_giraffe/original_images` →
+`original_images`, which isn't a real top-level dataset). The count API 404'd, `fetchCount`
+caught it and returned -1, `itemCount` fell to 0, and `suggestSteps` returns `null` on
+zero items — which the component treats as "render nothing at all."
+
+A second issue would have surfaced immediately after fixing the first: `/api/datasets/count`
+and `/api/datasets/analyze` always counted the *entire* top-level dataset recursively,
+with no way to scope to a subfolder — so even with the right dataset name, a nested
+selection would report an inflated count (the whole dataset's files, not just the
+selected subfolder's), rather than what the trainer will actually walk.
+
+**Fix, both parts:**
+1. `count/route.ts` and `analyze/route.ts` now accept an optional `subPath` (same shape
+   as the `browse` route), resolved via a new shared `resolveDatasetSubPath(datasetRoot,
+   subPath)` helper in `datasetFiles.ts` — the same segment-filtering + traversal-guard
+   logic `browse/route.ts` already had, now deduplicated into one place all three routes
+   use (`browse/route.ts` was refactored to call it too, replacing its inline copy).
+2. `StepSuggestion.tsx`'s `folderPathToDatasetName` was replaced with
+   `deriveDatasetSelection(folderPath, datasetsRoot)`, which needs to know the actual
+   datasets root to split `folder_path` correctly (first segment after the root =
+   datasetName, everything after = subPath) — added a `useSettings()` call to get
+   `DATASETS_FOLDER` (the same hook `page.tsx` already uses to build `datasetOptions`).
+   Every downstream reference (`datasetInputs`, `counts`, `analyses`, `merged`, the
+   fetch functions and their caches) was switched from keying on the bare dataset name
+   to a combined `datasetName` or `datasetName::subPath` key, so two dataset rows
+   pointing at different subfolders of the same top-level dataset get independent counts
+   instead of colliding.
+
+**Verification:**
+- `tsc --noEmit` clean.
+- Live-tested `count`/`analyze` against the machine's real (and, since the last session,
+  *changed* — `DATASETS_FOLDER` moved from `D:\datasets\_style` to `D:\datasets`)
+  configured datasets root, three levels deep: root count 2176, one level down
+  (`automatic_giraffe`) 339, two levels down (`automatic_giraffe/original_images`) 171 —
+  confirming `subPath` genuinely scopes the count rather than always returning the full
+  recursive figure. Re-confirmed the traversal guard still rejects `../` payloads on the
+  now-subPath-aware `count` route too.
+- Verified `deriveDatasetSelection`'s client-side logic in isolation against the exact
+  `folder_path` values the app would actually produce: a plain top-level selection, a
+  nested one built the way `SimpleJob.tsx`'s browse-modal callback constructs it
+  (`/`-joined), a doubly-nested one, a Windows-backslash path (e.g. from an imported
+  config), an empty/default path, and a path outside the datasets root — all matched the
+  live API results exactly, and the unrelated-root/default cases correctly return `null`
+  (no query fired) rather than a false match.
+- Testing this required a `next dev` instance again, which — as documented in the
+  stop.bat/EADDRINUSE incident — writes to the same `.next` folder as `next start` and
+  breaks the production build. This time: confirmed the user had *already restarted*
+  their own production server (a different PID, started before this fix's dev-server
+  test) on port 8675 before I touched `.next`; did `rm -rf .next` + a full `next build`
+  + `BUILD_ID` + smoke-test verification afterward same as before; then confirmed the
+  user's already-running server survived the `.next` swap without needing a restart
+  (Next.js re-reads compiled routes from disk per-request rather than holding the whole
+  build in memory) — both `/` and `/jobs/new` returned 200 against their live process
+  after the rebuild. Flagged to the user that an already-open browser tab from before the
+  rebuild may need a hard refresh to pick up new JS chunk hashes, but the server itself
+  needed no restart.

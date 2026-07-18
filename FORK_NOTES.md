@@ -49,6 +49,7 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
 - `presets/anima_lora_performance.json`, `presets/anima_lora_background.json`
 - `ui/src/utils/stepSuggestion.ts` also carries the Anima recipe in `ARCH_RECIPES` (fork file, listed above)
 - `start.bat` — double-click launcher for the UI (`start.bat rebuild` after pulling upstream)
+- `stop.bat` — killswitch companion to `start.bat`: stops the UI (port 8675) + cron worker even when the launching terminal is gone/frozen, matched by command-line signature so it never touches unrelated node/python. Leaves detached training alone by default; `stop.bat all` also stops a running `run.py` training
 - `presets/` — preset config files (drop-in JSON/YAML)
 - `ui/src/server/presetsPath.ts`
 - `ui/src/server/datasetFiles.ts`

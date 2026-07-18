@@ -7,10 +7,26 @@ import { TOOLKIT_ROOT, getTrainingFolder, getHFToken } from '../paths';
 import { resolvePythonPath } from '../pythonPath';
 const isWindows = process.platform === 'win32';
 
-const startAndWatchJob = (job: Job) => {
-  // starts and watches the job asynchronously
-  return new Promise<void>(async (resolve, reject) => {
-    const jobID = job.id;
+const markJobError = async (jobID: string, message: string) => {
+  // Best-effort: this runs from a catch block, so a failure here must not throw
+  // a second time (that would still be an unhandled rejection at the call site).
+  try {
+    await prisma.job.update({
+      where: { id: jobID },
+      data: { status: 'error', info: message },
+    });
+  } catch (e) {
+    console.error(`Error marking job ${jobID} as errored:`, e);
+  }
+};
+
+const startAndWatchJob = async (job: Job): Promise<void> => {
+  // starts and watches the job asynchronously. The caller does not await this
+  // (the cron tick shouldn't block on a job's launch I/O), so every exit path
+  // here must be handled internally — anything that escapes becomes an
+  // unhandled promise rejection that crashes the whole WORKER process.
+  const jobID = job.id;
+  try {
 
     // setup the training
     const trainingRoot = await getTrainingFolder();
@@ -58,13 +74,7 @@ const startAndWatchJob = (job: Job) => {
     const runFilePath = path.join(TOOLKIT_ROOT, 'run.py');
     if (!fs.existsSync(runFilePath)) {
       console.error(`run.py not found at path: ${runFilePath}`);
-      await prisma.job.update({
-        where: { id: jobID },
-        data: {
-          status: 'error',
-          info: `Error launching job: run.py not found`,
-        },
-      });
+      await markJobError(jobID, 'Error launching job: run.py not found');
       return;
     }
 
@@ -136,19 +146,16 @@ const startAndWatchJob = (job: Job) => {
     } catch (error: any) {
       // Handle any exceptions during process launch
       console.error('Error launching process:', error);
-
-      await prisma.job.update({
-        where: { id: jobID },
-        data: {
-          status: 'error',
-          info: `Error launching job: ${error?.message || 'Unknown error'}`,
-        },
-      });
+      await markJobError(jobID, `Error launching job: ${error?.message || 'Unknown error'}`);
       return;
     }
-    // Resolve the promise immediately after starting the process
-    resolve();
-  });
+  } catch (error: any) {
+    // Anything unprotected above (folder creation, config write, path
+    // resolution, DB reads for training folder/HF token, ...) lands here
+    // instead of becoming an unhandled promise rejection.
+    console.error(`Error preparing job ${jobID} for launch:`, error);
+    await markJobError(jobID, `Error launching job: ${error?.message || 'Unknown error'}`);
+  }
 };
 
 export default async function startJob(jobID: string) {
@@ -169,6 +176,11 @@ export default async function startJob(jobID: string) {
       info: 'Starting job...',
     },
   });
-  // start and watch the job asynchronously so the cron can continue
-  startAndWatchJob(job);
+  // start and watch the job asynchronously so the cron can continue. Not
+  // awaited by design, but always caught: startAndWatchJob() already handles
+  // its own errors internally, so this .catch() is a last-resort guard
+  // against any defect in that handling becoming an unhandled rejection.
+  startAndWatchJob(job).catch(error => {
+    console.error(`Unexpected error starting job ${jobID}:`, error);
+  });
 }

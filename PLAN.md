@@ -401,3 +401,85 @@ The fork's Anima *enhancements* were ported onto upstream's implementation:
 - Upstream's Anima requires the diffusers commit pinned in `requirements_base.txt`
   (c9438378...) — re-run `pip install -r requirements.txt` in the training venv
   before the first post-sunset Anima run.
+
+## Fix: WORKER process crash on job-launch errors (2026-07-17)
+
+**Symptom (user report):** after a training job completed, the cmd window running
+`start.bat` (i.e. `npm run start`, which runs `concurrently ... "node dist/cron/worker.js"
+"next start --port 8675"`) printed something about a process being closed/no longer
+running, then the window stopped responding entirely.
+
+**Investigation:** the terminal-emulator/logging rework merged from upstream earlier the
+same session (`toolkit/print.py`, `ui/src/utils/terminalEmulator.ts`, `useJobLog.tsx`,
+`log/route.ts`) was the first suspect given the timing, but all of that code runs either
+in the Python process's own stdout/log file or in the browser (client component) — none
+of it runs in the Node processes `concurrently` supervises, so a bug there can't crash
+"the server." Traced the actual crash surface instead:
+
+- `ui/cron/actions/startJob.ts`'s `startAndWatchJob(job)` is called **fire-and-forget**
+  from `startJob()` — intentionally not awaited, so the 1-second `processQueue()` cron
+  tick isn't blocked by a job's file I/O/DB writes while spawning it. But the function
+  body wraps its work in `new Promise<void>(async (resolve, reject) => {...})` — the
+  "async executor" antipattern. Only the block around `spawn()` actually calls
+  `reject`/marks the job `status: 'error'`; several earlier `await`s
+  (`getTrainingFolder()`, `getHFToken()` — both Prisma reads) and synchronous calls
+  (`fs.mkdirSync`, `fs.writeFileSync`) are **unprotected**. If any of them throws, the
+  async executor's own promise rejects with nothing listening to it — `resolve`/`reject`
+  are never called, so the *outer* Promise `startAndWatchJob()` returns just hangs
+  forever, AND the throw becomes a genuine Node **unhandled promise rejection** that
+  bypasses every try/catch elsewhere in the codebase (including `worker.ts`'s
+  `run()`, which only wraps the *awaited* part of `processQueue()` — this fire-and-forget
+  branch has already returned by the time the rejection happens).
+- Node 15+ terminates the process by default on an unhandled rejection. `concurrently`'s
+  `start` script runs with `--restart-tries -1 --restart-after 1000`, so a WORKER crash
+  respawns it after 1s — logged as `"node dist/cron/worker.js" exited with code 1`
+  (the "process is closed/no longer running" text). One isolated crash+restart is
+  mostly self-healing (a stray `SQLITE_BUSY` from the Prisma read racing one of Python's
+  frequent raw-`sqlite3` `BEGIN IMMEDIATE` status/step writes in
+  `extensions_built_in/sd_trainer/UITrainer.py` — every training step writes to the same
+  `aitk_db.db` file `getTrainingFolder()`/`getHFToken()` read from). But with a
+  **multi-job queue**, each subsequent queued job re-triggers the same unprotected path
+  when its turn comes up; if the trigger condition persists (e.g. the disk filled up
+  from the training run that just finished, so `fs.mkdirSync`/`fs.writeFileSync` for the
+  *next* job keeps throwing `ENOSPC`), WORKER crashes and restarts every ~1s for as long
+  as queued jobs remain — indistinguishable from a frozen console (rapid repeating
+  output, and Ctrl+C has to interrupt a process that keeps respawning). This matches
+  "right after training completed" (the queue advances to the next job, or the disk is
+  now full from the job that just finished) and "the cmd froze" (the crash-restart
+  cycle). Confirmed this is a live bug class upstream is actively chasing too — commit
+  `741aeb9` ("Clear stale return-to-queue flag when starting jobs, fixes crash loop
+  (#920)", 2026-07-15, already in this repo) fixed a *different* variant of the same
+  "job launch throws → WORKER crash-loops" family in the same file.
+
+**Fix:**
+1. `ui/cron/actions/startJob.ts` — replace the async-executor `new Promise` with a plain
+   `async function startAndWatchJob`, with the entire body wrapped in one try/catch that
+   marks the job `status: 'error'` (best-effort, itself guarded so a failing DB write
+   can't throw a second time) and returns normally either way. `startJob()` now calls
+   `startAndWatchJob(job).catch(...)` explicitly so even a defect in the new catch block
+   can never become an unhandled rejection again.
+2. `ui/cron/worker.ts` — added `process.on('unhandledRejection', ...)` and
+   `process.on('uncaughtException', ...)` top-level handlers that log and keep the
+   process alive. This is deliberately a safety net, not a substitute for fix #1: it
+   protects against the *next* bug in this class (upstream has shipped at least two
+   variants already) without requiring another multi-hour investigation next time the
+   symptom recurs.
+3. Left `concurrently`'s `--restart-tries -1 --restart-after 1000` as-is — infinite
+   auto-restart is the correct behavior for a background queue processor; the bug was
+   that it was needed at all for routine, expected failure modes (a full disk, a busy
+   SQLite file) rather than being reserved for genuinely unexpected crashes.
+
+**Not changed:** the SQLite contention between Python's raw `sqlite3` writes and
+Prisma's reads of the same `aitk_db.db` file is a real but low-frequency hazard (both
+sides already use reasonable timeouts/autocommit); revisit only if `SQLITE_BUSY` shows
+up repeatedly in the WORKER log now that it's visible instead of crashing silently.
+
+**Verified (2026-07-17):** `tsc --noEmit` clean, `tsc -p tsconfig.worker.json` clean.
+Ran the compiled `dist/cron/worker.js` standalone and injected a genuine unhandled
+promise rejection (`Promise.reject(new Error(...))`, the same failure class the old
+code would have produced) — confirmed the process logs it via the new handler and
+keeps running past it, where the pre-fix code would have terminated immediately. Also
+confirmed 12s of normal 1-second cron ticks with no errors (no regression to the
+success path). Full multi-minute GPU training run not exercised as part of this fix —
+the change is confined to error-handling around job launch, not the training path
+itself.

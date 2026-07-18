@@ -28,6 +28,15 @@ const ARCH_HEURISTICS: Record<string, StepHeuristic> = {
   qwen_image: { stepsPerItem: 60, minSteps: 1000, maxSteps: 3000 },
   hidream: { stepsPerItem: 60, minSteps: 1000, maxSteps: 3000 },
   wan: { stepsPerItem: 100, minSteps: 1000, maxSteps: 4000 },
+  // Krea 2: community-derived, not a published author recipe. Modern flow-matching
+  // backbone (flux-like), reported to hold identity faster than earlier models, so a
+  // slightly lower exposure target than flux. Anchored on the small-dataset consensus
+  // (~20-40 img: 600 steps = minimum viable likeness, ~2000 = the commonly-preferred
+  // "safe" number). CAVEAT: like every fixed steps/item target here, this OVER-warns on
+  // large datasets — published 100-500 img Krea2 recipes converge at only ~15-20 passes
+  // per image, so a 250+ image set reading "cool" at 3000+ steps is usually already fine.
+  // Trust the sample grids over the gauge once the dataset is large. See PLAN.md Phase 5.
+  krea2: { stepsPerItem: 65, minSteps: 600, maxSteps: 4000 },
 };
 
 export const getHeuristic = (arch: string | undefined | null): StepHeuristic => {

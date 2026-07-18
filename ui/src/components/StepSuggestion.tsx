@@ -77,6 +77,27 @@ const folderPathToDatasetName = (folderPath: string): string | null => {
   return name || null;
 };
 
+// Read a value out of the job config by the same dotted/bracketed path syntax the
+// recipe buttons write with (mirrors setNestedValue in utils/hooks). Kept local to
+// this fork-only component so upstream's hooks.tsx stays untouched.
+const getAtPath = (obj: any, path: string): any => {
+  const re = /([^[.\]]+)|\[(\d+)\]/g;
+  let m: RegExpExecArray | null;
+  let current: any = obj;
+  while ((m = re.exec(path)) !== null) {
+    if (current == null) return undefined;
+    current = current[m[1] !== undefined ? m[1] : Number(m[2])];
+  }
+  return current;
+};
+
+// Loose equality so 0.0001 (number) matches whatever the form holds, and a value the
+// user hasn't set yet (undefined) never reads as "already applied".
+const valuesEqual = (a: any, b: any): boolean => {
+  if (a === undefined || a === null) return false;
+  return String(a) === String(b);
+};
+
 const bandColor: Record<string, string> = {
   cool: 'text-sky-400',
   healthy: 'text-green-400',
@@ -203,7 +224,7 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
       <div title={suggestion.explanation}>
         {itemCount} training files → suggested ~{suggestion.suggested} steps ({suggestion.low}–{suggestion.high}) · ≈
         {suggestion.epochsEquivalent} passes over the data
-        {currentSteps !== suggestion.suggested && (
+        {currentSteps !== suggestion.suggested ? (
           <button
             type="button"
             className="ml-2 text-blue-400 hover:text-blue-300 underline"
@@ -211,6 +232,8 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
           >
             Apply
           </button>
+        ) : (
+          <span className="ml-2 text-green-400">✓ set</span>
         )}
         <button
           type="button"
@@ -271,25 +294,55 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
               <div className="text-gray-300">Suggested settings for {arch}:</div>
               <div className="text-gray-500">{recipe.notes}</div>
               <div className="pt-1">
-                {recipe.settings.map(s => (
-                  <button
-                    key={s.path}
-                    type="button"
-                    className="mr-2 mb-1 px-2 py-0.5 rounded border border-gray-600 text-blue-400 hover:text-blue-300 hover:border-gray-500"
-                    onClick={() => setJobConfig(s.value, s.path)}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  className="mr-2 mb-1 px-2 py-0.5 rounded border border-gray-600 text-blue-400 hover:text-blue-300 hover:border-gray-500"
-                  onClick={() => {
-                    for (const s of recipe.settings) setJobConfig(s.value, s.path);
-                  }}
-                >
-                  Apply all
-                </button>
+                {recipe.settings.map(s => {
+                  const current = getAtPath(jobConfig, s.path);
+                  const isSet = valuesEqual(current, s.value);
+                  return (
+                    <button
+                      key={s.path}
+                      type="button"
+                      title={
+                        isSet
+                          ? `Already set to ${s.value}`
+                          : current === undefined || current === null
+                            ? `Set to ${s.value}`
+                            : `Change from ${current} to ${s.value}`
+                      }
+                      className={
+                        'mr-2 mb-1 px-2 py-0.5 rounded border ' +
+                        (isSet
+                          ? 'border-green-700 text-green-400 cursor-default'
+                          : 'border-gray-600 text-blue-400 hover:text-blue-300 hover:border-gray-500')
+                      }
+                      onClick={() => setJobConfig(s.value, s.path)}
+                    >
+                      {isSet ? `✓ ${s.label}` : s.label}
+                      {!isSet && current !== undefined && current !== null && (
+                        <span className="text-gray-500"> (now {String(current)})</span>
+                      )}
+                    </button>
+                  );
+                })}
+                {(() => {
+                  const allSet = recipe.settings.every(s => valuesEqual(getAtPath(jobConfig, s.path), s.value));
+                  return (
+                    <button
+                      type="button"
+                      title={allSet ? 'All suggested settings are already applied' : 'Apply every suggested setting'}
+                      className={
+                        'mr-2 mb-1 px-2 py-0.5 rounded border ' +
+                        (allSet
+                          ? 'border-green-700 text-green-400 cursor-default'
+                          : 'border-gray-600 text-blue-400 hover:text-blue-300 hover:border-gray-500')
+                      }
+                      onClick={() => {
+                        for (const s of recipe.settings) setJobConfig(s.value, s.path);
+                      }}
+                    >
+                      {allSet ? '✓ All applied' : 'Apply all'}
+                    </button>
+                  );
+                })()}
               </div>
             </div>
           )}

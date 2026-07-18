@@ -483,3 +483,42 @@ confirmed 12s of normal 1-second cron ticks with no errors (no regression to the
 success path). Full multi-minute GPU training run not exercised as part of this fix —
 the change is confined to error-handling around job launch, not the training path
 itself.
+
+## Phase 5: advisor KREA2 calibration + recipe-button feedback (2026-07-17)
+
+Two related advisor tweaks after a user's live KREA2 training session.
+
+**KREA2 step heuristic.** `ARCH_HEURISTICS` had no `krea2` entry, so the exposure gauge
+fell back to the generic 75-steps/item default and flagged a 266-image run at 3000 steps
+× batch 4 (45 exposures/image) as "cool — likely undertrained." Research (see the four
+sources logged in the session: musubi-tuner 12GB guide, RunComfy Krea2-Turbo, the
+JahJedi/krea2-character-lora-recipe HF doc, Krea's own blog) shows the community splits
+by dataset size: small sets (~20-40 img) use 600 steps as a viable floor and ~2000 as
+the preferred "safe" number (~60-100 exposures), while large published recipes (127-474
+img) converge at only ~15-20 exposures. Added `krea2: { stepsPerItem: 65, minSteps: 600,
+maxSteps: 4000 }`, calibrated to the small-dataset consensus (600 = cool/floor, 2000 =
+healthy). **Documented limitation** (in the code comment): like every fixed steps/item
+target here, it over-warns on large datasets — a 250+ image set reading "cool" at 3000+
+steps is usually already fine; trust the sample grids over the gauge. A proper fix would
+make the exposure target dataset-size-aware (required exposures scale inversely with
+dataset size), which is a larger change to shared gauge logic deferred for now. The
+number is community-derived guesswork, flagged as such in the notes per the honesty rule.
+
+**Recipe-button feedback.** User reported the suggestion/recipe buttons "didn't seem to
+apply — no visible change." Root cause: they *were* applying, but the user's config
+already matched most recipe values (rank 32 / alpha 32 / LR 1e-4 all equal to the krea2
+recipe), so the writes were no-ops with no visual signal — and two recipe buttons
+(`alpha` → `network.linear_alpha`, which shares the single "Linear Rank" field, and
+`scheduler` → `train.lr_scheduler`, which has no UI field anywhere) write to config keys
+the form doesn't display, so they *never* show a visible change regardless. Fix (all in
+the fork-only `ui/src/components/StepSuggestion.tsx` — no upstream touchpoint): each
+recipe button now reads the current config value at its path (local `getAtPath` helper,
+mirroring `setNestedValue` rather than exporting a new symbol from upstream's
+`hooks.tsx`) and renders state-aware — a green `✓ label` when already set, or `label
+(now <current>)` in blue when it would change. Clicking a differing button flips it to ✓
+immediately, giving feedback even for the invisible-field buttons. "Apply all" shows
+`✓ All applied` when everything matches, and the step "Apply" shows `✓ set` instead of
+vanishing when steps already equal the suggestion. Verified: tsc clean on both changed
+files, no new upstream file touched (`git diff upstream/main` surface unchanged), and a
+logic test against the user's exact config confirmed 3 buttons read ✓ and only `batch`
+shows as an available change.

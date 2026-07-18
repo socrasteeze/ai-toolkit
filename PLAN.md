@@ -522,3 +522,28 @@ vanishing when steps already equal the suggestion. Verified: tsc clean on both c
 files, no new upstream file touched (`git diff upstream/main` surface unchanged), and a
 logic test against the user's exact config confirmed 3 buttons read ✓ and only `batch`
 shows as an available change.
+
+## stop.bat killswitch (2026-07-18)
+
+Companion to `start.bat`. After a run finished overnight, the user focused the terminal
+and it "froze" — this is Windows **QuickEdit Mode**: clicking into a console window enters
+text-selection mode and pauses the program's stdout until a keypress/right-click. It is
+not a crash (the server keeps running), but the user closed the window, which orphaned the
+two `concurrently`-supervised node processes (Next.js UI on 8675 + `dist/cron/worker.js`
+worker) — they kept running headless and holding port 8675, which would make the next
+`start.bat` fail with the same `EADDRINUSE` restart-loop seen on 2026-07-17.
+
+`stop.bat` (fork-only, root, double-click or `stop.bat` from a shell) finds and kills those
+two by **command-line signature** — the UI by `--port 8675`, the worker by
+`cron[\/]worker.js`, plus any `concurrently` supervisor referencing the port, plus whatever
+currently listens on 8675 — via an inline PowerShell one-liner (`Get-CimInstance
+Win32_Process` + `Stop-Process -Force`). Signature-matching is deliberate so it never kills
+unrelated node apps. Tree-kill isn't needed: once orphaned these are leaf processes.
+Detached training (`run.py`, a separate process that intentionally survives the server) is
+left alone by default; `stop.bat all` additionally stops a running `run.py` (with a
+progress-loss warning). Verified live: ran the kill logic against the actual orphaned
+PIDs (UI 99728 + worker 98996), both stopped, port 8675 confirmed free afterward.
+
+QuickEdit itself isn't disabled by this (that's a per-console/registry setting); the
+offer to disable it stands, but `stop.bat` makes the frozen-terminal case recoverable
+regardless.

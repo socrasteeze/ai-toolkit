@@ -26,7 +26,6 @@
             "caption_ext": "txt",
             "caption_dropout_rate": 0.05,
             "resolution": [
-              512,
               768,
               1024
             ],
@@ -46,19 +45,16 @@
           "timestep_type": "sigmoid",
           "content_or_style": "balanced",
           "lr": 0.0001,
-          "dtype": "bf16",
-          "ema_config": {
-            "use_ema": true,
-            "ema_decay": 0.99
-          }
+          "dtype": "bf16"
         },
         "model": {
-          "name_or_path": "black-forest-labs/FLUX.1-dev",
-          "arch": "flux",
+          "name_or_path": "black-forest-labs/FLUX.2-klein-base-4B",
+          "arch": "flux2_klein_4b",
           "quantize": true,
           "qtype": "qfloat8",
           "quantize_te": true,
-          "qtype_te": "qfloat8"
+          "qtype_te": "qfloat8",
+          "low_vram": true
         },
         "sample": {
           "sampler": "flowmatch",
@@ -73,7 +69,7 @@
   },
   "meta": {
     "name": "[name]",
-    "version": "1.1",
-    "description": "FLUX.1-dev LoRA sized for ~24GB VRAM (fp8 quantized model + text encoder), mirroring config/examples/train_lora_flux_24gb.yaml. v1.1: restored ema_config 0.99 from the canonical yaml this preset mirrors (Ostris: 'recommended to leave on')."
+    "version": "1.0",
+    "description": "Character LoRA on FLUX.2 Klein 4B (gated on HF — accept the licence). UNVERIFIED: ported from LDS's built-in, itself extrapolated from generic subject guidance (rank 16/16 family default, sigmoid timesteps NOT Klein-verified). For the 9B: arch flux2_klein_9b + black-forest-labs/FLUX.2-klein-base-9B (needs ~32-48 GB VRAM). Steps: LDS computes ~120/image clamped [1500,3500]."
   }
 }

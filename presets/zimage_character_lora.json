@@ -10,8 +10,8 @@
         "trigger_word": null,
         "network": {
           "type": "lora",
-          "linear": 16,
-          "linear_alpha": 16
+          "linear": 32,
+          "linear_alpha": 32
         },
         "save": {
           "dtype": "bf16",
@@ -26,7 +26,6 @@
             "caption_ext": "txt",
             "caption_dropout_rate": 0.05,
             "resolution": [
-              512,
               768,
               1024
             ],
@@ -46,34 +45,31 @@
           "timestep_type": "sigmoid",
           "content_or_style": "balanced",
           "lr": 0.0001,
-          "dtype": "bf16",
-          "ema_config": {
-            "use_ema": true,
-            "ema_decay": 0.99
-          }
+          "dtype": "bf16"
         },
         "model": {
-          "name_or_path": "black-forest-labs/FLUX.1-dev",
-          "arch": "flux",
+          "name_or_path": "Tongyi-MAI/Z-Image-Turbo",
+          "arch": "zimage",
           "quantize": true,
           "qtype": "qfloat8",
           "quantize_te": true,
-          "qtype_te": "qfloat8"
+          "qtype_te": "qfloat8",
+          "low_vram": true
         },
         "sample": {
           "sampler": "flowmatch",
           "sample_every": 250,
           "width": 1024,
           "height": 1024,
-          "guidance_scale": 4,
-          "sample_steps": 25
+          "guidance_scale": 1,
+          "sample_steps": 8
         }
       }
     ]
   },
   "meta": {
     "name": "[name]",
-    "version": "1.1",
-    "description": "FLUX.1-dev LoRA sized for ~24GB VRAM (fp8 quantized model + text encoder), mirroring config/examples/train_lora_flux_24gb.yaml. v1.1: restored ema_config 0.99 from the canonical yaml this preset mirrors (Ostris: 'recommended to leave on')."
+    "version": "1.0",
+    "description": "Character LoRA on Z-Image Turbo (Tongyi-MAI/Z-Image-Turbo). Ported from LoRA Dataset Studio's researched built-in (rank 32/alpha 32 = community default, lower-regret for hard faces; sigmoid timesteps per Ostris' subject guidance). Prose captions with a unique trigger word. Steps: LDS computes ~120/image clamped [1500,3500] — 2500 here is the midpoint; scale to your set. Sample settings assume the distilled Turbo (CFG 1, 8 steps)."
   }
 }

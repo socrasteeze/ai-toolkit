@@ -619,8 +619,6 @@ export default function SimpleJob({
                   min={1}
                   required
                 />
-                {/* fork addition, see FORK_NOTES.md */}
-                <StepSuggestion jobConfig={jobConfig} setJobConfig={setJobConfig} />
               </div>
               <div>
                 <SelectInput
@@ -837,6 +835,9 @@ export default function SimpleJob({
                 )}
               </div>
             </div>
+            {/* fork addition, see FORK_NOTES.md — full-width row below the column grid so
+                the suggestion + dataset analysis use the whole card, not just column 1 */}
+            <StepSuggestion jobConfig={jobConfig} setJobConfig={setJobConfig} />
           </Card>
         </div>
         <div>

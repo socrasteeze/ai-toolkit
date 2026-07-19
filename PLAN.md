@@ -255,6 +255,19 @@ what actually changed in code.
   generated job config (verify in the actual `.job_config.json`, since the UI's `TrainConfig`
   type doesn't declare this field — `setJobConfig` sets it as a plain dot-path regardless).
 
+## Phase 3 addendum (2026-07-19): cross-check against LoRA Dataset Studio
+
+The sibling LDS fork ships fifteen researched built-in presets; a full cross-check
+(`docs/preset_alignment_2026_07.md`, canonical copy in the LDS repo) found the two
+codebases aligned on FLUX.1 (both from Ostris' canonical yaml — flux_lora_24gb.json
+v1.1 restores its EMA 0.99) and Krea 2 (32/32 + linear), diverging on SDXL character
+alpha (LDS 32/16 half-alpha vs our 32/32 + conv — two sourced schools, left as-is),
+and complementary elsewhere. Synced ADDITIVELY from LDS: seven presets for the
+families/kinds we lacked (Z-Image, FLUX.2 Klein, and the Concept kind), plus
+timestep-guidance sentences in the zimage/krea2/flux2_klein advisor notes (numbers
+untouched). All contested values from the list above remain contested — nothing was
+quietly resolved.
+
 # Phase 4: Anima 2B architecture port (Workstream A2 of ANIMA_INTEGRATION_SPEC.md)
 
 Recon (A1) and design history live in `docs/anima_delta_catalog.md` — read it before

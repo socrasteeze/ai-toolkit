@@ -11,7 +11,7 @@
         "network": {
           "type": "lora",
           "linear": 16,
-          "linear_alpha": 16
+          "linear_alpha": 8
         },
         "save": {
           "dtype": "bf16",
@@ -26,8 +26,6 @@
             "caption_ext": "txt",
             "caption_dropout_rate": 0.05,
             "resolution": [
-              512,
-              768,
               1024
             ],
             "num_repeats": 1,
@@ -36,36 +34,29 @@
         ],
         "train": {
           "batch_size": 1,
-          "steps": 2500,
+          "steps": 3000,
           "gradient_accumulation": 1,
           "train_unet": true,
           "train_text_encoder": false,
           "gradient_checkpointing": true,
-          "noise_scheduler": "flowmatch",
+          "noise_scheduler": "ddpm",
           "optimizer": "adamw8bit",
-          "timestep_type": "sigmoid",
           "content_or_style": "balanced",
           "lr": 0.0001,
-          "dtype": "bf16",
-          "ema_config": {
-            "use_ema": true,
-            "ema_decay": 0.99
-          }
+          "dtype": "bf16"
         },
         "model": {
-          "name_or_path": "black-forest-labs/FLUX.1-dev",
-          "arch": "flux",
-          "quantize": true,
-          "qtype": "qfloat8",
-          "quantize_te": true,
-          "qtype_te": "qfloat8"
+          "name_or_path": "stabilityai/stable-diffusion-xl-base-1.0",
+          "arch": "sdxl",
+          "quantize": false,
+          "quantize_te": false
         },
         "sample": {
-          "sampler": "flowmatch",
+          "sampler": "ddpm",
           "sample_every": 250,
           "width": 1024,
           "height": 1024,
-          "guidance_scale": 4,
+          "guidance_scale": 6,
           "sample_steps": 25
         }
       }
@@ -73,7 +64,7 @@
   },
   "meta": {
     "name": "[name]",
-    "version": "1.1",
-    "description": "FLUX.1-dev LoRA sized for ~24GB VRAM (fp8 quantized model + text encoder), mirroring config/examples/train_lora_flux_24gb.yaml. v1.1: restored ema_config 0.99 from the canonical yaml this preset mirrors (Ostris: 'recommended to leave on')."
+    "version": "1.0",
+    "description": "Concept (object/action) LoRA on base SDXL. Ported from LDS's researched built-in: rank 16 (simple concepts 4-8, complex 16-32 — mid-choice), alpha = rank/2. Booru-tag captions naming everything EXCEPT the concept. No conv layers here (the LDS concept recipe doesn't specify them; the sibling character/style presets do use conv 16/16). Steps: LDS computes 475*sqrt(images) clamped [2000,12000]."
   }
 }

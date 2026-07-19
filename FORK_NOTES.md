@@ -20,7 +20,7 @@ git push origin main
 |---|---|---|
 | `ui/src/app/jobs/new/page.tsx` | +1 import, +1 JSX line mounting `<PresetManager/>` in the TopBar | Re-add the mount next to the "Import Config" button if upstream restructures the TopBar |
 | `ui/src/app/datasets/[datasetName]/page.tsx` | +1 import, +1 JSX line mounting `<DatasetTools/>` in the TopBar after `<AutoCaptionButton/>` | Re-add next to the Auto Caption button if upstream restructures the TopBar |
-| `ui/src/app/jobs/new/SimpleJob.tsx` | +1 import, +1 JSX line mounting `<StepSuggestion/>` under the Steps `NumberInput`; +1 import and +1 JSX line mounting `<DatasetFolderPickerModal/>` next to `<AddSingleImageModal/>`; +1 small block under the "Target Dataset" `SelectInput` showing the resolved current path + a "Browse subfolders…" button (see PLAN.md's dataset-folder-browser entry, 2026-07-19) | Re-add the StepSuggestion mount below the Steps field; re-add the DatasetFolderPickerModal mount alongside AddSingleImageModal; re-add the path/browse block directly under the Target Dataset SelectInput if upstream restructures the dataset row |
+| `ui/src/app/jobs/new/SimpleJob.tsx` | +1 import, +1 JSX line mounting `<StepSuggestion/>` as a full-width sibling AFTER the Training card's column grid (moved out of column 1, 2026-07-19); +1 import, +1 JSX line mounting `<OptimizerHint/>` directly under the Optimizer `SelectInput`; +1 import and +1 JSX line mounting `<DatasetFolderPickerModal/>` next to `<AddSingleImageModal/>`; +1 small block under the "Target Dataset" `SelectInput` showing the resolved current path + a "Browse subfolders…" button (see PLAN.md's dataset-folder-browser entry, 2026-07-19) | Re-add the StepSuggestion mount after the `trainingBarClass` grid inside the Training Card; re-add the OptimizerHint mount below the Optimizer select; re-add the DatasetFolderPickerModal mount alongside AddSingleImageModal; re-add the path/browse block directly under the Target Dataset SelectInput if upstream restructures the dataset row |
 | `ui/cron/actions/startJob.ts` | Rewrote `startAndWatchJob` from an async-executor `new Promise` to a plain `async function` with the whole body in one try/catch (`markJobError` helper), and made the fire-and-forget call site (`startJob()`) attach `.catch()`. Fixes a WORKER-process crash: any exception in the unprotected setup code (DB reads, `fs.mkdirSync`/`writeFileSync`) became an unhandled promise rejection that Node treats as fatal, and `concurrently`'s infinite auto-restart turned that into a crash-restart loop that looks like a frozen console — see PLAN.md "Fix: WORKER process crash on job-launch errors (2026-07-17)" | If upstream rewrites this function, re-apply the try/catch restructuring rather than reverting to an async-executor Promise |
 | `ui/cron/worker.ts` | +2 top-level `process.on('unhandledRejection'/'uncaughtException', ...)` handlers that log and keep the process alive, added right after the import | Re-add near the top of the file if upstream restructures it; this is a safety net for the same crash-loop class of bug, not a substitute for fixing the specific cause |
 (The fork previously also modified `extensions_built_in/diffusion_models/__init__.py`,
@@ -76,6 +76,12 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
   share `arch: "sdxl"` with vanilla SDXL — see the researched-recipe writeup in conversation history
   for source confidence per number; several values are flagged low-confidence/contested in the notes)
 - `ui/src/utils/buckets.ts` — TS port of `toolkit/buckets.py::get_bucket_for_image_size`
+- `ui/src/components/OptimizerHint.tsx` — inline guidance under the Optimizer select,
+  shown only for the Automagic family: v1/v2 get a "superseded by v3" note + one-click
+  switch; v3 explains that LR is a launch point (self-adapting, no scheduler) and offers
+  a state-aware "Bound it" button that sets `optimizer_params.min_lr`/`max_lr` (which
+  have no UI field anywhere else, like `lr_scheduler`). Guidance sourced from the
+  optimizer author's docstrings — see PLAN.md's Automagic v3 research entry
 - `ui/src/components/PresetManager.tsx`
 - `ui/src/components/StepSuggestion.tsx` — step suggestion + dataset analyzer panel.
   Derives the dataset name/subPath to query via `deriveDatasetSelection`, which needs

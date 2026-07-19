@@ -299,11 +299,14 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'Alternative: Automagic v3 (self-adapting per-group LR, no scheduler needed) — used by the community 16GB config this ' +
       'fork ships as a preset. Its LR is a launch point the controller adapts away from (author\'s doc); if you use it, bound ' +
       'the controller with optimizer_params min_lr/max_lr (e.g. 1e-6/1e-4) — the bounds were added upstream 2026-07-17 ' +
-      'specifically to prevent runaway edge cases. Low-confidence: the optimizer is ~6 weeks old with almost no arch-specific data.',
+      'specifically to prevent runaway edge cases. Low-confidence: the optimizer is ~6 weeks old with almost no arch-specific data. ' +
+      'Timestep guidance (via LoRA Dataset Studio / RunComfy): linear timestep_type is the Krea-canonical choice.',
   }),
   zimage: tier => ({
     settings: [lrSetting(0.0001), rankSetting(tier === 'small' ? 16 : 32), alphaSetting(tier === 'small' ? 16 : 32), batchSetting(1)],
-    notes: 'Z-Image: adamw8bit, LR 1e-4, batch 1 at 1024. No arch-specific scheduler research found — left unset (defaults to constant).',
+    notes:
+      'Z-Image: adamw8bit, LR 1e-4, batch 1 at 1024. No arch-specific scheduler research found — left unset (defaults to constant). ' +
+      'Timestep guidance (options.ts + Ostris subject guidance, via LoRA Dataset Studio): sigmoid for characters/subjects, weighted for style and concept training.',
   }),
   qwen_image: tier => ({
     settings: [lrSetting(0.0001), rankSetting(tier === 'small' ? 16 : 32), alphaSetting(tier === 'small' ? 16 : 32), batchSetting(1)],
@@ -325,7 +328,8 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'Needs ~32GB VRAM minimum (48GB practical) per early reports. Natural-language captions. ' +
       'A 50+-run community study (single-source, style-focused) found Flux-family training extremely LR-sensitive — ' +
       '"leave the learning rate alone" — with training dose (steps × batch × accum vs image count) the main lever, and ' +
-      'weight decay mattering more than expected (their style runs preferred 1e-5 over the 1e-4 default).',
+      'weight decay mattering more than expected (their style runs preferred 1e-5 over the 1e-4 default). ' +
+      'Timestep guidance (LoRA Dataset Studio, itself extrapolated/not Klein-verified): sigmoid for characters, weighted for style.',
   }),
   flux2_klein_9b: tier => ({
     settings: [
@@ -340,7 +344,8 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'Needs more VRAM than the 4B variant; 48GB is a practical minimum. Natural-language captions. ' +
       'A 50+-run community study (single-source, style-focused) found Flux-family training extremely LR-sensitive — ' +
       '"leave the learning rate alone" — with training dose (steps × batch × accum vs image count) the main lever, and ' +
-      'weight decay mattering more than expected (their style runs preferred 1e-5 over the 1e-4 default).',
+      'weight decay mattering more than expected (their style runs preferred 1e-5 over the 1e-4 default). ' +
+      'Timestep guidance (LoRA Dataset Studio, itself extrapolated/not Klein-verified): sigmoid for characters, weighted for style.',
   }),
   // Anima 2B (native upstream arch since ostris#860): unusually well-sourced — the numbers below are the model
   // author's own published recipe (Circlestone Labs finetuning tips + his diffusion-pipe

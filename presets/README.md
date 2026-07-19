@@ -12,3 +12,19 @@ on the New Training Job page in the UI.
 - Missing fields are filled from the UI defaults on load, so partial configs are fine.
 - The folder location can be overridden with a `PRESETS_FOLDER` row in the UI settings
   database; it defaults to `<repo>/presets`.
+
+## Presets in this folder
+
+| File | Recipe | Provenance |
+|---|---|---|
+| `anima_lora_performance.json` / `anima_lora_background.json` | Anima 2B, rank 32/32, adamw 2e-5 | Model author's own recipe (most authoritative here) |
+| `flux_lora_24gb.json` | FLUX.1-dev, 16/16, sigmoid, EMA 0.99 | Ostris' canonical train_lora_flux_24gb.yaml (v1.1 restores its EMA) |
+| `illustriousxl_character_lora.json` / `illustriousxl_style_lora.json` | Illustrious-XL, 32/32 + conv 16/16 | Community consensus (optimizer contested — see notes) |
+| `sdxl_character_lora.json` / `sdxl_style_lora.json` | SDXL, 32/32 + conv 16/16 | Community consensus |
+| `sdxl_concept_lora.json` | SDXL concept, 16/8 | Ported from LoRA Dataset Studio's researched built-in |
+| `krea2_lora_16gb.json` / `krea2_lora_low_vram.json` | Krea 2, 32/32 | Community (low-confidence — model is young) |
+| `krea2_concept_lora.json` | Krea 2 concept, 32/16, linear | Extrapolated (no published recipe; LDS flags this too) |
+| `zimage_character_lora.json` / `zimage_style_lora.json` / `zimage_concept_lora.json` | Z-Image, 32/32 char+style, 16/8 concept | Ported from LDS's researched built-ins |
+| `flux2_klein_character_lora.json` / `flux2_klein_style_lora.json` | FLUX.2 Klein 4B, 16/16 char / 32/32 style | UNVERIFIED — LDS extrapolations, nothing Klein-specific published |
+
+Cross-repo recipe comparison: `docs/preset_alignment_2026_07.md`.

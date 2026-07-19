@@ -50,7 +50,7 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
 - `ui/src/utils/stepSuggestion.ts` also carries the Anima recipe in `ARCH_RECIPES` (fork file, listed above)
 - `start.bat` — double-click launcher for the UI (`start.bat rebuild` after pulling upstream)
 - `stop.bat` — killswitch companion to `start.bat`: stops the UI (port 8675) + cron worker even when the launching terminal is gone/frozen, matched by command-line signature so it never touches unrelated node/python. Leaves detached training alone by default; `stop.bat all` also stops a running `run.py` training
-- `presets/` — preset config files (drop-in JSON/YAML)
+- `presets/` — preset config files (drop-in JSON/YAML). 2026-07-19: seven LDS-ported presets added (zimage char/style/concept, flux2_klein char/style, krea2 concept, sdxl concept) + `flux_lora_24gb.json` v1.1 EMA fidelity fix; provenance table in `presets/README.md`, comparison in `docs/preset_alignment_2026_07.md` (fork-only)
 - `ui/src/server/presetsPath.ts`
 - `ui/src/server/datasetFiles.ts`
 - `ui/src/server/imageSize.ts` — header-only image dimension reader (png/jpg/webp)

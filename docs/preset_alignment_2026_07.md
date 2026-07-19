@@ -16,6 +16,44 @@ families/kinds it lacked (Z-Image, FLUX.2 Klein, and the Concept kind), advisor
 timestep notes, and the FLUX.1 EMA fidelity fix — see "What was synced" at the
 end. **No existing number on either side was changed.**
 
+## 0. Condensed deltas (the disagreements at a glance)
+
+Only the values that actually differ; agreements and one-sided recipes are in
+the sections below. Pony is omitted here (see the contested list in section 3).
+
+### SDXL character — the biggest real divergence
+
+| Value | LDS built-in | ATK preset | ATK advisor (medium tier) |
+|---|---|---|---|
+| rank / alpha | 32 / **16** | 32 / **32** | 32 / 32 |
+| conv layers | none | **conv 16 / 16** | none |
+| batch | 1 | 1 | **4** |
+| LR scheduler | constant | constant | **cosine** |
+| steps | ~120/image, clamped 1500-3500 | fixed 2500 | 100/image, clamped 1200-4000 |
+
+### Everything else
+
+- **SDXL style** — rank/alpha agree (32/32). Deltas: caption dropout LDS
+  **0.05** vs ATK **0.1**; conv (none vs 16/16); `content_or_style: style` is
+  ATK-only.
+- **FLUX.1** — presets identical after the v1.1 EMA fix (16/16, sigmoid,
+  adamw8bit, 1e-4, EMA 0.99). Remaining delta: the ATK *advisor* follows the
+  alpha-below-rank school (medium tier **32/16 + constant**) vs both presets'
+  16/16.
+- **FLUX.2 Klein** — LDS pins timesteps per kind (character 16/16 **sigmoid**,
+  style 32/32 **weighted**); the advisor ramps by dataset size (16/16 → 32/16 →
+  32/32) with **constant** and no timestep opinion. Differently shaped, not
+  contradictory — and every number on both sides is flagged unverified.
+- **Krea 2** — no recipe delta (32/32 + linear both sides). Open item: the LR
+  scheduler (no source states one; both default to constant). LDS's concept
+  recipe (32/16, linear) is an extrapolation with no counterpart anywhere.
+- **Z-Image** — one delta: dataset-size handling. Advisor gives small sets
+  (<30 images) **16/16**; LDS always ships **32/32** for characters ("lower-
+  regret for hard faces").
+- **Illustrious** — ATK-internal contest, no LDS counterpart: the community
+  splits between **Prodigy + cosine** and **adamw8bit + constant**; the advisor
+  picked adamw8bit + constant as the safer default and says so in its notes.
+
 ## 1. Structural differences (system level)
 
 | Dimension | LDS | ATK |

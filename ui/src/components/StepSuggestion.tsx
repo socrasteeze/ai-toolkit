@@ -298,27 +298,34 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
 
           {resAdvice && <div className="text-orange-400">⚠️ {resAdvice}</div>}
 
-          {bucketAnalyses.map(ba => (
-            <div key={ba.resolution}>
-              <div className="text-gray-300">
-                Resolution {ba.resolution}: {ba.buckets.length} bucket{ba.buckets.length !== 1 ? 's' : ''}
-                {ba.upscaled > 0 && <span className="text-orange-400"> · {ba.upscaled} images upscaled</span>}
-              </div>
-              <div className="text-gray-500">
-                {ba.buckets
-                  .slice(0, 8)
-                  .map(b => `${b.width}×${b.height}: ${b.count}`)
-                  .join('  ·  ')}
-                {ba.buckets.length > 8 && `  ·  +${ba.buckets.length - 8} more`}
-              </div>
-              {ba.thin.map(b => (
-                <div key={`${b.width}x${b.height}`} className="text-orange-400">
-                  ⚠️ Bucket {b.width}×{b.height} holds {b.count} image{b.count !== 1 ? 's' : ''} &lt; batch {batchSize} —
-                  lower the batch size or add images at this aspect ratio
+          {/* One card per training resolution, side by side when width allows — the
+              component now renders full-card-width (below the Training grid), so
+              stacking these vertically would waste the whole point of the move. */}
+          {bucketAnalyses.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {bucketAnalyses.map(ba => (
+                <div key={ba.resolution} className="rounded border border-gray-800 bg-gray-950/40 p-2">
+                  <div className="text-gray-300">
+                    Resolution {ba.resolution}: {ba.buckets.length} bucket{ba.buckets.length !== 1 ? 's' : ''}
+                    {ba.upscaled > 0 && <span className="text-orange-400"> · {ba.upscaled} images upscaled</span>}
+                  </div>
+                  <div className="text-gray-500">
+                    {ba.buckets
+                      .slice(0, 8)
+                      .map(b => `${b.width}×${b.height}: ${b.count}`)
+                      .join('  ·  ')}
+                    {ba.buckets.length > 8 && `  ·  +${ba.buckets.length - 8} more`}
+                  </div>
+                  {ba.thin.map(b => (
+                    <div key={`${b.width}x${b.height}`} className="text-orange-400">
+                      ⚠️ Bucket {b.width}×{b.height} holds {b.count} image{b.count !== 1 ? 's' : ''} &lt; batch{' '}
+                      {batchSize} — lower the batch size or add images at this aspect ratio
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
-          ))}
+          )}
 
           {recipe && (
             <div className="border-t border-gray-700 pt-2">

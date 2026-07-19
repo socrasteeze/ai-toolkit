@@ -690,3 +690,64 @@ selected subfolder's), rather than what the trainer will actually walk.
   after the rebuild. Flagged to the user that an already-open browser tab from before the
   rebuild may need a hard refresh to pick up new JS chunk hashes, but the server itself
   needed no restart.
+
+## Advisor: full-width suggestion layout + Automagic v3 research (2026-07-19)
+
+**Layout (user report):** the step-suggestion panel — and especially its expanded
+"Analyze dataset" block — rendered jumbled inside column 1 of the Training card's
+4/5-column grid, while columns 2-5 sat mostly empty below their few short fields. Fix:
+moved the `<StepSuggestion/>` mount in `SimpleJob.tsx` out of column 1 to a sibling
+directly after the `trainingBarClass` grid (still inside the Training `Card`, which is a
+plain `space-y-2` section with no child-width constraint — so the panel now gets the
+full card width with no new wrapper CSS). The per-resolution bucket breakdowns inside
+the analysis block moved from a vertical stack into a responsive `grid grid-cols-1
+md:grid-cols-2 xl:grid-cols-3` of bordered mini-cards so 512/768/1024 sit side-by-side
+on wide screens; summary line, warnings, and the recipe box stay full-width (the recipe
+buttons already wrap). FORK_NOTES.md's SimpleJob.tsx merge-surface entry already covers
+the mount line; only its position changed.
+
+**Automagic v3 research (folded into recipe notes + the krea2 16GB preset):**
+
+- Mechanics (from `toolkit/optimizers/automagic3.py`, 701 lines, author's docstring —
+  the only authoritative source; community data is essentially nonexistent ~6 weeks in):
+  ONE adaptive LR per param GROUP (deliberately not per-tensor like v2 — the docstring
+  explains per-group pooling stops coupled tensors like Q/K pairs fighting with
+  divergent LRs). Sign-consensus controller: each element keeps a packed 1-bit window of
+  its last `polarity_history` (default 8) update signs; all-agree votes "step too small",
+  perfect-alternation votes "overshoot", everything else abstains as noise; votes are
+  magnitude-weighted, pooled to `signal ∈ [-1,1]`, and the group LR moves by
+  `lr *= exp(signal)`. Adafactor-style factored second moment (≥2D params), full second
+  moment (1D). `fused=True` default (post-accumulate-grad hooks, very low peak VRAM,
+  but bypasses trainer grad-clip/nan-skip and is incompatible with multi-backward grad
+  accumulation); `fused=False` gives traditional `.step()` with stochastic-rounding
+  accumulation.
+- Constructor: `lr=1e-6` ("a launch point, not a tuned target — the controller adapts
+  away from this in whichever direction the pooled vote points"), `min_lr=1e-8`,
+  `max_lr=1e3` (at defaults "purely a numerical overflow guard far outside the usable
+  range" — set tighter for a real floor/ceiling; added upstream `cfdc903` 2026-07-17 "to
+  prevent runaway edge cases", merged into this fork same day), `beta2=0.999`,
+  `clip_threshold=1.0` (RMS trust region + per-element clamp), `weight_decay=0.0`
+  (decoupled), warns-not-clamps above lr 1e-3 (v1 force-reset instead). History: 8
+  commits Jun 7 → Jul 17 2026, four reworks, "Stable in my testing" Jun 12.
+- Per-arch reality: Krea2 is the only arch with real-world automagic3 usage (the
+  community 16GB config that became this fork's preset). FLUX.2 Klein has no automagic3
+  data, but a 50+-run community study (Calvin Herbst, Medium — single-source,
+  style-focused) found Flux-family training extremely LR-sensitive ("changing the
+  learning rate by five thousandths of a percent... ripped the image apart — leave it
+  alone"), weight decay mattering (1e-5 beat the 1e-4 default for their style runs), and
+  dose (steps × batch × accum vs images) the main lever. Illustrious community remains
+  on adamw8bit/prodigy (~1e-4–3e-4); Anima's author recipe (adamw 2e-5) outranks
+  everything. **Decision: automagic3 guidance added to the krea2 recipe notes only,
+  Klein notes get the LR-sensitivity findings (text only, numbers unchanged), and
+  Anima/Illustrious recipes deliberately untouched** — per the advisor's honesty rule,
+  no data means no recommendation.
+- `presets/krea2_lora_16gb.json` → v1.1: added `min_lr: 1e-6` / `max_lr: 1e-4` to
+  `optimizer_params` (ceiling = the preset's own start LR so the controller only adapts
+  downward, matching the conservative 16GB intent; floor = the optimizer's default
+  launch LR). The source config predates the runaway fix and rode pure overflow-guard
+  bounds.
+
+**Verified:** tsc clean, preset JSON parses, production build rebuilt cleanly
+(BUILD_ID present). Visual layout check deferred to the user's next session on the
+running UI (the moved panel + bucket grid are markup/class-only changes with no logic
+delta; the state-aware recipe buttons from the prior fix are untouched by the move).

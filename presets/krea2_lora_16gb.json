@@ -45,7 +45,9 @@
           "timestep_type": "sigmoid",
           "content_or_style": "balanced",
           "optimizer_params": {
-            "weight_decay": 0.0001
+            "weight_decay": 0.0001,
+            "min_lr": 0.000001,
+            "max_lr": 0.0001
           },
           "unload_text_encoder": true,
           "cache_text_embeddings": false,
@@ -80,7 +82,7 @@
   },
   "meta": {
     "name": "[name]",
-    "version": "1.0",
-    "description": "LoRA on Krea 2 (raw) for 16GB+ cards: qfloat8 on transformer + TE, low_vram, layer offloading (35% transformer, 100% TE), TE unloaded after encoding, 512 training resolution, Automagic3 optimizer (adaptive LR, weight decay 1e-4), sigmoid timesteps. Sampling is disabled by default to avoid VRAM spikes — re-enable it (or sample at 512) if you want previews. Community-sourced profile; for roomier cards use the krea2_lora_low_vram (24GB) preset instead."
+    "version": "1.1",
+    "description": "LoRA on Krea 2 (raw) for 16GB+ cards: qfloat8 on transformer + TE, low_vram, layer offloading (35% transformer, 100% TE), TE unloaded after encoding, 512 training resolution, Automagic3 optimizer (adaptive per-group LR, weight decay 1e-4), sigmoid timesteps. v1.1 bounds the Automagic3 controller with min_lr 1e-6 / max_lr 1e-4 (the preset's own start LR is the ceiling; the controller self-adapts downward from it) — the source config predates upstream's 2026-07-17 runaway-LR fix, whose default bounds are only numerical overflow guards, not practical limits. Sampling is disabled by default to avoid VRAM spikes — re-enable it (or sample at 512) if you want previews. Community-sourced profile; for roomier cards use the krea2_lora_low_vram (24GB) preset instead."
   }
 }

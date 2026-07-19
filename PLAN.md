@@ -751,3 +751,31 @@ the mount line; only its position changed.
 (BUILD_ID present). Visual layout check deferred to the user's next session on the
 running UI (the moved panel + bucket grid are markup/class-only changes with no logic
 delta; the state-aware recipe buttons from the prior fix are untouched by the move).
+
+## OptimizerHint: inline Automagic guidance on the form (2026-07-19)
+
+Follow-up to the Automagic v3 research: the user asked whether any help text explains
+what the other params should be when Automagic is enabled — answer was no. The Optimizer
+select has no docKey, the LR/Weight Decay placeholders ("eg. 0.0001") silently mislead
+for automagic3 (LR is a launch point, author default 1e-6; weight decay decoupled,
+default 0), and `optimizer_params.min_lr`/`max_lr` have no UI field anywhere (the same
+gap `lr_scheduler` has). Upstream's `docs.tsx` was deliberately NOT touched (would add a
+merge touchpoint, and its `?`-icon modal is low-discoverability anyway).
+
+New fork-only `ui/src/components/OptimizerHint.tsx`, mounted directly under the
+Optimizer `SelectInput` in `SimpleJob.tsx` (one import + one JSX line, same pattern as
+the other fork mounts; FORK_NOTES updated). Renders nothing unless an automagic*
+optimizer is selected:
+- v1/v2: one-line "superseded by v3" note (v1 force-resets LR >1e-3; v2 has the known
+  runaway/static-per-tensor issues) + a one-click "Switch to v3" button.
+- v3: explains LR-as-launch-point / no-scheduler-needed / decoupled weight decay, and
+  shows LR-bound status: green "✓ LR bounded: min – max" when `optimizer_params` carries
+  min_lr/max_lr, otherwise an orange "Unbounded" warning with a "Bound it (min 1e-6 ·
+  max = LR)" apply button that writes both keys via setJobConfig (mirroring the
+  krea2_lora_16gb v1.1 preset values; max = the user's current LR so the controller only
+  adapts downward).
+
+Verified: tsc clean, production rebuild clean. (The hint reads
+`train.optimizer_params` loosely-typed via a cast since min_lr/max_lr aren't in the
+JobConfig type — same as they reach the trainer, which passes optimizer_params through
+as an untyped dict.)

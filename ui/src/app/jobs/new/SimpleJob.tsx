@@ -33,6 +33,7 @@ import { handleModelArchChange } from './utils';
 import StepSuggestion from '@/components/StepSuggestion'; // fork addition, see FORK_NOTES.md
 // fork addition, see FORK_NOTES.md
 import DatasetFolderPickerModal, { openDatasetFolderPicker } from '@/components/DatasetFolderPickerModal';
+import OptimizerHint from '@/components/OptimizerHint'; // fork addition, see FORK_NOTES.md
 import { IoFlaskSharp } from 'react-icons/io5';
 import { isMac } from '@/helpers/basic';
 
@@ -637,6 +638,8 @@ export default function SimpleJob({
                     { value: 'prodigy8bit', label: 'Prodigy8Bit' },
                   ]}
                 />
+                {/* fork addition, see FORK_NOTES.md */}
+                <OptimizerHint jobConfig={jobConfig} setJobConfig={setJobConfig} />
                 <NumberInput
                   label="Learning Rate"
                   className="pt-2"

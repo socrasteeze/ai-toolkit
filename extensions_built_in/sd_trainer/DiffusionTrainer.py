@@ -350,6 +350,14 @@ class DiffusionTrainer(SDTrainer):
     def end_step_hook(self):
         super(DiffusionTrainer, self).end_step_hook()
         if self.is_ui_trainer:
+            # fork (speed): optionally rate-limit the per-step sqlite work below
+            # (4 blocking reads + 1 write per step at 0) — see FORK_NOTES.md
+            poll_seconds = getattr(self.train_config, 'ui_db_poll_seconds', 0.0)
+            if poll_seconds > 0:
+                now = time.time()
+                if now - getattr(self, '_fork_last_db_poll', 0.0) < poll_seconds:
+                    return
+                self._fork_last_db_poll = now
             self.update_step()
             self.maybe_stop()
             self.maybe_save()

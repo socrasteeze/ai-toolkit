@@ -765,7 +765,103 @@ the mount line; only its position changed.
 running UI (the moved panel + bucket grid are markup/class-only changes with no logic
 delta; the state-aware recipe buttons from the prior fix are untouched by the move).
 
-## OptimizerHint: inline Automagic guidance on the form (2026-07-19)
+## Phase 6: Training-speed optimization vs OneTrainer (2026-07-19)
+
+Goal: close the per-step speed gap with OneTrainer on the operator's RTX 5090
+(primary target: Anima 2B, rank 32 LoRA) without touching the UI and without
+un-gated behavior changes. Full change log, merge surface, and the benchmark
+protocol live in FORK_NOTES.md ("Speed optimization"); this section records the
+audit findings and *why* each change is what it is.
+
+**Code audit at HEAD (2026-07-19) — what was verified before changing anything:**
+
+- Latent caching (`cache_latents_to_disk`) and text-embed caching
+  (`cache_text_embeddings`) already work and are already on in the Anima presets.
+  With embeds cached the text encoder is *hard-unloaded* (swapped for a
+  `FakeTextEncoder` stub, `toolkit/unloader.py`) and cached latents keep the VAE
+  parked on CPU (`toolkit/sd_device_states_presets.py`) — the "TE/VAE stay
+  resident" gap OneTrainer exploits does NOT exist here anymore. BUT disk-cached
+  latents are re-read from disk (safetensors load) plus deep-copied on **every
+  fetch, every step** (`toolkit/dataloader_mixins.py get_latent`,
+  `toolkit/data_loader.py _get_single_item`); adding `cache_latents: true`
+  alongside keeps them in RAM (both flags together = save to disk once, serve
+  from memory).
+- `gradient_checkpointing` defaults **true** (`toolkit/config_modules.py`) and
+  is enabled in every Anima preset — the single biggest config-only win for a
+  2B model on a 32GB card (~30-40% step-time recompute tax for VRAM we don't
+  need to save).
+- Quantization off is genuinely zero-overhead (no wrapper modules left when
+  `quantize: false`); attention is torch SDPA by default for Anima; EMA is off
+  by default. No action needed on any of these.
+- `num_workers` is **hardcoded to 0 on native Windows** (`toolkit/data_loader.py`
+  get_dataloader_from_datasets) — the operator's training box. Not safely
+  config-fixable: the dataset objects hold live model references, which Windows
+  spawn-based workers would have to pickle. Documented as a WSL/Linux note, not
+  changed. `pin_memory` is never passed but would be a no-op anyway (custom
+  DTO batches, custom collate).
+- Per-step hot-loop overhead (the real code-level gap): (a) `torch.isnan(loss)`
+  + `.item()` force a CUDA sync every step (`SDTrainer.py`), so the CPU waits
+  for the GPU and only THEN does sqlite polling, progress-bar work, and the next
+  batch fetch — all of it serialized with GPU compute, which idles meanwhile;
+  (b) the UI trainer (`DiffusionTrainer.end_step_hook`) does **4 blocking sqlite
+  SELECTs + 1 async write every step**, each SELECT opening a fresh connection,
+  on the training thread; (c) automagic-family optimizers add one more sync per
+  step via `get_avg_learning_rate()` (left alone — not used by the Anima
+  recipe).
+
+**Change 1 — deferred loss sync (`train.loss_sync_every`, default 1 = upstream).**
+When > 1, the NaN guard becomes an on-device `torch.nan_to_num` (same net
+effect — a NaN loss contributes zero gradient — but no sync, no "loss is nan"
+print), and the per-step `.item()` is replaced by `DeferredLossTracker`
+(fork-only `toolkit/fork_speed.py`): loss accumulates on-device and syncs to
+the host every N steps; between syncs the progress bar / logger receive the
+last synced average. Training math is untouched — only display/log cadence
+changes. This removes the per-step CPU⇄GPU serialization point so dataloading
+and logging overlap GPU compute (the OneTrainer lean-loop pattern) — the win is
+largest exactly where the data pipeline is synchronous (Windows, num_workers=0).
+
+**Change 2 — UI DB poll throttle (`train.ui_db_poll_seconds`, default 0 = upstream).**
+When > 0, `DiffusionTrainer.end_step_hook` rate-limits its per-step sqlite work
+(4 blocking SELECTs + 1 write) to at most once per interval. Cost of enabling:
+the UI's stop/save-now/sample-now buttons take up to that many seconds to be
+noticed — nothing else changes. 2s is the recommended value (matches the
+interval upstream's own commented-out `start_stop_watcher` would have used).
+Rare call sites (model load, sample, save) stay unthrottled; the legacy
+`UITrainer` (uid `ui_trainer`) is deliberately untouched since the UI launches
+`diffusion_trainer`. This also shrinks the SQLITE_BUSY contention window with
+the UI's own writers documented in the 2026-07-17 WORKER-crash investigation.
+
+**Change 3 — the 5090 FAST profile** (`presets/anima_lora_5090_fast.json` v1.0 +
+`config/examples/train_lora_anima_2b_5090_fast.yaml`): the performance preset
+plus every lever above — `gradient_checkpointing: false` (expected single
+biggest win on a 2B model; the recompute tax buys VRAM a 32GB card doesn't
+need), `cache_latents: true` **and** `cache_latents_to_disk: true` (save once,
+serve from RAM — disk-only re-reads every step), `cache_text_embeddings: true`,
+batch 4 / accum 1 (same effective batch as the author's 1x4), samples/saves at
+500, `loss_sync_every: 4`, `ui_db_poll_seconds: 2`. Training math is identical
+to the performance preset; the documented OOM fallback order is batch 2 first,
+re-enable checkpointing second.
+
+**Change 4 — benchmark harness** (`scripts/bench_speed.py`): measures
+end-to-end steps/s (not just the inner train_loop timer, which misses the
+sqlite/logging/progress-bar overhead this phase attacks) by timestamping the
+`Timer '...'` blocks that `performance_log_every` prints, per the 200-step /
+20-warmup protocol. Sampling disabled and saves pushed out of range for the
+run; peak VRAM polled via nvidia-smi; rows append to `docs/speed_benchmarks.md`.
+
+**Status / honesty note:** this branch was authored in a GPU-less cloud
+session — all speed reasoning above is verified against the code, but **no
+benchmark numbers exist yet**. The run matrix (FORK_NOTES.md "Speed
+optimization") is the operator's next action; expectations going in:
+checkpointing-off is the dominant term, loss_sync/db-throttle matter more the
+faster the step gets (fixed per-step CPU cost), and the OneTrainer comparison
+run decides whether Phase 3 (fused backward for AdamW, torch.compile) is worth
+its complexity. Phase 3 is deliberately NOT started — it needs the operator's
+answers on host OS (torch.compile/Triton viability on native Windows) and on
+whether the large-model path matters, plus a measured residual gap to justify
+it. The `loss_sync_every` NaN-path nuance is documented in the code comment:
+with the gate on, a NaN loss still contributes zero gradient but no longer
+prints "loss is nan".
 
 Follow-up to the Automagic v3 research: the user asked whether any help text explains
 what the other params should be when Automagic is enabled — answer was no. The Optimizer

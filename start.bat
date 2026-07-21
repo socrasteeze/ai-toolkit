@@ -19,7 +19,6 @@ if not exist ".next" goto full
 if not exist "dist\cron\worker.js" goto full
 
 echo Starting AI Toolkit UI at http://localhost:8675 (Ctrl+C to stop^)
-start "" "http://localhost:8675"
 call npm run start
 if errorlevel 1 pause
 exit /b
@@ -34,7 +33,6 @@ if errorlevel 1 goto fail
 call npm run build
 if errorlevel 1 goto fail
 echo Build complete. Starting AI Toolkit UI at http://localhost:8675 (Ctrl+C to stop^)
-start "" "http://localhost:8675"
 call npm run start
 if errorlevel 1 pause
 exit /b

@@ -898,3 +898,34 @@ useful. In its place, `create_shortcut.bat` (fork-only, run once) builds a deskt
 `.lnk` that targets `start.bat` and uses the UI's own favicon as its icon, so the
 day-to-day launch path is "double-click the desktop shortcut" rather than a bare `.bat`
 file with no icon. `stop.bat` is unaffected. See `FORK_NOTES.md`'s fork-only file list.
+
+## LDS reconciliation + preset Overwrite UI (2026-07-21)
+
+Follow-up to the 2026-07-19 preset-alignment report, after reviewing LDS commits since
+that report. Only one LDS commit since then touches training recipes: `d3d7218`
+("tune Klein-style network dims and slider alpha from verified research").
+
+**FLUX.2 Klein style — adopted at half scale.** LDS re-based its Klein STYLE recipe on a
+claimed-verified source (Calvin Herbst 64-run sweep + Black Forest Labs' official Klein
+training example): a linear+Conv2d LoRA at ratio 4:2:2:1, **128/64/64/32**, alpha =
+rank/2, weighted timesteps (other Klein kinds stay linear-only 16/16; LoKr stays
+linear-only). 128 linear was judged too heavy for a 4B model, so ATK adopts the same
+recipe **folded to half scale**: `flux2_klein_style_lora.json` now ships **64/32 linear +
+32/16 conv**. Agreement on shape/ratio/alpha philosophy; deliberate, documented
+disagreement on scale (the preset's `meta.description` says how to reproduce LDS's 128
+exactly). The size-tiered advisor (`stepSuggestion.ts`) is kind-agnostic — its numbers are
+unchanged; its Klein 4B/9B notes now point at the style preset for the conv recipe. LDS's
+other `d3d7218` change (slider alpha 4 / scale 0.5) has no ATK preset counterpart and
+needs no sync. `docs/preset_alignment_2026_07.md` updated (2026-07-21 section + Klein
+rows); the LDS canonical mirror updated to match.
+
+**Preset Overwrite in the UI.** The Presets dialog could save-as-new and delete but had no
+first-class way to write the current form back over an existing preset (the POST route
+already overwrote silently if you retyped the exact name — invisible and unconfirmed). Added
+a per-row **Overwrite** button (`PresetManager.tsx`) that POSTs `configToPreset(jobConfig)`
+under the existing name behind a confirm dialog. Shipped/built-in recipes (tracked in git +
+the alignment doc) get a stronger warning and a "built-in" tag, but the write is never
+blocked — the user asked for it explicitly. Built-in detection is a server-side allowlist
+(`BUILTIN_PRESET_NAMES`/`isBuiltinPreset` in `presetsPath.ts`) surfaced as a `builtIn` flag
+on the GET route; a user-saved preset is anything not in that set. No new upstream
+touchpoints — all changes are in fork-only files. Verified: `tsc --noEmit` clean.

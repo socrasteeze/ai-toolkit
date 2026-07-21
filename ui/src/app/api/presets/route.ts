@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import { getPresetsRoot, presetExtensions, sanitizePresetName } from '@/server/presetsPath';
+import { getPresetsRoot, presetExtensions, sanitizePresetName, isBuiltinPreset } from '@/server/presetsPath';
 
 // Fork-only route (see FORK_NOTES.md). Presets are plain config files in the presets
 // folder so other users' configs can be dropped in without touching the database.
@@ -17,10 +17,12 @@ export async function GET() {
       if (!presetExtensions.includes(ext)) continue;
       const filePath = path.join(presetsRoot, entry.name);
       const stat = await fs.promises.stat(filePath);
+      const name = entry.name.slice(0, -ext.length);
       presets.push({
-        name: entry.name.slice(0, -ext.length),
+        name,
         fileName: entry.name,
         updatedAt: stat.mtimeMs,
+        builtIn: isBuiltinPreset(name),
       });
     }
     presets.sort((a, b) => a.name.localeCompare(b.name));

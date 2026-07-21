@@ -16,6 +16,30 @@ families/kinds it lacked (Z-Image, FLUX.2 Klein, and the Concept kind), advisor
 timestep notes, and the FLUX.1 EMA fidelity fix — see "What was synced" at the
 end. **No existing number on either side was changed.**
 
+## Update 2026-07-21 — FLUX.2 Klein style moved off the "everything flagged" list
+
+LDS commit `d3d7218` ("tune Klein-style network dims and slider alpha from verified
+research", 2026-07-19) re-based its **FLUX.2 Klein STYLE** recipe on a claimed-verified
+source: the Calvin Herbst 64-run sweep + Black Forest Labs' official Klein training
+example, both converging on a **linear+Conv2d LoRA at ratio 4:2:2:1 — 128/64/64/32**
+(linear/linear_alpha/conv/conv_alpha, alpha = rank/2). Other Klein kinds
+(character/concept/slider) stay linear-only 16/16; LoKr stays linear-only.
+
+ATK's response (this update, user decision): **adopt the recipe but fold the magnitude
+in half** — `flux2_klein_style_lora.json` now ships **64/32 linear + 32/16 conv** (the
+same 4:2:2:1 ratio at half scale). 128 was judged too heavy for a 4B model; 64 keeps the
+sweep's Conv2d insight at saner dims. So the two sides now agree on *shape* (linear+conv,
+ratio, alpha philosophy) and disagree only on *scale* (ATK 64 vs LDS 128) — a deliberate,
+documented fold, not drift. The style preset's `meta.description` records how to
+reproduce LDS exactly (linear 128 / alpha 64 / conv 64 / conv_alpha 32).
+
+The size-tiered **advisor** (`stepSuggestion.ts`) is kind-agnostic and stays linear-only
+16→32; its Klein notes now point at the style preset for the conv recipe. LDS's other
+`d3d7218` change — slider LoRA default **alpha 4** (rank 8, scale 0.5, Ostris slider
+notebook) — has no ATK preset counterpart (ATK ships no slider preset) and needs no sync;
+it flows straight into the emitted job config. The Klein character preset (16/16 sigmoid)
+is unchanged on both sides.
+
 ## 0. Condensed deltas (the disagreements at a glance)
 
 Only the values that actually differ; agreements and one-sided recipes are in
@@ -40,10 +64,12 @@ the sections below. Pony is omitted here (see the contested list in section 3).
   adamw8bit, 1e-4, EMA 0.99). Remaining delta: the ATK *advisor* follows the
   alpha-below-rank school (medium tier **32/16 + constant**) vs both presets'
   16/16.
-- **FLUX.2 Klein** — LDS pins timesteps per kind (character 16/16 **sigmoid**,
-  style 32/32 **weighted**); the advisor ramps by dataset size (16/16 → 32/16 →
-  32/32) with **constant** and no timestep opinion. Differently shaped, not
-  contradictory — and every number on both sides is flagged unverified.
+- **FLUX.2 Klein** — character: both 16/16 sigmoid (agree). Style: LDS now ships
+  **128/64 linear + 64/32 conv** (weighted; Herbst sweep + BFL example, 2026-07-19);
+  ATK's preset adopts the same shape at **half scale — 64/32 linear + 32/16 conv**
+  (see the 2026-07-21 update above). The size-tiered advisor is kind-agnostic and stays
+  linear-only (16/16 → 32/16 → 32/32, constant, no timestep opinion). Agreement on
+  shape, deliberate disagreement on scale.
 - **Krea 2** — no recipe delta (32/32 + linear both sides). Open item: the LR
   scheduler (no source states one; both default to constant). LDS's concept
   recipe (32/16, linear) is an extrapolation with no counterpart anywhere.
@@ -104,13 +130,19 @@ low-confidence flag on Krea numbers (thin sources, model ~6 weeks old at
 research time). LDS's Krea *concept* 32/16-linear is an LDS extrapolation (no
 published recipe exists) — synced to ATK as a flagged preset.
 
-### FLUX.2 Klein — COMPATIBLE, EVERYTHING FLAGGED
+### FLUX.2 Klein — CHARACTER compatible; STYLE now shape-aligned, scale-forked
 
-LDS character 16/16-sigmoid and style 32/32-weighted sit exactly at the ends of
-the advisor's tier ramp (small 16/16 → large 32/32, FLUX.1-proxy, "unverified").
-Timestep guidance exists only on the LDS side (sigmoid char / weighted style,
-itself flagged as extrapolated). Both sides agree nothing Klein is verified yet.
-Synced to ATK as flagged presets + advisor notes.
+Character: LDS 16/16-sigmoid; ATK preset 16/16-sigmoid; advisor small tier 16/16.
+Compatible, still FLUX.1-proxy "unverified".
+
+Style: as of 2026-07-19 LDS bases it on a claimed-verified source (Herbst 64-run
+sweep + BFL's official Klein example) — a linear+Conv2d LoRA at ratio 4:2:2:1,
+**128/64/64/32**, alpha = rank/2, weighted timesteps. ATK's `flux2_klein_style_lora.json`
+adopts the same recipe **folded to half scale: 64/32 linear + 32/16 conv** (128 judged
+too heavy for 4B — see the 2026-07-21 update at the top). The size-tiered advisor stays
+linear-only (kind-agnostic) and its notes point at the style preset for the conv recipe.
+Net: agreement on shape/ratio/alpha philosophy; deliberate, documented disagreement on
+absolute scale (ATK 64 vs LDS 128).
 
 ### Z-Image — ALIGNED at medium/large; size-tier gap at small
 
@@ -133,7 +165,11 @@ synced into the advisor notes. LDS concept 16/8-weighted synced as a preset.
 
 - Illustrious optimizer (Prodigy+cosine vs adamw8bit+constant camps).
 - Pony `score_9` caption tag.
-- Every FLUX.2 Klein number on both sides (FLUX.1 proxies / extrapolations).
+- FLUX.2 Klein CHARACTER numbers on both sides (still FLUX.1 proxies / extrapolations).
+  Klein STYLE is no longer on this list — LDS re-based it on a claimed-verified source
+  (Herbst sweep + BFL example) on 2026-07-19; ATK adopts a half-scale fold of it. The
+  open question there is now scale (64 vs 128), not "is any of it real" (see the
+  2026-07-21 update).
 - Krea 2 scheduler (no source states one) and the Krea2 step heuristic
   (community guesswork; over-warns on 250+ image sets).
 - LDS's Klein sigmoid-for-character and its concept-krea / concept-klein

@@ -58,11 +58,15 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
 - `start.bat` — double-click launcher for the UI (`start.bat rebuild` after pulling upstream). No longer auto-opens a browser tab on launch (2026-07-20) — `create_shortcut.bat` below is the intended entry point for click-to-open use
 - `stop.bat` — killswitch companion to `start.bat`: stops the UI (port 8675) + cron worker even when the launching terminal is gone/frozen, matched by command-line signature so it never touches unrelated node/python. Leaves detached training alone by default; `stop.bat all` also stops a running `run.py` training
 - `create_shortcut.bat` — one-time setup script that creates a desktop `.lnk` targeting `start.bat`, using the UI's favicon as its icon (instead of a bare `.bat` file on the desktop). Run once; the resulting shortcut is the day-to-day launcher (2026-07-20)
-- `presets/` — preset config files (drop-in JSON/YAML). 2026-07-19: seven LDS-ported presets added (zimage char/style/concept, flux2_klein char/style, krea2 concept, sdxl concept) + `flux_lora_24gb.json` v1.1 EMA fidelity fix; provenance table in `presets/README.md`, comparison in `docs/preset_alignment_2026_07.md` (fork-only)
-- `ui/src/server/presetsPath.ts`
+- `presets/` — preset config files (drop-in JSON/YAML). 2026-07-19: seven LDS-ported presets added (zimage char/style/concept, flux2_klein char/style, krea2 concept, sdxl concept) + `flux_lora_24gb.json` v1.1 EMA fidelity fix; provenance table in `presets/README.md`, comparison in `docs/preset_alignment_2026_07.md` (fork-only). 2026-07-21: `flux2_klein_style_lora.json` re-tuned to 64/32 linear + 32/16 conv (a half-scale fold of LDS's researched 128/64/64/32; see the doc's 2026-07-21 update)
+- `ui/src/server/presetsPath.ts` — presets-folder resolver + name sanitizer; also
+  `BUILTIN_PRESET_NAMES`/`isBuiltinPreset` (the shipped-preset set the GET route flags so
+  the Presets dialog warns before overwriting a provenance-tracked recipe — keep in sync
+  with the files that ship in `presets/`)
 - `ui/src/server/datasetFiles.ts`
 - `ui/src/server/imageSize.ts` — header-only image dimension reader (png/jpg/webp)
-- `ui/src/app/api/presets/route.ts`
+- `ui/src/app/api/presets/route.ts` — GET lists presets (each with a `builtIn` flag from
+  `isBuiltinPreset`), POST saves/overwrites by name (writeFile — overwrite is the same path)
 - `ui/src/app/api/presets/[name]/route.ts`
 - `ui/src/app/api/datasets/count/route.ts` — accepts an optional `subPath` (resolved via
   `resolveDatasetSubPath`, datasetFiles.ts) to scope the count to a subfolder instead of
@@ -90,7 +94,10 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
   a state-aware "Bound it" button that sets `optimizer_params.min_lr`/`max_lr` (which
   have no UI field anywhere else, like `lr_scheduler`). Guidance sourced from the
   optimizer author's docstrings — see PLAN.md's Automagic v3 research entry
-- `ui/src/components/PresetManager.tsx`
+- `ui/src/components/PresetManager.tsx` — Presets dialog: load / save-as-new / delete,
+  plus a per-row **Overwrite** button (writes the current form back over a preset; built-ins
+  get a stronger confirm, never blocked). Built-in rows show a "built-in" tag from the GET
+  route's `builtIn` flag (2026-07-21)
 - `ui/src/components/StepSuggestion.tsx` — step suggestion + dataset analyzer panel.
   Derives the dataset name/subPath to query via `deriveDatasetSelection`, which needs
   `DATASETS_FOLDER` (fetched with `useSettings()`) to split `folder_path` correctly for

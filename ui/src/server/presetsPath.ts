@@ -14,6 +14,34 @@ export const defaultPresetsFolder = path.join(TOOLKIT_ROOT, 'presets');
 
 export const presetExtensions = ['.json', '.jsonc', '.yaml', '.yml'];
 
+// The presets shipped with the fork (tracked in git + cross-referenced by
+// docs/preset_alignment_2026_07.md). Used only to flag them in the Presets dialog
+// so the UI warns before overwriting a provenance-tracked recipe with the current
+// form — it never blocks the write. Keep in sync with the files in presets/ that
+// ship in the repo; a user-saved preset is anything NOT in this set. Names are the
+// sanitized basename (no extension), matching what the GET/POST routes report.
+export const BUILTIN_PRESET_NAMES = new Set<string>([
+  'anima_lora_5090_fast',
+  'anima_lora_background',
+  'anima_lora_performance',
+  'flux2_klein_character_lora',
+  'flux2_klein_style_lora',
+  'flux_lora_24gb',
+  'illustriousxl_character_lora',
+  'illustriousxl_style_lora',
+  'krea2_concept_lora',
+  'krea2_lora_16gb',
+  'krea2_lora_low_vram',
+  'sdxl_character_lora',
+  'sdxl_concept_lora',
+  'sdxl_style_lora',
+  'zimage_character_lora',
+  'zimage_concept_lora',
+  'zimage_style_lora',
+]);
+
+export const isBuiltinPreset = (name: string): boolean => BUILTIN_PRESET_NAMES.has(name);
+
 export const getPresetsRoot = async () => {
   const key = 'PRESETS_FOLDER';
   let presetsPath = myCache.get(key) as string;

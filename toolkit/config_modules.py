@@ -564,6 +564,18 @@ class TrainConfig:
         self.unload_text_encoder = kwargs.get('unload_text_encoder', False)
         # will toggle all datasets to cache text embeddings
         self.cache_text_embeddings: bool = kwargs.get('cache_text_embeddings', False)
+        # fork (speed): sync the loss to the CPU every N steps instead of every step.
+        # 1 = upstream behavior. N > 1 removes the per-step CUDA sync so the CPU can
+        # run ahead of the GPU (dataloading/logging overlap compute); displayed/logged
+        # loss then updates every N steps, and NaN losses are neutralized on-device
+        # without the "loss is nan" print. See FORK_NOTES.md "Speed optimization".
+        self.loss_sync_every = int(kwargs.get('loss_sync_every', 1))
+        # fork (speed): minimum seconds between the UI trainer's per-step sqlite polls
+        # (stop / return-to-queue / save-now / sample-now reads + the step write).
+        # 0 = upstream behavior (poll every step, 4 blocking reads on the training
+        # thread). When > 0, UI stop/save/sample buttons take up to this many seconds
+        # to be noticed. See FORK_NOTES.md "Speed optimization".
+        self.ui_db_poll_seconds = float(kwargs.get('ui_db_poll_seconds', 0.0))
         # for swapping which parameters are trained during training
         self.do_paramiter_swapping = kwargs.get('do_paramiter_swapping', False)
         # 0.1 is 10% of the parameters active at a time lower is less vram, higher is more

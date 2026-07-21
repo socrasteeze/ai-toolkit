@@ -31,6 +31,9 @@ const startAndWatchJob = async (job: Job): Promise<void> => {
   // (the cron tick shouldn't block on a job's launch I/O), so every exit path
   // here must be handled internally — anything that escapes becomes an
   // unhandled promise rejection that crashes the whole WORKER process.
+  // (Fork: upstream keeps an async-executor `new Promise` here; the plain
+  // async function + outer try/catch below is the fork's crash-loop fix —
+  // see FORK_NOTES.md. Upstream's subprocess error/exit listeners are kept.)
   const jobID = job.id;
   try {
 
@@ -187,6 +190,8 @@ const startAndWatchJob = async (job: Job): Promise<void> => {
     } catch (error: any) {
       // Handle any exceptions during process launch
       console.error('Error launching process:', error);
+      // Upstream: write to the visible job log. Fork: use markJobError for the
+      // DB update so a failing update here can't throw a second time.
       appendJobLog(logPath, `Error launching job process: ${error?.message || 'Unknown error'}\n`);
       await markJobError(jobID, `Error launching job: ${error?.message || 'Unknown error'}`);
       return;

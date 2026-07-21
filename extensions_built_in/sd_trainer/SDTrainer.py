@@ -37,6 +37,7 @@ from toolkit.models.diffusion_feature_extraction import DiffusionFeatureExtracto
 from toolkit.util.losses import wavelet_loss, stepped_loss
 import torch.nn.functional as F
 from toolkit.unloader import unload_text_encoder
+from toolkit.fork_speed import DeferredLossTracker
 from PIL import Image
 from torchvision.transforms import functional as TF
 from toolkit.basic import flush
@@ -2096,7 +2097,11 @@ class SDTrainer(BaseSDTrainProcess):
                         loss = loss + preservation_loss
 
                 # check if nan
-                if torch.isnan(loss):
+                if self.train_config.loss_sync_every > 1:
+                    # fork (speed): neutralize a NaN loss on-device — torch.isnan() on a
+                    # scalar forces a CUDA sync every accumulation (see FORK_NOTES.md)
+                    loss = torch.nan_to_num(loss)
+                elif torch.isnan(loss):
                     print_acc("loss is nan")
                     loss = torch.zeros_like(loss).requires_grad_(True)
 
@@ -2182,9 +2187,18 @@ class SDTrainer(BaseSDTrainProcess):
                 # Let's make sure we don't update any embedding weights besides the newly added token
                 self.adapter.restore_embeddings()
 
-        loss_dict = OrderedDict(
-            {'loss': (total_loss / len(batch_list)).item()}
-        )
+        if self.train_config.loss_sync_every > 1:
+            # fork (speed): defer the device->host loss sync (see FORK_NOTES.md)
+            tracker = getattr(self, '_fork_loss_tracker', None)
+            if tracker is None:
+                tracker = self._fork_loss_tracker = DeferredLossTracker(self.train_config.loss_sync_every)
+            loss_dict = OrderedDict(
+                {'loss': tracker.push(total_loss / len(batch_list))}
+            )
+        else:
+            loss_dict = OrderedDict(
+                {'loss': (total_loss / len(batch_list)).item()}
+            )
 
         self.end_of_training_loop()
 

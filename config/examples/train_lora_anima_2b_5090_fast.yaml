@@ -1,0 +1,88 @@
+---
+# Anima 2B LoRA — 5090 FAST profile (speed-optimized, quality-identical math).
+#
+# Same author recipe as train_lora_anima_2b.yaml (rank 32, AdamW 2e-5, LLM
+# adapter frozen), with every verified speed lever applied:
+#   - gradient_checkpointing: false — a 2B model on a 32GB card doesn't need
+#     the ~30-40% recompute tax. If 1024 x batch 4 OOMs, drop batch_size to 2
+#     before re-enabling checkpointing.
+#   - cache_latents + cache_latents_to_disk — disk-only caching re-reads every
+#     latent from disk every step; both together = save once, serve from RAM.
+#   - cache_text_embeddings — also hard-unloads the text encoder from VRAM.
+#   - batch_size 4 / accumulation 1 — same effective batch as the author's
+#     1x4, one optimizer step per loop.
+#   - loss_sync_every 4 (fork key) — defer the per-step CUDA sync; loss
+#     display/logs update every 4 steps, training math unchanged.
+#   - ui_db_poll_seconds 2 (fork key) — only matters for UI-launched jobs.
+#   - samples/saves at 500 — sampling stalls the run hard; stretch further or
+#     set train.disable_sampling: true when benchmarking.
+job: extension
+config:
+  name: "my_anima_lora_fast_v1"
+  process:
+    - type: 'sd_trainer'
+      training_folder: "output"
+      device: cuda:0
+#      trigger_word: "p3r5on"
+      network:
+        type: "lora"
+        linear: 32
+        linear_alpha: 32
+        network_kwargs:
+          # mirror sd-scripts' Block-only targeting (see train_lora_anima_2b.yaml)
+          ignore_if_contains:
+            - "norm1.linear"
+            - "norm2.linear"
+            - "norm3.linear"
+            - "norm_out.linear"
+            - "patch_embed"
+            - "time_embed"
+            - "proj_out"
+      save:
+        dtype: float16
+        save_every: 500
+        max_step_saves_to_keep: 4
+      datasets:
+        - folder_path: "/path/to/images/folder"
+          caption_ext: "txt"
+          cache_latents: true
+          cache_latents_to_disk: true
+          resolution: [ 512, 768, 1024 ]
+      train:
+        batch_size: 4
+        cache_text_embeddings: true
+        steps: 2000
+        gradient_accumulation: 1
+        train_unet: true
+        train_text_encoder: false
+        gradient_checkpointing: false
+        loss_sync_every: 4
+        ui_db_poll_seconds: 2
+        noise_scheduler: "flowmatch"
+        timestep_type: "sigmoid"
+        optimizer: "adamw"
+        lr: 2e-5
+        dtype: bf16
+      model:
+        name_or_path: "circlestone-labs/Anima-Base-v1.0-Diffusers"
+        arch: "anima"
+        quantize: false
+        quantize_te: false
+      sample:
+        sampler: "flowmatch"
+        sample_every: 500
+        width: 1024
+        height: 1024
+        prompts:
+          - "woman with red hair, playing chess at the park, bomb going off in the background"
+          - "a woman holding a coffee cup, in a beanie, sitting at a cafe"
+          - "a bear building a log cabin in the snow covered mountains"
+          - "hipster man with a beard, building a chair, in a wood shop"
+        neg: ""
+        seed: 42
+        walk_seed: true
+        guidance_scale: 7.5
+        sample_steps: 30
+meta:
+  name: "[name]"
+  version: '1.0'

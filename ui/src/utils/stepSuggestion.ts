@@ -329,7 +329,8 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'A 50+-run community study (single-source, style-focused) found Flux-family training extremely LR-sensitive — ' +
       '"leave the learning rate alone" — with training dose (steps × batch × accum vs image count) the main lever, and ' +
       'weight decay mattering more than expected (their style runs preferred 1e-5 over the 1e-4 default). ' +
-      'Timestep guidance (LoRA Dataset Studio, itself extrapolated/not Klein-verified): sigmoid for characters, weighted for style.',
+      'Timestep guidance (LoRA Dataset Studio, itself extrapolated/not Klein-verified): sigmoid for characters, weighted for style. ' +
+      'STYLE-specific network (that same sweep + BFL\'s official Klein example): a linear+Conv2d LoRA at ratio 4:2:2:1 — LDS ships 128/64/64/32; the flux2_klein_style_lora.json preset folds that to a half-scale 64/32 linear + 32/16 conv (128 judged too heavy for a 4B). This ramp is linear-only; use the style preset for the conv recipe.',
   }),
   flux2_klein_9b: tier => ({
     settings: [
@@ -345,7 +346,8 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'A 50+-run community study (single-source, style-focused) found Flux-family training extremely LR-sensitive — ' +
       '"leave the learning rate alone" — with training dose (steps × batch × accum vs image count) the main lever, and ' +
       'weight decay mattering more than expected (their style runs preferred 1e-5 over the 1e-4 default). ' +
-      'Timestep guidance (LoRA Dataset Studio, itself extrapolated/not Klein-verified): sigmoid for characters, weighted for style.',
+      'Timestep guidance (LoRA Dataset Studio, itself extrapolated/not Klein-verified): sigmoid for characters, weighted for style. ' +
+      'STYLE-specific network (that same sweep + BFL\'s official Klein example): a linear+Conv2d LoRA at ratio 4:2:2:1 — LDS ships 128/64/64/32; the flux2_klein_style_lora.json preset folds that to a half-scale 64/32 linear + 32/16 conv (128 judged too heavy for a 4B). This ramp is linear-only; use the style preset for the conv recipe.',
   }),
   // Anima 2B (native upstream arch since ostris#860): unusually well-sourced — the numbers below are the model
   // author's own published recipe (Circlestone Labs finetuning tips + his diffusion-pipe

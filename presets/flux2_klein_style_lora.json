@@ -10,8 +10,10 @@
         "trigger_word": null,
         "network": {
           "type": "lora",
-          "linear": 32,
-          "linear_alpha": 32
+          "linear": 64,
+          "linear_alpha": 32,
+          "conv": 32,
+          "conv_alpha": 16
         },
         "save": {
           "dtype": "bf16",
@@ -70,6 +72,6 @@
   "meta": {
     "name": "[name]",
     "version": "1.0",
-    "description": "Style LoRA on FLUX.2 Klein 4B (gated on HF). UNVERIFIED: ported from LDS's built-in (rank 32 = community style step-up from the 16 default; weighted timesteps = Klein arch canonical). Content-only captions, no trigger. Steps: LDS computes 50/image clamped [1200,3000]. For the 9B: arch flux2_klein_9b + the -9B path."
+    "description": "Style LoRA on FLUX.2 Klein 4B (gated on HF). Network 64/32 linear + 32/16 Conv2d (ratio 4:2:2:1) — a HALF-scale fold of LDS's researched 128/64/64/32 style recipe (Calvin Herbst 64-run sweep + BFL's official Klein training example, both linear+Conv2d). 128 was judged too heavy for a 4B model; 64 keeps the sweep's Conv2d insight at saner dims. Alpha = rank/2 (same as LDS). Weighted timesteps = Klein arch canonical. Content-only captions, no trigger. Steps: LDS computes 50/image clamped [1200,3000]. For the 9B: arch flux2_klein_9b + the -9B path. If you want to reproduce LDS exactly, set linear 128 / alpha 64 / conv 64 / conv_alpha 32."
   }
 }

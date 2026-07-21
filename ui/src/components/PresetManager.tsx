@@ -16,6 +16,7 @@ interface PresetInfo {
   name: string;
   fileName: string;
   updatedAt: number;
+  builtIn?: boolean;
 }
 
 type Props = {
@@ -83,6 +84,31 @@ export default function PresetManager({ jobConfig, setJobConfig }: Props) {
       });
   };
 
+  // Overwrite an existing preset in place with the current form's config. The POST
+  // route writes by name, so this reuses the same save path as "Save as new" — the
+  // only difference is the target name is an existing preset, plus a confirmation.
+  // Built-in (shipped, provenance-tracked) presets get a stronger warning, but the
+  // write is never blocked — the user asked for it explicitly.
+  const overwritePreset = (preset: PresetInfo) => {
+    const warning = preset.builtIn
+      ? `'${preset.name}' is a BUILT-IN recipe shipped with the fork (tracked in git and the ` +
+        `preset-alignment doc). Overwrite it with your current form settings?\n\n` +
+        `Tip: to keep the original, use "Save current config as preset" below with a new name instead.`
+      : `Overwrite preset '${preset.name}' with your current form settings?`;
+    if (!confirm(warning)) return;
+    setError(null);
+    apiClient
+      .post('/api/presets', { name: preset.name, config: configToPreset(jobConfig) })
+      .then(res => {
+        setStatus(`Overwrote preset '${res.data.name}'.`);
+        refreshPresets();
+      })
+      .catch(err => {
+        console.error('Error overwriting preset:', err);
+        setError(`Failed to overwrite preset '${preset.name}'.`);
+      });
+  };
+
   const deletePreset = (name: string) => {
     if (!confirm(`Delete preset '${name}'?`)) return;
     apiClient
@@ -101,9 +127,10 @@ export default function PresetManager({ jobConfig, setJobConfig }: Props) {
       </Button>
       <Modal isOpen={isOpen} onClose={() => setIsOpen(false)} title="Training Presets" size="lg">
         <div className="text-sm text-gray-400 mb-3">
-          Loading a preset applies its training recipe but keeps the current job name and dataset selections. Preset
-          files live in the <span className="font-mono">presets</span> folder — drop in any ai-toolkit config
-          (JSON/YAML) to add it here.
+          Loading a preset applies its training recipe but keeps the current job name and dataset selections.
+          <span className="text-gray-300"> Overwrite</span> writes your current form settings back over a preset
+          (built-ins warn first). Preset files live in the <span className="font-mono">presets</span> folder — drop
+          in any ai-toolkit config (JSON/YAML) to add it here.
         </div>
 
         {error && <div className="text-sm text-red-400 mb-2">{error}</div>}
@@ -117,7 +144,14 @@ export default function PresetManager({ jobConfig, setJobConfig }: Props) {
               className="flex items-center justify-between py-2 px-2 rounded-md hover:bg-gray-800"
             >
               <div className="min-w-0">
-                <div className="text-sm text-gray-100 truncate">{preset.name}</div>
+                <div className="text-sm text-gray-100 truncate">
+                  {preset.name}
+                  {preset.builtIn && (
+                    <span className="ml-2 text-[10px] uppercase tracking-wide text-amber-400/80 border border-amber-400/40 rounded px-1 py-[1px]">
+                      built-in
+                    </span>
+                  )}
+                </div>
                 <div className="text-xs text-gray-500">{new Date(preset.updatedAt).toLocaleString()}</div>
               </div>
               <div className="flex-shrink-0 flex gap-2 ml-3">
@@ -126,6 +160,13 @@ export default function PresetManager({ jobConfig, setJobConfig }: Props) {
                   onClick={() => loadPreset(preset.name)}
                 >
                   Load
+                </Button>
+                <Button
+                  className="text-gray-200 bg-gray-700 hover:bg-amber-700 px-3 py-1 rounded-md text-xs"
+                  onClick={() => overwritePreset(preset)}
+                  title="Overwrite this preset with the current form settings"
+                >
+                  Overwrite
                 </Button>
                 <Button
                   className="text-gray-300 bg-gray-700 hover:bg-red-700 px-3 py-1 rounded-md text-xs"

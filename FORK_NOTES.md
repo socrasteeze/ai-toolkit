@@ -55,8 +55,9 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
 - `presets/anima_lora_performance.json`, `presets/anima_lora_background.json`
 - `presets/anima_lora_5090_fast.json` — the Phase 6 fast profile (see PLAN.md Phase 6 + the Speed optimization section below)
 - `ui/src/utils/stepSuggestion.ts` also carries the Anima recipe in `ARCH_RECIPES` (fork file, listed above)
-- `start.bat` — double-click launcher for the UI (`start.bat rebuild` after pulling upstream)
+- `start.bat` — double-click launcher for the UI (`start.bat rebuild` after pulling upstream). No longer auto-opens a browser tab on launch (2026-07-20) — `create_shortcut.bat` below is the intended entry point for click-to-open use
 - `stop.bat` — killswitch companion to `start.bat`: stops the UI (port 8675) + cron worker even when the launching terminal is gone/frozen, matched by command-line signature so it never touches unrelated node/python. Leaves detached training alone by default; `stop.bat all` also stops a running `run.py` training
+- `create_shortcut.bat` — one-time setup script that creates a desktop `.lnk` targeting `start.bat`, using the UI's favicon as its icon (instead of a bare `.bat` file on the desktop). Run once; the resulting shortcut is the day-to-day launcher (2026-07-20)
 - `presets/` — preset config files (drop-in JSON/YAML). 2026-07-19: seven LDS-ported presets added (zimage char/style/concept, flux2_klein char/style, krea2 concept, sdxl concept) + `flux_lora_24gb.json` v1.1 EMA fidelity fix; provenance table in `presets/README.md`, comparison in `docs/preset_alignment_2026_07.md` (fork-only)
 - `ui/src/server/presetsPath.ts`
 - `ui/src/server/datasetFiles.ts`

@@ -888,3 +888,13 @@ Verified: tsc clean, production rebuild clean. (The hint reads
 `train.optimizer_params` loosely-typed via a cast since min_lr/max_lr aren't in the
 JobConfig type — same as they reach the trainer, which passes optimizer_params through
 as an untyped dict.)
+
+## Launcher QoL: drop start.bat auto-open, add create_shortcut.bat (2026-07-20)
+
+`start.bat` used to auto-open a browser tab (`start "" "http://localhost:8675"`) on
+every launch, including every `npm run start` restart under `concurrently`'s
+auto-restart. That line is removed — a fresh tab on every crash-restart was noisy, not
+useful. In its place, `create_shortcut.bat` (fork-only, run once) builds a desktop
+`.lnk` that targets `start.bat` and uses the UI's own favicon as its icon, so the
+day-to-day launch path is "double-click the desktop shortcut" rather than a bare `.bat`
+file with no icon. `stop.bat` is unaffected. See `FORK_NOTES.md`'s fork-only file list.

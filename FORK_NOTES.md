@@ -14,6 +14,19 @@ git merge upstream/main
 git push origin main
 ```
 
+**`ui/package.json` / `ui/package-lock.json` are deliberately kept byte-identical to
+upstream** — the fork adds no npm dependencies (the QoL Python deps live in
+`scripts/requirements-qol.txt`). A local `npm install` can still rewrite the lockfile as a
+side effect (different npm versions write different optional-dep metadata, e.g. the `libc`
+arrays npm 11+ emits and npm 10 does not). On any merge, resolve both files by just taking
+upstream's:
+
+```bash
+git checkout upstream/main -- ui/package.json ui/package-lock.json
+```
+
+Then `npm ci` (not `npm install`) in `ui/` so the lockfile stays untouched.
+
 ## Upstream files modified (the entire merge surface)
 
 | File | Change | Notes for conflict resolution |

@@ -36,6 +36,24 @@ decisions in §9).
    the code change — don't let them drift, they're the handoff mechanism for the next
    session/agent.
 
+## Upstream syncs
+
+Standing instructions for `/sync-upstream` (or any "pull in upstream" request):
+
+1. **The `upstream` remote is not committed** and does not survive a fresh clone, so a new
+   session/container will find only `origin`. Add it first:
+   `git remote add upstream https://github.com/ostris/ai-toolkit.git`
+2. **Push the result straight to `main`** — no PR, no review branch. Standing permission
+   from the user (2026-07-25); it applies to upstream syncs specifically, not to feature
+   work. Syncs have always been fast-forwards of `main`; if one ever wouldn't be, stop and
+   ask rather than force-pushing.
+3. Follow `FORK_NOTES.md`'s sync procedure for the merge itself, then verify the fork's
+   insertion points survived (grep for the mounts listed in its file table) and that
+   `git diff upstream/main --stat` still shows only the expected files.
+4. Validate before pushing: `npm ci` + `npx tsc --noEmit` + `npx next build` in `ui/`, and
+   `python3 -m py_compile` on any touched Python. Note in the report what the build can't
+   cover (runtime-only paths like the cron worker, and anything needing a GPU).
+
 ## Current state of the training advisor (`ui/src/utils/stepSuggestion.ts`)
 
 This is the most actively-evolving part of the fork, so it's worth a specific note here on

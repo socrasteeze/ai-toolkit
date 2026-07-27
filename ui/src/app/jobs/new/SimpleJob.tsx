@@ -35,6 +35,7 @@ import StepSuggestion from '@/components/StepSuggestion'; // fork addition, see 
 // fork addition, see FORK_NOTES.md
 import DatasetFolderPickerModal, { openDatasetFolderPicker } from '@/components/DatasetFolderPickerModal';
 import OptimizerHint from '@/components/OptimizerHint'; // fork addition, see FORK_NOTES.md
+import useHelpMode from '@/hooks/useHelpMode'; // fork addition, see FORK_NOTES.md
 import { IoFlaskSharp } from 'react-icons/io5';
 import { isMac } from '@/helpers/basic';
 
@@ -65,6 +66,10 @@ export default function SimpleJob({
   datasetOptions,
   isLoading,
 }: Props) {
+  // fork addition, see FORK_NOTES.md — Help toggle reveals docs on fields without always-on help
+  const helpMode = useHelpMode();
+  const h = (key: string) => (helpMode ? key : null);
+
   const modelArch = useMemo(() => {
     return modelArchs.find(a => a.name === jobConfig.config.process[0].model.arch) as ModelArch;
   }, [jobConfig.config.process[0].model.arch]);
@@ -281,6 +286,7 @@ export default function SimpleJob({
           <Card title="Model">
             <SelectInput
               label="Model Architecture"
+              docKey={h('model.arch')}
               value={jobConfig.config.process[0].model.arch}
               onChange={value => {
                 handleModelArchChange(jobConfig.config.process[0].model.arch, value, jobConfig, setJobConfig);
@@ -385,6 +391,7 @@ export default function SimpleJob({
               <FormGroup label="Options">
                 <Checkbox
                   label="Low VRAM"
+                  docKey={h('model.low_vram')}
                   checked={jobConfig.config.process[0].model.low_vram}
                   onChange={value => setJobConfig(value, 'config.process[0].model.low_vram')}
                 />
@@ -422,6 +429,7 @@ export default function SimpleJob({
                   <div className="pt-2">
                     <SliderInput
                       label="Transformer Offload %"
+                      docKey={h('model.layer_offloading_transformer_percent')}
                       value={Math.round(
                         (jobConfig.config.process[0].model.layer_offloading_transformer_percent ?? 1) * 100,
                       )}
@@ -434,6 +442,7 @@ export default function SimpleJob({
                     />
                     <SliderInput
                       label="Text Encoder Offload %"
+                      docKey={h('model.layer_offloading_text_encoder_percent')}
                       value={Math.round(
                         (jobConfig.config.process[0].model.layer_offloading_text_encoder_percent ?? 1) * 100,
                       )}
@@ -453,6 +462,7 @@ export default function SimpleJob({
             <Card title="Quantize / Compile">
               <SelectInput
                 label="Transformer"
+                docKey={h('model.quantize')}
                 value={jobConfig.config.process[0].model.quantize ? jobConfig.config.process[0].model.qtype : ''}
                 onChange={value => {
                   if (value === '') {
@@ -468,6 +478,7 @@ export default function SimpleJob({
               {!disableSections.includes('model.quantize_te') && (
                 <SelectInput
                   label="Text Encoder"
+                  docKey={h('model.quantize_te')}
                   value={
                     jobConfig.config.process[0].model.quantize_te ? jobConfig.config.process[0].model.qtype_te : ''
                   }
@@ -488,6 +499,7 @@ export default function SimpleJob({
               </FormGroup>
               <Checkbox
                 label="Compile Model"
+                docKey={h('model.compile')}
                 checked={jobConfig.config.process[0].model.compile || false}
                 onChange={value => {
                   setJobConfig(value, 'config.process[0].model.compile');
@@ -532,6 +544,7 @@ export default function SimpleJob({
           <Card title="Target">
             <SelectInput
               label="Target Type"
+              docKey={h('network.type')}
               value={jobConfig.config.process[0].network?.type ?? 'lora'}
               onChange={value => setJobConfig(value, 'config.process[0].network.type')}
               options={[
@@ -542,6 +555,7 @@ export default function SimpleJob({
             {jobConfig.config.process[0].network?.type == 'lokr' && (
               <SelectInput
                 label="LoKr Factor"
+                docKey={h('network.lokr_factor')}
                 value={`${jobConfig.config.process[0].network?.lokr_factor ?? -1}`}
                 onChange={value => setJobConfig(parseInt(value), 'config.process[0].network.lokr_factor')}
                 options={[
@@ -557,6 +571,7 @@ export default function SimpleJob({
               <>
                 <NumberInput
                   label="Linear Rank"
+                  docKey={h('network.linear')}
                   value={jobConfig.config.process[0].network.linear}
                   onChange={value => {
                     console.log('onChange', value);
@@ -571,6 +586,7 @@ export default function SimpleJob({
                 {disableSections.includes('network.conv') ? null : (
                   <NumberInput
                     label="Conv Rank"
+                    docKey={h('network.conv')}
                     value={jobConfig.config.process[0].network.conv}
                     onChange={value => {
                       console.log('onChange', value);
@@ -590,6 +606,7 @@ export default function SimpleJob({
               <TextInput
                 label="Target Class"
                 className=""
+                docKey={h('slider.target_class')}
                 value={jobConfig.config.process[0].slider?.target_class ?? ''}
                 onChange={value => setJobConfig(value, 'config.process[0].slider.target_class')}
                 placeholder="eg. person"
@@ -597,6 +614,7 @@ export default function SimpleJob({
               <TextInput
                 label="Positive Prompt"
                 className=""
+                docKey={h('slider.positive_prompt')}
                 value={jobConfig.config.process[0].slider?.positive_prompt ?? ''}
                 onChange={value => setJobConfig(value, 'config.process[0].slider.positive_prompt')}
                 placeholder="eg. person who is happy"
@@ -604,6 +622,7 @@ export default function SimpleJob({
               <TextInput
                 label="Negative Prompt"
                 className=""
+                docKey={h('slider.negative_prompt')}
                 value={jobConfig.config.process[0].slider?.negative_prompt ?? ''}
                 onChange={value => setJobConfig(value, 'config.process[0].slider.negative_prompt')}
                 placeholder="eg. person who is sad"
@@ -611,6 +630,7 @@ export default function SimpleJob({
               <TextInput
                 label="Anchor Class"
                 className=""
+                docKey={h('slider.anchor_class')}
                 value={jobConfig.config.process[0].slider?.anchor_class ?? ''}
                 onChange={value => setJobConfig(value, 'config.process[0].slider.anchor_class')}
                 placeholder=""
@@ -620,6 +640,7 @@ export default function SimpleJob({
           <Card title="Save">
             <SelectInput
               label="Data Type"
+              docKey={h('save.dtype')}
               value={jobConfig.config.process[0].save.dtype}
               onChange={value => setJobConfig(value, 'config.process[0].save.dtype')}
               options={[
@@ -630,6 +651,7 @@ export default function SimpleJob({
             />
             <NumberInput
               label="Save Every"
+              docKey={h('save.save_every')}
               value={jobConfig.config.process[0].save.save_every}
               onChange={value => setJobConfig(value, 'config.process[0].save.save_every')}
               placeholder="eg. 250"
@@ -638,6 +660,7 @@ export default function SimpleJob({
             />
             <NumberInput
               label="Max Step Saves to Keep"
+              docKey={h('save.max_step_saves_to_keep')}
               value={jobConfig.config.process[0].save.max_step_saves_to_keep}
               onChange={value => setJobConfig(value, 'config.process[0].save.max_step_saves_to_keep')}
               placeholder="eg. 4"
@@ -652,6 +675,7 @@ export default function SimpleJob({
               <div>
                 <NumberInput
                   label="Batch Size"
+                  docKey={h('train.batch_size')}
                   value={jobConfig.config.process[0].train.batch_size}
                   onChange={value => setJobConfig(value, 'config.process[0].train.batch_size')}
                   placeholder="eg. 4"
@@ -661,6 +685,7 @@ export default function SimpleJob({
                 <NumberInput
                   label="Gradient Accumulation"
                   className="pt-2"
+                  docKey={h('train.gradient_accumulation')}
                   value={jobConfig.config.process[0].train.gradient_accumulation}
                   onChange={value => setJobConfig(value, 'config.process[0].train.gradient_accumulation')}
                   placeholder="eg. 1"
@@ -670,6 +695,7 @@ export default function SimpleJob({
                 <NumberInput
                   label="Steps"
                   className="pt-2"
+                  docKey={h('train.steps')}
                   value={jobConfig.config.process[0].train.steps}
                   onChange={value => setJobConfig(value, 'config.process[0].train.steps')}
                   placeholder="eg. 2000"
@@ -680,6 +706,7 @@ export default function SimpleJob({
               <div>
                 <SelectInput
                   label="Optimizer"
+                  docKey={h('train.optimizer')}
                   value={jobConfig.config.process[0].train.optimizer}
                   onChange={value => setJobConfig(value, 'config.process[0].train.optimizer')}
                   options={[
@@ -699,6 +726,7 @@ export default function SimpleJob({
                 <NumberInput
                   label="Learning Rate"
                   className="pt-2"
+                  docKey={h('train.lr')}
                   value={jobConfig.config.process[0].train.lr}
                   onChange={value => setJobConfig(value, 'config.process[0].train.lr')}
                   placeholder="eg. 0.0001"
@@ -708,6 +736,7 @@ export default function SimpleJob({
                 <NumberInput
                   label="Weight Decay"
                   className="pt-2"
+                  docKey={h('train.optimizer_params.weight_decay')}
                   value={jobConfig.config.process[0].train.optimizer_params.weight_decay}
                   onChange={value => setJobConfig(value, 'config.process[0].train.optimizer_params.weight_decay')}
                   placeholder="eg. 0.0001"
@@ -719,6 +748,7 @@ export default function SimpleJob({
                 {disableSections.includes('train.timestep_type') ? null : (
                   <SelectInput
                     label="Timestep Type"
+                    docKey={h('train.timestep_type')}
                     value={jobConfig.config.process[0].train.timestep_type}
                     disabled={disableSections.includes('train.timestep_type') || false}
                     onChange={value => setJobConfig(value, 'config.process[0].train.timestep_type')}
@@ -733,6 +763,7 @@ export default function SimpleJob({
                 <SelectInput
                   label="Timestep Bias"
                   className="pt-2"
+                  docKey={h('train.content_or_style')}
                   value={jobConfig.config.process[0].train.content_or_style}
                   onChange={value => setJobConfig(value, 'config.process[0].train.content_or_style')}
                   options={[
@@ -744,6 +775,7 @@ export default function SimpleJob({
                 <SelectInput
                   label="Loss Type"
                   className="pt-2"
+                  docKey={h('train.loss_type')}
                   value={jobConfig.config.process[0].train.loss_type}
                   onChange={value => setJobConfig(value, 'config.process[0].train.loss_type')}
                   options={[
@@ -770,6 +802,7 @@ export default function SimpleJob({
                   <Checkbox
                     label="Use EMA"
                     className="pt-1"
+                    docKey={h('train.ema_config.use_ema')}
                     checked={jobConfig.config.process[0].train.ema_config?.use_ema || false}
                     onChange={value => setJobConfig(value, 'config.process[0].train.ema_config.use_ema')}
                   />
@@ -778,6 +811,7 @@ export default function SimpleJob({
                   <NumberInput
                     label="EMA Decay"
                     className="pt-2"
+                    docKey={h('train.ema_config.ema_decay')}
                     value={jobConfig.config.process[0].train.ema_config?.ema_decay as number}
                     onChange={value => setJobConfig(value, 'config.process[0].train.ema_config.ema_decay')}
                     placeholder="eg. 0.99"
@@ -839,6 +873,7 @@ export default function SimpleJob({
                         <NumberInput
                           label="DOP Loss Multiplier"
                           className="pt-2"
+                          docKey={h('train.diff_output_preservation_multiplier')}
                           value={jobConfig.config.process[0].train.diff_output_preservation_multiplier as number}
                           onChange={value =>
                             setJobConfig(value, 'config.process[0].train.diff_output_preservation_multiplier')
@@ -849,6 +884,7 @@ export default function SimpleJob({
                         <TextInput
                           label="DOP Preservation Class"
                           className="pt-2 pb-4"
+                          docKey={h('train.diff_output_preservation_class')}
                           value={jobConfig.config.process[0].train.diff_output_preservation_class as string}
                           onChange={value =>
                             setJobConfig(value, 'config.process[0].train.diff_output_preservation_class')
@@ -879,6 +915,7 @@ export default function SimpleJob({
                         <NumberInput
                           label="BPP Loss Multiplier"
                           className="pt-2"
+                          docKey={h('train.blank_prompt_preservation_multiplier')}
                           value={
                             (jobConfig.config.process[0].train.blank_prompt_preservation_multiplier as number) || 1.0
                           }
@@ -932,6 +969,7 @@ export default function SimpleJob({
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <NumberInput
                     label="Validate Every"
+                    docKey={h('train.validation_config.validate_every_n_steps')}
                     value={validationConfig.validate_every_n_steps}
                     onChange={value =>
                       setJobConfig(value, 'config.process[0].train.validation_config.validate_every_n_steps')
@@ -942,6 +980,7 @@ export default function SimpleJob({
                   />
                   <NumberInput
                     label="Validation Resolution"
+                    docKey={h('train.validation_config.resolution')}
                     value={validationConfig.resolution}
                     onChange={value => setJobConfig(value, 'config.process[0].train.validation_config.resolution')}
                     placeholder="eg. 512"
@@ -950,6 +989,7 @@ export default function SimpleJob({
                   />
                   <SelectInput
                     label="Validation Sigmas"
+                    docKey={h('train.validation_config.validation_sigmas')}
                     value={(validationConfig.validation_sigmas ?? [1.0, 0.75, 0.5, 0.25]).join(', ')}
                     onChange={value =>
                       setJobConfig(
@@ -985,6 +1025,7 @@ export default function SimpleJob({
                         <div className="flex-1">
                           <TextInput
                             label="Prompt"
+                            docKey={h('train.validation_config.validation_items.prompt')}
                             value={item.prompt}
                             onChange={value =>
                               setJobConfig(
@@ -1057,6 +1098,7 @@ export default function SimpleJob({
                     <NumberInput
                       label="Differential Guidance Scale"
                       className="pt-2"
+                      docKey={h('train.differential_guidance_scale')}
                       value={(jobConfig.config.process[0].train.differential_guidance_scale as number) || 3.0}
                       onChange={value => setJobConfig(value, 'config.process[0].train.differential_guidance_scale')}
                       placeholder="eg. 3.0"
@@ -1106,6 +1148,7 @@ export default function SimpleJob({
                     <div>
                       <SelectInput
                         label="Target Dataset"
+                        docKey={h('datasets.folder_path')}
                         value={dataset.folder_path}
                         onChange={value => setJobConfig(value, `config.process[0].datasets[${i}].folder_path`)}
                         options={datasetOptions}
@@ -1203,6 +1246,7 @@ export default function SimpleJob({
                       )}
                       <NumberInput
                         label="LoRA Weight"
+                        docKey={h('datasets.network_weight')}
                         value={dataset.network_weight}
                         className="pt-2"
                         onChange={value => setJobConfig(value, `config.process[0].datasets[${i}].network_weight`)}
@@ -1220,6 +1264,7 @@ export default function SimpleJob({
                     <div>
                       <TextInput
                         label="Default Caption"
+                        docKey={h('datasets.default_caption')}
                         value={dataset.default_caption}
                         onChange={value => setJobConfig(value, `config.process[0].datasets[${i}].default_caption`)}
                         placeholder="eg. A photo of a cat"
@@ -1227,6 +1272,7 @@ export default function SimpleJob({
                       <NumberInput
                         label="Caption Dropout Rate"
                         className="pt-2"
+                        docKey={h('datasets.caption_dropout_rate')}
                         value={dataset.caption_dropout_rate}
                         onChange={value => setJobConfig(value, `config.process[0].datasets[${i}].caption_dropout_rate`)}
                         placeholder="eg. 0.05"
@@ -1236,6 +1282,7 @@ export default function SimpleJob({
                       <CreatableSelectInput
                         label="Caption Extension"
                         className="pt-2"
+                        docKey={h('datasets.caption_ext')}
                         value={dataset.caption_ext || 'txt'}
                         onChange={value => setJobConfig(value, `config.process[0].datasets[${i}].caption_ext`)}
                         options={[
@@ -1262,6 +1309,7 @@ export default function SimpleJob({
                       <FormGroup label="Settings" className="">
                         <Checkbox
                           label="Cache Latents"
+                          docKey={h('datasets.cache_latents_to_disk')}
                           checked={dataset.cache_latents_to_disk || false}
                           onChange={value =>
                             setJobConfig(value, `config.process[0].datasets[${i}].cache_latents_to_disk`)
@@ -1269,6 +1317,7 @@ export default function SimpleJob({
                         />
                         <Checkbox
                           label="Is Regularization"
+                          docKey={h('datasets.is_reg')}
                           checked={dataset.is_reg || false}
                           onChange={value => setJobConfig(value, `config.process[0].datasets[${i}].is_reg`)}
                         />
@@ -1356,7 +1405,7 @@ export default function SimpleJob({
                     </div>
                     {!isAudioModel && (
                       <div>
-                        <FormGroup label="Resolutions" className="pt-2">
+                        <FormGroup label="Resolutions" className="pt-2" docKey={h('datasets.resolution')}>
                           <div className="grid grid-cols-2 gap-2">
                             {[
                               [256, 512, 768, 1024],
@@ -1407,6 +1456,7 @@ export default function SimpleJob({
               <div>
                 <NumberInput
                   label="Sample Every"
+                  docKey={h('sample.sample_every')}
                   value={jobConfig.config.process[0].sample.sample_every}
                   onChange={value => setJobConfig(value, 'config.process[0].sample.sample_every')}
                   placeholder="eg. 250"
@@ -1415,6 +1465,7 @@ export default function SimpleJob({
                 />
                 <NumberInput
                   label="Sample Start Step"
+                  docKey={h('sample.sample_start_step')}
                   value={jobConfig.config.process[0].sample.sample_start_step ?? 0}
                   onChange={value => setJobConfig(value, 'config.process[0].sample.sample_start_step')}
                   placeholder="eg. 0"
@@ -1425,6 +1476,7 @@ export default function SimpleJob({
                 <SelectInput
                   label="Sampler"
                   className="pt-2"
+                  docKey={h('sample.sampler')}
                   value={jobConfig.config.process[0].sample.sampler}
                   onChange={value => setJobConfig(value, 'config.process[0].sample.sampler')}
                   options={[
@@ -1434,6 +1486,7 @@ export default function SimpleJob({
                 />
                 <NumberInput
                   label="Guidance Scale"
+                  docKey={h('sample.guidance_scale')}
                   value={jobConfig.config.process[0].sample.guidance_scale}
                   onChange={value => setJobConfig(value, 'config.process[0].sample.guidance_scale')}
                   placeholder="eg. 1.0"
@@ -1443,6 +1496,7 @@ export default function SimpleJob({
                 />
                 <NumberInput
                   label="Sample Steps"
+                  docKey={h('sample.sample_steps')}
                   value={jobConfig.config.process[0].sample.sample_steps}
                   onChange={value => setJobConfig(value, 'config.process[0].sample.sample_steps')}
                   placeholder="eg. 1"
@@ -1456,6 +1510,7 @@ export default function SimpleJob({
                 <div>
                   <NumberInput
                     label="Width"
+                    docKey={h('sample.width')}
                     value={jobConfig.config.process[0].sample.width}
                     onChange={value => setJobConfig(value, 'config.process[0].sample.width')}
                     placeholder="eg. 1024"
@@ -1464,6 +1519,7 @@ export default function SimpleJob({
                   />
                   <NumberInput
                     label="Height"
+                    docKey={h('sample.height')}
                     value={jobConfig.config.process[0].sample.height}
                     onChange={value => setJobConfig(value, 'config.process[0].sample.height')}
                     placeholder="eg. 1024"
@@ -1475,6 +1531,7 @@ export default function SimpleJob({
                     <div>
                       <NumberInput
                         label="Num Frames"
+                        docKey={h('sample.num_frames')}
                         value={jobConfig.config.process[0].sample.num_frames}
                         onChange={value => setJobConfig(value, 'config.process[0].sample.num_frames')}
                         placeholder="eg. 0"
@@ -1484,6 +1541,7 @@ export default function SimpleJob({
                       />
                       <NumberInput
                         label="FPS"
+                        docKey={h('sample.fps')}
                         value={jobConfig.config.process[0].sample.fps}
                         onChange={value => setJobConfig(value, 'config.process[0].sample.fps')}
                         placeholder="eg. 0"
@@ -1499,6 +1557,7 @@ export default function SimpleJob({
               <div>
                 <NumberInput
                   label="Seed"
+                  docKey={h('sample.seed')}
                   value={jobConfig.config.process[0].sample.seed}
                   onChange={value => setJobConfig(value, 'config.process[0].sample.seed')}
                   placeholder="eg. 0"
@@ -1508,6 +1567,7 @@ export default function SimpleJob({
                 <Checkbox
                   label="Walk Seed"
                   className="pt-4 pl-2"
+                  docKey={h('sample.walk_seed')}
                   checked={jobConfig.config.process[0].sample.walk_seed}
                   onChange={value => setJobConfig(value, 'config.process[0].sample.walk_seed')}
                 />
@@ -1518,6 +1578,7 @@ export default function SimpleJob({
                     <Checkbox
                       label="Skip First Sample"
                       className="pt-4"
+                      docKey={h('train.skip_first_sample')}
                       checked={jobConfig.config.process[0].train.skip_first_sample || false}
                       onChange={value => {
                         setJobConfig(value, 'config.process[0].train.skip_first_sample');
@@ -1547,6 +1608,7 @@ export default function SimpleJob({
                     <Checkbox
                       label="Disable Sampling"
                       className="pt-1"
+                      docKey={h('train.disable_sampling')}
                       checked={jobConfig.config.process[0].train.disable_sampling || false}
                       onChange={value => {
                         setJobConfig(value, 'config.process[0].train.disable_sampling');
@@ -1656,6 +1718,7 @@ export default function SimpleJob({
                             {modelArch?.hasMultiLinePrompts ? (
                               <TextAreaInput
                                 label={`Prompt`}
+                                docKey={h('sample.samples.prompt')}
                                 value={sample.prompt}
                                 onChange={value => setJobConfig(value, `config.process[0].sample.samples[${i}].prompt`)}
                                 placeholder="Enter prompt"
@@ -1664,6 +1727,7 @@ export default function SimpleJob({
                             ) : (
                               <TextInput
                                 label={`Prompt`}
+                                docKey={h('sample.samples.prompt')}
                                 value={sample.prompt}
                                 onChange={value => setJobConfig(value, `config.process[0].sample.samples[${i}].prompt`)}
                                 placeholder="Enter prompt"
@@ -1702,6 +1766,7 @@ export default function SimpleJob({
                           {!isAudioModel && (
                             <TextInput
                               label={`Width`}
+                              docKey={h('sample.samples.width')}
                               value={sample.width ? `${sample.width}` : ''}
                               onChange={value => {
                                 // remove any non-numeric characters
@@ -1731,6 +1796,7 @@ export default function SimpleJob({
                           {!isAudioModel && (
                             <TextInput
                               label={`Height`}
+                              docKey={h('sample.samples.height')}
                               value={sample.height ? `${sample.height}` : ''}
                               onChange={value => {
                                 // remove any non-numeric characters
@@ -1759,6 +1825,7 @@ export default function SimpleJob({
                           )}
                           <TextInput
                             label={`Seed`}
+                            docKey={h('sample.samples.seed')}
                             value={sample.seed ? `${sample.seed}` : ''}
                             onChange={value => {
                               // remove any non-numeric characters
@@ -1786,6 +1853,7 @@ export default function SimpleJob({
                           />
                           <TextInput
                             label={`LoRA Scale`}
+                            docKey={h('sample.samples.network_multiplier')}
                             value={sample.network_multiplier ? `${sample.network_multiplier}` : ''}
                             onChange={value => {
                               // remove any non-numeric, - or . characters

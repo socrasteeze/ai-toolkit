@@ -929,3 +929,30 @@ blocked — the user asked for it explicitly. Built-in detection is a server-sid
 (`BUILTIN_PRESET_NAMES`/`isBuiltinPreset` in `presetsPath.ts`) surfaced as a `builtIn` flag
 on the GET route; a user-saved preset is anything not in that set. No new upstream
 touchpoints — all changes are in fork-only files. Verified: `tsc --noEmit` clean.
+
+## Help mode toggle on New Training Job (2026-07-27)
+
+Many SimpleJob fields never had CircleHelp docs — only ~25 upstream `docKey`s resolve in
+`ui/src/docs.tsx`. Rather than always showing dozens of new icons (or dumping copy into
+upstream `docs.tsx`), the fork adds a TopBar **Help** toggle:
+
+- Off (default): only fields with existing always-on help keep their `?` icons.
+- On: every other wired SimpleJob field gets a `?` that opens the existing DocModal
+  (click → modal, same as Training Name / Unload TE — not hover tooltips).
+
+Implementation:
+
+- `ui/src/hooks/useHelpMode.ts` — session `createGlobalState` toggle.
+- `ui/src/components/HelpModeButton.tsx` — TopBar button (mounted in `page.tsx` next to
+  Presets).
+- `ui/src/forkDocs.tsx` — fork-only `ConfigDoc` registry with source-backed copy for
+  model/quantize/target/save/training/dataset/sample/validation/slider fields, plus
+  always-on fixes for the dead upstream keys `assistant_lora_path` /
+  `unconditional_lora_path`.
+- `ui/src/docs.tsx` — tiny `getDoc` fallthrough to `forkDocs` (only new upstream
+  touchpoint besides the page/SimpleJob mounts).
+- `SimpleJob.tsx` — `const h = (key) => (helpMode ? key : null)` and
+  `docKey={h('…')}` on fields that lacked help.
+
+Fork hygiene: help *content* stays in fork-only `forkDocs.tsx`; upstream merge surface
+for docs is the three-line `getDoc` merge only. See `FORK_NOTES.md`.

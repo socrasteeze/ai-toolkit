@@ -21,6 +21,7 @@ import AdvancedConfigEditor from '@/components/AdvancedConfigEditor';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { apiClient } from '@/utils/api';
 import PresetManager from '@/components/PresetManager'; // fork addition, see FORK_NOTES.md
+import HelpModeButton from '@/components/HelpModeButton'; // fork addition, see FORK_NOTES.md
 
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -256,6 +257,10 @@ export default function TrainingForm() {
         {/* fork addition, see FORK_NOTES.md */}
         <div className="hidden md:block pr-2 flex-shrink-0">
           <PresetManager jobConfig={jobConfig} setJobConfig={setJobConfig} />
+        </div>
+        {/* fork addition, see FORK_NOTES.md */}
+        <div className="pr-1 sm:pr-2 flex-shrink-0">
+          <HelpModeButton />
         </div>
         <div className="pr-1 sm:pr-2 flex-shrink-0">
           <Button

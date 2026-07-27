@@ -1,6 +1,8 @@
 import React from 'react';
 import { ConfigDoc } from '@/types';
 import { IoFlaskSharp } from 'react-icons/io5';
+// fork: Help-mode docs registry. See FORK_NOTES.md.
+import forkDocs from '@/forkDocs';
 
 const docs: { [key: string]: ConfigDoc } = {
   'config.name': {
@@ -356,6 +358,9 @@ const docs: { [key: string]: ConfigDoc } = {
 export const getDoc = (key: string | null | undefined): ConfigDoc | null => {
   if (key && key in docs) {
     return docs[key];
+  }
+  if (key && key in forkDocs) {
+    return forkDocs[key];
   }
   return null;
 };

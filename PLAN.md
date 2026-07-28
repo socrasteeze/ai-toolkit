@@ -957,6 +957,45 @@ Implementation:
 Fork hygiene: help *content* stays in fork-only `forkDocs.tsx`; upstream merge surface
 for docs is the three-line `getDoc` merge only. See `FORK_NOTES.md`.
 
+## Fix: loading almost any preset crashed the form (2026-07-28)
+
+**Symptom (user report):** loading a preset replaced the whole form with a red
+"Advanced job detected. Please switch to advanced view to continue." That message is
+misleading — it is not a detection of anything. It is the `fallback` of the
+`ErrorBoundary` wrapping `<SimpleJob>` in `jobs/new/page.tsx`, so it renders whenever
+SimpleJob *throws* for any reason.
+
+**Root cause:** `TypeError: Cannot read properties of undefined (reading 'weight_decay')`
+at `SimpleJob.tsx:740`, which dereferences `train.optimizer_params.weight_decay`
+unguarded. `applyPreset()` (fork-only `ui/src/utils/presets.ts`) is supposed to fill gaps
+from `defaultJobConfig` — its own docstring promises "missing fields are filled from the
+defaults so the simple form never hits undefined values," and PLAN.md Feature A says
+"partial configs are fine." It didn't. `deepMerge` replaces arrays wholesale (correct for
+datasets/sample prompts — they're recipes, not lists to union), but `config.process` is
+*itself* an array, so the preset's one-element `process` array replaced the default's
+entirely, discarding every default inside `process[0]`. Datasets were re-merged against
+`defaultDatasetConfig` afterwards; `process[0]` never was.
+
+**Blast radius: 20 of the 21 shipped presets.** Only `krea2_lora_16gb` set
+`optimizer_params` explicitly, so it was the single preset that loaded. Reproduced live on
+the untouched built-in `anima_lora_background`, so this long predates the laptop tier —
+the laptop presets just happened to be what the user loaded first.
+
+**Fix:** re-merge `process[0]` against `defaultJobConfig`'s `process[0]` right after the
+top-level merge, mirroring how datasets are already handled. Fixes every missing optional
+key at once rather than only the one field that happened to crash. Deliberately NOT fixed
+by guarding the read in `SimpleJob.tsx` — that's an upstream file (new merge surface), the
+crash is generic rather than specific to that field, and the real defect is in the fork's
+own merge.
+
+**Verified:** merge logic exercised against seven real preset files (the four laptop ones
+plus anima/sdxl/flux/krea2/zimage/klein built-ins) — all now resolve `weight_decay` from
+defaults while the preset's own lr/batch/optimizer/steps still win over the default, i.e.
+merge direction is correct. `tsc --noEmit` clean in `src/`, production build clean.
+Note that `next start` caches its build manifest at startup, so the running server keeps
+serving the old chunk until it is restarted (`stop.bat` then `start.bat`) — a rebuild
+alone is not enough to see this fix.
+
 ## 16 GB laptop tier (2026-07-28)
 
 The fork gained a second machine: an RTX 5080 Laptop (16 GB VRAM, ~15.9 GB usable),

@@ -957,6 +957,43 @@ Implementation:
 Fork hygiene: help *content* stays in fork-only `forkDocs.tsx`; upstream merge surface
 for docs is the three-line `getDoc` merge only. See `FORK_NOTES.md`.
 
+## Fix: modal backdrop blur tanked scroll performance (2026-07-28)
+
+**Symptom (user report):** stutter and frame drops scrolling the preset list.
+
+**Measured, in the operator's Chrome** (the in-app browser pane can't be used for this —
+when it isn't displayed the page doesn't composite, so `requestAnimationFrame` never fires
+and long-task/frame timings are unavailable):
+
+| | frames in 12s | effective fps | median frame |
+|---|---|---|---|
+| `backdrop-blur-sm` ON | 169 | ~14 | 89.9 ms |
+| blur OFF | 712 | ~59 | 16.6 ms |
+
+**Cause:** `Modal.tsx`'s backdrop is `fixed inset-0` with `backdrop-blur-sm`. A
+full-viewport backdrop-filter must be recomposited every frame while anything above it
+scrolls, over the whole New Job page (the app's heaviest route). Cost is ~73 ms/frame —
+entirely GPU compositing, with a `longtask` PerformanceObserver recording **zero**
+main-thread blocking throughout. Fixed by deleting the class; `bg-opacity-75` still dims
+the page so the modal is visually unchanged.
+
+**Two dead ends worth recording, both methodology errors:**
+
+1. The first blur A/B drove scrolling by assigning `scrollTop` each frame and reported *no
+   difference* (4.2 ms both ways, zero dropped frames). Programmatic scrolling does not
+   exercise the same paint path as real input — it produced a false negative that
+   temporarily cleared the actual culprit. **Any scroll-performance test here must use real
+   wheel/trackpad input.**
+2. The `Jobs:` console flood from `useJobsList` (a `console.log` on every poll, plus
+   `setJobs` on a fresh array every 5 s via `ActiveJobWidget`, guaranteeing a re-render even
+   when the list is unchanged) looked like a strong suspect and is not: long tasks stayed at
+   zero across it. Still a real if harmless inefficiency in upstream code, and the polls
+   arrive in **pairs ~3 ms apart** even though `ActiveJobWidget` is mounted once
+   (`Sidebar.tsx:81`), so something drives that hook twice per cycle. Not investigated.
+
+Note the operator's laptop panel runs at ~217 Hz (4.6 ms budget), which is what made this
+so visible; dropping to 60 Hz was the diagnostic that produced the clean A/B above.
+
 ## Fix: loading almost any preset crashed the form (2026-07-28)
 
 **Symptom (user report):** loading a preset replaced the whole form with a red

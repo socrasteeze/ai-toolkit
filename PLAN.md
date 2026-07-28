@@ -704,6 +704,23 @@ selected subfolder's), rather than what the trainer will actually walk.
   rebuild may need a hard refresh to pick up new JS chunk hashes, but the server itself
   needed no restart.
 
+  **CORRECTION (2026-07-28): the last two sentences above are wrong, and believing them
+  broke the user's running UI.** Testing only top-level route HTML (`/` and `/jobs/new`
+  returning 200) does not exercise the failure. A running `next start` is pinned to the
+  build it launched with: it keeps serving HTML that references the OLD hashed chunk
+  filenames, which `next build` has already deleted, and it returns **404 for the NEW
+  chunk files even though they exist on disk**. The result is `ChunkLoadError: Loading
+  chunk NNNN failed` the moment the user navigates to any route that lazy-loads a chunk
+  (hit live on `/queue`). A browser hard refresh does NOT fix it, because the server
+  itself is the stale side.
+
+  **Rule: after any `next build` against a running production server, the server must be
+  restarted (`stop.bat`, then relaunch).** Verify with
+  `curl -s -o /dev/null -w '%{http_code}' http://localhost:8675/_next/static/chunks/<a-chunk-currently-on-disk>.js`
+  — a 404 for a file that exists on disk means the process is still pinned to the old
+  build. Tell the user to restart in the same message as the rebuild, not at the end of
+  the session.
+
 ## Advisor: full-width suggestion layout + Automagic v3 research (2026-07-19)
 
 **Layout (user report):** the step-suggestion panel — and especially its expanded

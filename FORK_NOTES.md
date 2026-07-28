@@ -14,6 +14,16 @@ git merge upstream/main
 git push origin main
 ```
 
+> **NEVER open a pull request as part of a sync, and never open one against
+> `ostris/ai-toolkit`.** A sync ends at `git push origin main` — that is the whole
+> delivery step. This fork's changes are personal (presets, `.bat` launchers, the
+> advisor, the QoL scripts) and are never proposed upstream; a previous agent opened
+> an upstream PR and put the user's personal config in front of the upstream
+> maintainer. The mechanism to watch for: GitHub **defaults a PR's base to the parent
+> repo** when a branch is pushed from a fork, so an unqualified "open a PR" targets
+> `ostris/ai-toolkit`, not `socrasteeze/ai-toolkit`. `gh` and the API behave the same
+> way. Don't create one.
+
 **`ui/package.json` / `ui/package-lock.json` are deliberately kept byte-identical to
 upstream** — the fork adds no npm dependencies (the QoL Python deps live in
 `scripts/requirements-qol.txt`). A local `npm install` can still rewrite the lockfile as a

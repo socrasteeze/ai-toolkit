@@ -43,10 +43,22 @@ Standing instructions for `/sync-upstream` (or any "pull in upstream" request):
 1. **The `upstream` remote is not committed** and does not survive a fresh clone, so a new
    session/container will find only `origin`. Add it first:
    `git remote add upstream https://github.com/ostris/ai-toolkit.git`
-2. **Push the result straight to `main`** — no PR, no review branch. Standing permission
-   from the user (2026-07-25); it applies to upstream syncs specifically, not to feature
-   work. Syncs have always been fast-forwards of `main`; if one ever wouldn't be, stop and
-   ask rather than force-pushing.
+2. **NEVER open a pull request for a sync — push straight to `main`.** No PR, no review
+   branch, no exceptions. Standing permission from the user (2026-07-25); it applies to
+   upstream syncs specifically, not to feature work. Syncs have always been fast-forwards
+   of `main`; if one ever wouldn't be, stop and ask rather than force-pushing.
+
+   **And never open a PR against `ostris/ai-toolkit` (upstream) for any reason.** This
+   fork's changes are personal — presets, `.bat` launchers, the advisor, the QoL scripts —
+   and are not offered upstream. A previous agent did this and it publicly proposed the
+   user's personal config to the upstream maintainer. Do not repeat it.
+
+   The trap is that GitHub **defaults a PR's base to the parent repo** when you push a
+   branch from a fork, so "just open a PR" silently targets `ostris/ai-toolkit` rather than
+   `socrasteeze/ai-toolkit`. `gh`/API calls have the same default. Since syncs never need a
+   PR at all, the safe rule is simply: don't create one. If the user ever explicitly asks
+   for a PR on fork work, set the base to `socrasteeze/ai-toolkit` and confirm the target
+   with them before creating it.
 3. Follow `FORK_NOTES.md`'s sync procedure for the merge itself, then verify the fork's
    insertion points survived (grep for the mounts listed in its file table) and that
    `git diff upstream/main --stat` still shows only the expected files.

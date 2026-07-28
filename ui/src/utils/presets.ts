@@ -50,6 +50,18 @@ export const applyPreset = (preset: any, currentConfig: JobConfig, trainingFolde
   }
 
   const merged = deepMerge(objectCopy(defaultJobConfig), preset) as any;
+
+  // `config.process` is an ARRAY, so the array rule above replaced it wholesale — which
+  // also threw away every default inside process[0]. That silently broke this function's
+  // contract ("missing fields are filled from the defaults so the simple form never hits
+  // undefined values"): any preset omitting an optional key left the form reading
+  // undefined, and SimpleJob dereferences several of those unguarded
+  // (train.optimizer_params.weight_decay is the one that crashed — the ErrorBoundary in
+  // jobs/new/page.tsx then renders a misleading "Advanced job detected" message). Re-merge
+  // the process object against the default the same way datasets are handled below.
+  const defaultProcess = (defaultJobConfig as any).config.process[0];
+  merged.config.process[0] = deepMerge(objectCopy(defaultProcess), merged.config.process[0]);
+
   const process = merged.config.process[0];
 
   // fill missing per-dataset fields from the default dataset config

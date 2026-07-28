@@ -1,0 +1,81 @@
+{
+  "job": "extension",
+  "config": {
+    "name": "preset",
+    "process": [
+      {
+        "type": "diffusion_trainer",
+        "training_folder": "output",
+        "device": "cuda",
+        "trigger_word": null,
+        "network": {
+          "type": "lora",
+          "linear": 16,
+          "linear_alpha": 16
+        },
+        "save": {
+          "dtype": "bf16",
+          "save_every": 250,
+          "max_step_saves_to_keep": 4,
+          "save_format": "safetensors",
+          "push_to_hub": false
+        },
+        "datasets": [
+          {
+            "folder_path": "/path/to/images/folder",
+            "caption_ext": "txt",
+            "caption_dropout_rate": 0.05,
+            "resolution": [
+              512,
+              768
+            ],
+            "num_repeats": 1,
+            "cache_latents": true,
+            "cache_latents_to_disk": true
+          }
+        ],
+        "train": {
+          "batch_size": 1,
+          "steps": 2500,
+          "gradient_accumulation": 1,
+          "train_unet": true,
+          "train_text_encoder": false,
+          "gradient_checkpointing": true,
+          "noise_scheduler": "flowmatch",
+          "optimizer": "adamw8bit",
+          "timestep_type": "sigmoid",
+          "content_or_style": "balanced",
+          "lr": 0.0001,
+          "dtype": "bf16",
+          "ui_db_poll_seconds": 2,
+          "ema_config": {
+            "use_ema": true,
+            "ema_decay": 0.99
+          }
+        },
+        "model": {
+          "name_or_path": "black-forest-labs/FLUX.1-dev",
+          "arch": "flux",
+          "quantize": true,
+          "qtype": "qfloat8",
+          "quantize_te": true,
+          "qtype_te": "qfloat8",
+          "low_vram": true
+        },
+        "sample": {
+          "sampler": "flowmatch",
+          "sample_every": 250,
+          "width": 768,
+          "height": 768,
+          "guidance_scale": 4,
+          "sample_steps": 25
+        }
+      }
+    ]
+  },
+  "meta": {
+    "name": "[name]",
+    "version": "1.0",
+    "description": "FLUX.1-dev LoRA for a 16GB laptop GPU. This is the highest-risk preset in the folder for this card: flux_lora_24gb, which this is derived from, is named for a 24GB card and FLUX.1-dev is a 12B-parameter model - fp8 quantization alone does not bring it under 16GB with comfortable margin. Recipe values are UNCHANGED from flux_lora_24gb (Ostris' canonical train_lora_flux_24gb.yaml: rank 16/16, sigmoid timesteps, adamw8bit, LR 1e-4, EMA 0.99); only memory/IO settings differ. Deltas: (1) low_vram true - the 24gb preset leaves this unset, which is the single most important gap for a 16GB card; it parks idle components on CPU, which is cheap in memory terms with a large system-RAM pool. (2) Training resolution [512, 768] instead of [512, 768, 1024] - the 1024 bucket is the most likely OOM trigger here. Re-add 1024 if a run proves it fits; this is a memory tradeoff with a real quality cost, not a free win. (3) cache_latents true alongside cache_latents_to_disk, so latents are served from RAM instead of re-read and deep-copied from disk every step (native Windows runs the dataloader at num_workers 0, so disk reads are serialized with GPU compute). (4) Preview sampling at 768 instead of 1024. (5) ui_db_poll_seconds 2 throttles the UI's per-step sqlite polling; the only cost is up to 2s of latency on the stop/save-now buttons. NOT verified on 16GB hardware - no FLUX run has been made on this machine. If it OOMs anyway, the next levers are layer_offloading true with layer_offloading_transformer_percent around 0.35 (see krea2_lora_16gb for that pattern), then dropping to resolution [512]. Note that enabling layer_offloading silently rewrites qtype qfloat8 to float8 (toolkit/config_modules.py:721)."
+  }
+}

@@ -82,6 +82,7 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
 - `config/examples/train_lora_anima_2b_5090_fast.yaml` — speed-optimized variant (Phase 6): checkpointing off, RAM-served latents, fork speed keys
 - `presets/anima_lora_performance.json`, `presets/anima_lora_background.json`
 - `presets/anima_lora_5090_fast.json` — the Phase 6 fast profile (see PLAN.md Phase 6 + the Speed optimization section below)
+- `presets/*_laptop16gb.json` — the 16 GB laptop tier (2026-07-28): `anima_lora_laptop16gb`, `flux_lora_laptop16gb`, `sdxl_character_lora_laptop16gb`, `illustriousxl_character_lora_laptop16gb`. Memory/IO profiles only — every recipe value is inherited unchanged from the parent preset (see PLAN.md "16 GB laptop tier")
 - `ui/src/utils/stepSuggestion.ts` also carries the Anima recipe in `ARCH_RECIPES` (fork file, listed above)
 - `start.bat` — double-click launcher for the UI (`start.bat rebuild` after pulling upstream). No longer auto-opens a browser tab on launch (2026-07-20) — `create_shortcut.bat` below is the intended entry point for click-to-open use
 - `stop.bat` — killswitch companion to `start.bat`: stops the UI (port 8675) + cron worker even when the launching terminal is gone/frozen, matched by command-line signature so it never touches unrelated node/python. Leaves detached training alone by default; `stop.bat all` also stops a running `run.py` training

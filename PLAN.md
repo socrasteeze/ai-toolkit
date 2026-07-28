@@ -956,3 +956,49 @@ Implementation:
 
 Fork hygiene: help *content* stays in fork-only `forkDocs.tsx`; upstream merge surface
 for docs is the three-line `getDoc` merge only. See `FORK_NOTES.md`.
+
+## 16 GB laptop tier (2026-07-28)
+
+The fork gained a second machine: an RTX 5080 Laptop (16 GB VRAM, ~15.9 GB usable),
+Core Ultra 9 275HX, 96 GB system RAM, native Windows. Every hardware-tuned number in
+this repo up to now was calibrated for the 32 GB desktop 5090 — `docs/profiles.md`
+says so explicitly ("batch size sized to use most of the 32 GB"). On half the VRAM the
+`performance`/`background` split collapses: `background` *is* the performance option,
+and there was no tier below it for any arch except Krea 2 (`krea2_lora_16gb`).
+
+Four new fork-only presets, all suffixed `_laptop16gb`: anima, flux, sdxl character,
+illustrious character. Chosen because these are the four archs where the existing
+presets leave a real gap on 16 GB — Krea 2 already has a purpose-built 16 GB profile,
+and the Z-Image / FLUX.2 Klein presets are already quantized + `low_vram` + batch 1, so
+a variant would differ only cosmetically. (Those two could still gain the RAM-latent-cache
+flag if a run ever shows it matters.)
+
+**These are profiles, not recipes.** Every rank/alpha/LR/optimizer/scheduler/steps value
+is inherited unchanged from the parent preset, so checkpoints remain interchangeable and
+none of the contested numbers from Phase 3 / the LDS alignment are touched. The full
+lever list and rationale live in `docs/profiles.md`'s new `laptop16gb` section; the short
+version is RAM-served latents (`cache_latents` *plus* `cache_latents_to_disk`),
+`low_vram: true`, 768 preview sampling on the flux-family models, and batch 1 + accum 4
+on SDXL/Illustrious.
+
+That last one is the notable finding of this pass: **the advisor will suggest a batch
+size that OOMs this card.** `ARCH_RECIPES` recommends batch 4 for vanilla SDXL
+(`stepSuggestion.ts:250`), SD 1.5 (`:266`) and Illustrious (`:386`), and batch 2 for Pony
+(`:401`) — all sized for the 5090, and the recipe table has no VRAM awareness whatsoever.
+Deliberately **not** fixed in code: making `ARCH_RECIPES` hardware-aware would mean the
+advisor knowing the local GPU (a new API surface + a new class of wrong answer on a
+machine it guesses badly for), and the honest fix at preset level costs nothing. The
+laptop presets encode the safe batch, and their `meta.description` plus `docs/profiles.md`
+warn against the batch Apply button specifically, while noting the rank/alpha/LR/scheduler
+buttons stay safe. Revisit if a third machine makes this a recurring footgun.
+
+**Status: unmeasured.** Authored and validated statically only — no training run has been
+made on the 16 GB machine, so no VRAM figure in `docs/profiles.md`'s new section is a
+measurement on this hardware (the 14.1 GB peak it reasons from is the 5090 gate-C number).
+FLUX.1-dev is flagged as the highest-risk of the four: 12B params, and `flux_lora_24gb` is
+named for a 24 GB card. Each preset documents its own OOM fallback order.
+
+Also fixed in the same pass: the four new names were added to `BUILTIN_PRESET_NAMES`
+(`ui/src/server/presetsPath.ts`) so the Presets dialog's Overwrite button flags them as
+provenance-tracked, per the 2026-07-21 note that the allowlist must stay in sync with what
+ships in `presets/`. No new upstream touchpoints — every changed file is fork-only.

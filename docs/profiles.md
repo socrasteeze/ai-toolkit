@@ -18,7 +18,7 @@ the run.
 ## `background` (default for Anima/SDXL)
 
 Deliberately leaves headroom for concurrent desktop use: batch 1 with gradient
-accumulation 4 (same effective batch as `performance`), latent + text-embed
+accumulation 2 (same effective batch as `performance`), latent + text-embed
 caching on, `low_vram` so idle components park on CPU. Expect roughly 2–3× the
 wall-clock of `performance`.
 
@@ -30,6 +30,8 @@ other preset if you need the machine back (or a faster finish).
 
 Live 120-step run of `presets/anima_lora_background.json` settings
 (res [512, 768, 1024] buckets, batch 1 + accum 4, caching on, low_vram,
+*measured before the 2026-07-29 effective-batch reduction — the preset now ships
+accum 2, which only lowers these figures*,
 1024×1024/30-step preview sampling) on the 5090, sampled every 2 s via
 nvidia-smi (total GPU memory, including the ~2.6 GB desktop baseline):
 
@@ -67,12 +69,16 @@ interchangeable with the desktop profiles. The four levers:
    sample generation (14.1 GB), not the training loop (9.9–10.7 GB). Sampling is the
    binding constraint on 16 GB. SDXL-family presets keep 1024 sampling: it is their
    native resolution and cheap relative to the flux-family models.
-4. **Batch discipline on SDXL/Illustrious** — batch 1 + `gradient_accumulation: 4`
-   instead of batch 4, trading wall-clock for VRAM at the same effective batch. This
-   exists because the in-app advisor recommends **batch 4** for vanilla SDXL/SD1.5/
-   Illustrious and **batch 2** for Pony (`ui/src/utils/stepSuggestion.ts`), sized for
-   the 5090 — `ARCH_RECIPES` has no VRAM awareness at all. Its rank/alpha/LR/scheduler
-   buttons are hardware-independent and safe; its batch button is not, on this machine.
+4. **Batch discipline on SDXL/Illustrious** — batch 1 + `gradient_accumulation: 2`,
+   trading wall-clock for VRAM. As of 2026-07-29 the advisor also recommends **batch 2**
+   for vanilla SDXL/SD1.5/Illustrious/Pony (`ui/src/utils/stepSuggestion.ts`), so preset
+   and advisor now agree on effective batch; the advisor still has no VRAM awareness at
+   all, so on this machine reach that effective batch through accumulation rather than
+   batch size. Its rank/alpha/LR/scheduler buttons are hardware-independent and safe.
+   The drop from effective batch 4 to 2 was an overfitting fix, not a VRAM one — see
+   PLAN.md's 2026-07-29 entry: the step suggestion divides by effective batch, and at 4
+   the quotient falls under the arch step floor on small/medium datasets and is clamped
+   back up, inflating real per-image exposure 2–3× past target.
 
 **Status: NOT MEASURED.** No run has been made on the 16 GB machine — every number
 above is either a 32 GB measurement or an inference from config values. The gate-C

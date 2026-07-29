@@ -83,10 +83,21 @@ export const suggestSteps = (input: StepSuggestionInput): StepSuggestionResult |
   const high = roundTo50(clamp(raw * 1.3));
   const epochsEquivalent = Math.round(((suggested * effectiveBatch) / itemCount) * 10) / 10;
 
+  // Fork note: when raw falls under minSteps the floor raises the suggestion, which silently
+  // multiplies real per-image exposure (steps × effective batch ÷ items) above the arch target —
+  // the higher the effective batch, the worse it gets. That used to be invisible in the
+  // explanation, so a floor-bound suggestion could read as authoritative while actually landing
+  // in the exposure gauge's fry band. Say so instead, and point at the lever that fixes it.
+  const flooredUp = raw < heuristic.minSteps;
   const explanation =
     `${itemCount} files × ${heuristic.stepsPerItem} steps/file ÷ effective batch ${effectiveBatch}` +
     ` = ${Math.round(raw)}, clamped to ${heuristic.minSteps}–${heuristic.maxSteps} for ${arch || 'this model'}.` +
-    ` Each file is seen ≈${epochsEquivalent}× at the suggested count.`;
+    ` Each file is seen ≈${epochsEquivalent}× at the suggested count.` +
+    (flooredUp
+      ? ` Note: the ${heuristic.minSteps}-step floor raised this above the computed ${Math.round(raw)}, so exposure` +
+        ` (≈${epochsEquivalent}×) runs above the ~${heuristic.stepsPerItem}× target for this arch — lower the effective` +
+        ` batch (batch size × gradient accumulation, currently ${effectiveBatch}) to bring the two back in line.`
+      : '');
 
   return { suggested, low, high, epochsEquivalent, explanation };
 };
@@ -247,11 +258,15 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       lrSetting(tier === 'small' ? 0.00008 : 0.0001),
       rankSetting(tier === 'small' ? 16 : tier === 'medium' ? 32 : 64),
       alphaSetting(tier === 'small' ? 16 : tier === 'medium' ? 32 : 32),
-      batchSetting(4),
+      batchSetting(2),
       schedulerSetting('cosine'),
     ],
     notes:
-      'Vanilla SDXL: adamw8bit, cosine scheduler, batch 4 at 1024. ' +
+      'Vanilla SDXL: adamw8bit, cosine scheduler, batch 2 at 1024. ' +
+      'Batch 2 rather than the batch 4 many guides quote: those assume large sets, and on a small one the step ' +
+      'suggestion below divides by effective batch, drops under the step floor, and gets clamped back up — which ' +
+      'silently doubles or triples exposure per image. Batch 2 keeps the suggestion honest; raise it only if the ' +
+      'gauge still reads cool. ' +
       (tier === 'small'
         ? 'Small dataset (<30 images): lower rank (16) and LR (8e-5) to curb overfitting.'
         : tier === 'large'
@@ -263,10 +278,13 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       lrSetting(0.0001),
       rankSetting(tier === 'small' ? 8 : 16),
       alphaSetting(tier === 'small' ? 8 : 16),
-      batchSetting(4),
+      batchSetting(2),
       schedulerSetting('cosine'),
     ],
-    notes: 'SD 1.5: adamw8bit, LR 1e-4, cosine, batch 4. Train at 512–768; 1024 buckets exceed what the base model does well.',
+    notes:
+      'SD 1.5: adamw8bit, LR 1e-4, cosine, batch 2. Train at 512–768; 1024 buckets exceed what the base model does well. ' +
+      'Batch 2 rather than the commonly-quoted 4 — on small datasets a high effective batch pushes the step suggestion ' +
+      'under its floor, where clamping inflates real exposure per image well past the target.',
   }),
   flux: tier => ({
     settings: [
@@ -362,12 +380,16 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       rankSetting(tier === 'small' ? 16 : 32),
       alphaSetting(tier === 'small' ? 16 : 32),
       batchSetting(1),
-      rec('grad accum 4', 'config.process[0].train.gradient_accumulation', 4),
+      rec('grad accum 2', 'config.process[0].train.gradient_accumulation', 2),
       schedulerSetting('constant'),
     ],
     notes:
-      'Anima 2B: plain adamw (author\'s config), LR 2e-5 at rank 32, batch 1 with grad accumulation 4 — this is the ' +
-      'model author\'s own recipe, the most authoritative of any arch here. Never train the LLM adapter (default off): ' +
+      'Anima 2B: plain adamw (author\'s config), LR 2e-5 at rank 32 — the model author\'s own recipe, the most ' +
+      'authoritative of any arch here. DELIBERATE FORK DEVIATION: the author pairs this with batch 1 + grad ' +
+      'accumulation 4 (effective batch 4); this fork suggests accumulation 2 instead, because at effective batch 4 ' +
+      'the step suggestion below drops under its floor on small sets and gets clamped up, inflating real exposure ' +
+      'per image 2-3x past target. Rank/alpha/LR/optimizer are untouched author values — set accumulation back to 4 ' +
+      'if you are reproducing the author\'s config exactly on a larger dataset. Never train the LLM adapter (default off): ' +
       'it shapes all text conditioning and degrades easily. Anima is a base model with no aesthetic tuning to overcome — ' +
       '"a light touch is all you need". Danbooru-style tag captions work well (anime-focused base).',
   }),
@@ -386,12 +408,14 @@ const illustriousOrPonyRecipe = (modelPath: string, tier: SizeTier): ArchRecipe 
         lrSetting(tier === 'small' ? 0.0002 : 0.0003),
         rankSetting(tier === 'small' ? 32 : 64),
         alphaSetting(tier === 'small' ? 16 : 32),
-        batchSetting(4),
+        batchSetting(2),
         schedulerSetting('constant'),
       ],
       notes:
         'Illustrious-XL detected from checkpoint name: adamw8bit + constant LR is the more-cited combo ' +
         '(one camp explicitly reports Prodigy working poorly on Illustrious; the other camp still prefers Prodigy+cosine — genuinely contested, adamw8bit+constant chosen as the safer default). ' +
+        'Batch 2, not the batch 4 the guides quote — at effective batch 4 the step suggestion below falls under ' +
+        'its floor on any small/medium set and gets clamped up, inflating real per-image exposure into fry range. ' +
         'Booru/danbooru-tag captions (WD14-tagger style), not natural language — Illustrious was trained on tagged data.',
     };
   }

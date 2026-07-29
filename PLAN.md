@@ -1167,3 +1167,62 @@ Also fixed in the same pass: the four new names were added to `BUILTIN_PRESET_NA
 (`ui/src/server/presetsPath.ts`) so the Presets dialog's Overwrite button flags them as
 provenance-tracked, per the 2026-07-21 note that the allowlist must stay in sync with what
 ships in `presets/`. No new upstream touchpoints — every changed file is fork-only.
+
+## Effective batch capped at 2 across all recipes and presets (2026-07-29)
+
+Operator report: the advisor's step suggestions "end up being highly inaccurate" and
+overfit on their datasets whenever batch or accumulation is 4. Traced it — the complaint
+is exactly right and the mechanism is an interaction the advisor never surfaced.
+
+**Root cause.** `suggestSteps()` computes `raw = itemCount × stepsPerItem ÷ effectiveBatch`,
+then `clamp(raw)` to the arch's `[minSteps, maxSteps]`. Dividing by effective batch is
+correct on its own, but for a small/medium dataset at effective batch 4 the quotient lands
+*under* `minSteps` and the floor raises it back up. Real exposure is
+`steps × effectiveBatch ÷ items`, so once the floor is doing the work, exposure scales
+with effective batch instead of being held constant by it — and nothing in the returned
+explanation said so. Measured against the arch targets (SDXL 100×/img, Anima 75×/img):
+
+| images | eff batch 4 | eff batch 2 |
+|---|---|---|
+| SDXL 20 | 1200 steps → 240×/img 💀 | 1200 steps → 120×/img ✅ |
+| SDXL 25 | 1200 steps → 192×/img 💀 | 1250 steps → 100×/img ✅ |
+| SDXL 30 | 1200 steps → 160×/img 🔥 | 1500 steps → 100×/img ✅ |
+| Anima 25 | 1000 steps → 160×/img 💀 | 1000 steps → 80×/img ✅ |
+| Anima 30 | 1000 steps → 133×/img 💀 | 1100 steps → 73×/img ✅ |
+
+The advisor was recommending step counts that its **own** `exposureGauge()` would have
+banded 💀 fry-risk. That is the "inaccuracy" — not the step number in isolation, but the
+suggestion and the gauge disagreeing because only one of them accounted for the floor.
+
+**Changes.** Every recipe and preset now caps effective batch at 2:
+- `stepSuggestion.ts`: `batchSetting(4)` → `2` for `sdxl`, `sd15`, and the Illustrious
+  branch of `illustriousOrPonyRecipe`; Anima's `rec('grad accum 4', …, 4)` → `2`. Pony was
+  already 2, and the flux/krea2/zimage/klein/anima batch-1 recipes were already ≤2.
+- Presets (6 of 21 were above the cap): `anima_lora_performance` and `anima_lora_5090_fast`
+  batch 4→2; `anima_lora_background`, `anima_lora_laptop16gb`,
+  `illustriousxl_character_lora_laptop16gb`, `sdxl_character_lora_laptop16gb` accumulation
+  4→2. `config/examples/train_lora_anima_2b_5090_fast.yaml` batch 4→2 with its header.
+- **Deliberate deviation from the Anima author's published recipe**, which specifies
+  effective batch 4 and is otherwise the highest-confidence source in this fork. Only the
+  batch changed; rank 32 / alpha 32 / AdamW / LR 2e-5 / frozen adapter are untouched author
+  values. Flagged in-place in the recipe notes and all three Anima preset descriptions with
+  instructions to set it back to 4 to reproduce the author's config on a large dataset —
+  the provenance is preserved, not overwritten.
+- **LRs deliberately not touched.** Linear-scaling convention would suggest lowering LR
+  alongside effective batch, but the fork's LR values are researched/contested per arch
+  (Flux family especially: "leave the learning rate alone"), and changing two axes at once
+  would destroy the ability to attribute a result to either. Halving effective batch with
+  a fixed LR is a mild, well-tolerated change at LoRA scale.
+- **Preset `steps` deliberately not touched.** Presets don't know dataset size, so their
+  step counts are generic placeholders; halving effective batch halves exposure at the same
+  step count, which is the direction the overfitting complaint asks for.
+
+**Also fixed: the floor is no longer silent.** `suggestSteps()`'s explanation now appends a
+note whenever `raw < minSteps`, stating that the floor raised the number, what the computed
+value was, that exposure is running above the arch target, and that lowering effective batch
+is the lever. This matters because the cap to 2 does not fully solve very small datasets —
+at ≤15 images the floor still dominates (SDXL 15 img @ eff 2 = 160×/img 🔥, Anima 15 @ 2 =
+133×/img 💀). Those cases now say so instead of presenting a fry-range number as authoritative.
+
+Verified: all 21 presets parse through `TrainConfig`; the fast yaml parses; `tsc --noEmit`
+and `next build` clean; re-audit confirms no preset or recipe exceeds effective batch 2.

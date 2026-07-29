@@ -116,7 +116,9 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
 - `ui/src/utils/stepSuggestion.ts` — step heuristics + exposure gauge + bucket analysis + arch recipes
   (dataset-size-tiered rank/LR/scheduler, Illustrious/Pony detected by checkpoint name since they
   share `arch: "sdxl"` with vanilla SDXL — see the researched-recipe writeup in conversation history
-  for source confidence per number; several values are flagged low-confidence/contested in the notes)
+  for source confidence per number; several values are flagged low-confidence/contested in the notes).
+  **Every recipe caps effective batch at 2** — see "Effective batch cap" below before raising any
+  `batchSetting()` or accumulation rec back to 4
 - `ui/src/utils/buckets.ts` — TS port of `toolkit/buckets.py::get_bucket_for_image_size`
 - `ui/src/components/OptimizerHint.tsx` — inline guidance under the Optimizer select,
   shown only for the Automagic family: v1/v2 get a "superseded by v3" note + one-click
@@ -171,7 +173,8 @@ authored in a GPU-less environment — **numbers are pending operator runs on th
 2. `no-checkpointing` — baseline + `gradient_checkpointing: false`
 3. `ram-latents` — #2 + `cache_latents: true`
 4. `loss-sync-4` — #3 + `loss_sync_every: 4`
-5. `fast-profile` — `config/examples/train_lora_anima_2b_5090_fast.yaml` (adds batch 4)
+5. `fast-profile` — `config/examples/train_lora_anima_2b_5090_fast.yaml` (adds batch 2;
+   was batch 4 when this protocol was written — see "Effective batch cap" below)
 6. OneTrainer, equivalent config, same dataset — the target line
 7. `ui_db_poll_seconds` — UI-launched A/B (CLI runs never touch the job DB)
 
@@ -208,7 +211,8 @@ Automagic preset against `toolkit/config_modules.py`'s guard before shipping it)
 Three pieces, all fork-only additions to existing fork/upstream files (no new files):
 1. **Hard guard** — `toolkit/config_modules.py`'s merge-surface row above.
 2. **UI mirror** — `OptimizerHint.tsx`'s fork-only-files entry above.
-3. **Docs** — every shipped preset using the batch-1 + `gradient_accumulation: 4` pattern
+3. **Docs** — every shipped preset using the batch-1 + accumulation pattern (accumulation was
+   4 at the time, lowered to 2 on 2026-07-29 — see "Effective batch cap" below)
    (`anima_lora_background.json`, `anima_lora_laptop16gb.json`,
    `illustriousxl_character_lora_laptop16gb.json`, `sdxl_character_lora_laptop16gb.json`
    — the last three added by the concurrent "16GB laptop preset tier" work, audited
@@ -217,6 +221,30 @@ Three pieces, all fork-only additions to existing fork/upstream files (no new fi
    only `ARCH_RECIPES` entry recommending an Automagic optimizer)
    gained the same caveat, since combining that note with the accumulation pattern is
    exactly the config the guard rejects.
+
+## Effective batch cap of 2 (2026-07-29)
+
+**Every arch recipe in `stepSuggestion.ts` and every preset in `presets/` caps
+`batch_size × gradient_accumulation` at 2.** Do not raise any of them back to 4 to match a
+community guide — the cap is a deliberate operator decision backed by their own runs, and
+the reason is structural, not taste:
+
+`suggestSteps()` divides by effective batch and then clamps to the arch's `minSteps` floor.
+At effective batch 4 that quotient falls under the floor for any small/medium dataset, the
+floor raises it back up, and real per-image exposure (`steps × effectiveBatch ÷ items`)
+inflates 2-3x past the arch target — so the advisor recommends a step count its own
+`exposureGauge()` would band as fry-risk. Full numbers in PLAN.md's 2026-07-29 entry.
+
+Consequences to preserve on any future edit:
+- The Anima recipe/presets deviate from the model author's published effective batch 4.
+  This is the one place the fork overrides its highest-confidence source. The deviation is
+  flagged in-place (recipe notes + all three Anima preset descriptions) with instructions
+  to restore 4 for author-exact reproduction — keep those flags if you touch the text.
+- LRs and preset `steps` were deliberately left alone; changing them alongside batch would
+  make results unattributable. Don't "finish the job" by scaling them.
+- `suggestSteps()`'s explanation string appends a floor-was-hit warning when
+  `raw < minSteps`. That is load-bearing for datasets under ~20 images, where the cap alone
+  isn't enough — don't drop it when editing the explanation.
 
 ## Duplication watch (re-check after each upstream merge)
 

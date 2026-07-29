@@ -19,9 +19,56 @@ export default function OptimizerHint({ jobConfig, setJobConfig }: Props) {
   const optimizer = (train.optimizer || '').toLowerCase();
   if (!optimizer.startsWith('automagic')) return null;
 
+  const params = (train.optimizer_params || {}) as { [key: string]: any };
+  // gradient_accumulation_steps is legacy (no UI field, config-import only) but still
+  // reachable via an imported config, so it's read defensively off the raw object.
+  const gradAccum = (train as any).gradient_accumulation;
+  const gradAccumSteps = (train as any).gradient_accumulation_steps;
+  const isAccumulating = gradAccum > 1 || gradAccumSteps > 1 || gradAccumSteps === -1;
+  const isFused = params.fused !== false;
+  const isV3 = optimizer === 'automagic3';
+
+  // fork addition (see FORK_NOTES.md): fused Automagic (all versions default to fused;
+  // v1/v2 have no unfused mode) steps once per micro-batch instead of once per
+  // accumulation cycle and bypasses the trainer's post-backward grad clipping/nan-skip.
+  // toolkit/config_modules.py hard-errors on this combination at config-parse time —
+  // this mirrors that guard here so the conflict is visible before Create Job.
+  const accumulationWarning = isAccumulating && isFused && (
+    <div className="rounded-md bg-red-950/60 border border-red-800 px-2 py-1.5 text-red-200 mb-1">
+      <div>
+        <span className="font-semibold">Incompatible with gradient accumulation:</span> fused Automagic steps every
+        micro-batch instead of once per accumulation cycle, and bypasses grad clipping / nan-skip. This config will
+        fail to start.
+      </div>
+      <div className="pt-1 flex flex-wrap gap-x-3 gap-y-1">
+        {isV3 && (
+          <button
+            type="button"
+            className="text-blue-400 hover:text-blue-300 underline"
+            onClick={() => setJobConfig(false, 'config.process[0].train.optimizer_params.fused')}
+          >
+            Un-fuse it
+          </button>
+        )}
+        <button
+          type="button"
+          className="text-blue-400 hover:text-blue-300 underline"
+          title="Reach the same effective batch size by raising Batch Size instead"
+          onClick={() => {
+            setJobConfig(1, 'config.process[0].train.gradient_accumulation');
+            setJobConfig(1, 'config.process[0].train.gradient_accumulation_steps');
+          }}
+        >
+          Reset accumulation to 1
+        </button>
+      </div>
+    </div>
+  );
+
   if (optimizer === 'automagic' || optimizer === 'automagic2') {
     return (
       <div className="text-xs text-gray-400 pt-1">
+        {accumulationWarning}
         {optimizer === 'automagic'
           ? 'Automagic v1 (legacy): self-adjusting per-tensor LR; forces LR to 1e-6 if set above 1e-3. Superseded by v3.'
           : 'Automagic v2: known runaway-LR behavior on long runs (static per-tensor LR, no equilibrium). Superseded by v3.'}{' '}
@@ -37,12 +84,12 @@ export default function OptimizerHint({ jobConfig, setJobConfig }: Props) {
   }
 
   // automagic3
-  const params = (train.optimizer_params || {}) as { [key: string]: any };
   const lr = train.lr;
   const boundsSet = params.min_lr !== undefined && params.max_lr !== undefined;
 
   return (
     <div className="text-xs text-gray-400 pt-1">
+      {accumulationWarning}
       <div>
         Automagic v3 self-adapts one LR per group — the LR above is a launch point, not a target (author default 1e-6),
         and no LR scheduler is needed. Weight decay is decoupled (optimizer default 0).

@@ -889,6 +889,62 @@ Verified: tsc clean, production rebuild clean. (The hint reads
 JobConfig type — same as they reach the trainer, which passes optimizer_params through
 as an untyped dict.)
 
+## Automagic + gradient accumulation: config-time guard (2026-07-29)
+
+Follow-up to the Automagic v3 research: the "incompatible with multi-backward grad
+accumulation" line in the automagic3 docstring (2026-07-19 research, above) was
+documented but never enforced. Traced the actual failure mechanism before adding a
+guard: with `fused=True` (default for all three Automagic versions; v1/v2 have no
+unfused mode at all), each parameter's `register_post_accumulate_grad_hook` fires and
+writes the weight update on *every* micro-batch backward
+(`jobs/process/BaseSDTrainProcess.py`'s `for b in range(gradient_accumulation)` loop
+→ `SDTrainer.train_single_accumulation`'s `accelerator.backward(loss)`), not once per
+accumulation cycle. `SDTrainer.hook_train_loop`'s `if not self.is_grad_accumulation_step`
+gate — which the trainer relies on to only step/clip once per cycle — never sees the
+Automagic case, since the hook already did the step during backward; `clip_grad_norm_`
+and the NaN-loss skip, both of which run after backward, are silently bypassed too. Net
+effect: N optimizer steps per intended step, each on a partial gradient, with grad
+clipping/nan-skip doing nothing — a silent wrong-training bug, not a crash, and nothing
+previously caught it.
+
+**Guard** (`toolkit/config_modules.py`, `TrainConfig.__init__`, directly after the
+existing `gradient_accumulation`/`gradient_accumulation_steps` mutual-exclusion check):
+raises `ValueError` when the optimizer is any `automagic*` AND accumulation is active
+(`gradient_accumulation > 1`, or the legacy `gradient_accumulation_steps > 1` or `== -1`
+for accumulate-a-whole-epoch) AND the optimizer is fused (`optimizer_params.fused` is
+not explicitly `False`). Message states the mechanism, that clipping/nan-skip are
+bypassed, and the remedy (v3: `optimizer_params.fused: false`, or accumulation back to
+1; v1/v2: no unfused mode exists, accumulation must be 1 — raising batch size is the
+preferred alternative to accumulation either way).
+
+**UI mirror** (`OptimizerHint.tsx`): the same three-condition check, computed from
+`jobConfig`, renders a red warning block above the existing per-version hint content (in
+both the v1/v2 and v3 branches) with one-click fixes — "Un-fuse it" (v3 only, sets
+`optimizer_params.fused = false`) and "Reset accumulation to 1" (all versions, zeroes
+both `gradient_accumulation` and the legacy `gradient_accumulation_steps`, the latter
+read/written defensively since it has no UI field of its own).
+
+**Preset audit** (re-derived directly, not from a stale prior summary — the real preset
+count is 17 JSON files, not the higher number an earlier draft of this task assumed;
+several named "…laptop16gb" presets referenced in that draft do not exist in this repo
+and were not fabricated to satisfy it): only `krea2_lora_16gb.json` uses an Automagic
+optimizer (`automagic3`, `gradient_accumulation: 1`, bounded `min_lr`/`max_lr`) — it does
+not trip the guard. Exactly one preset uses `gradient_accumulation > 1` at all —
+`anima_lora_background.json` (batch 1 + accum 4, optimizer `adamw`) — also on a
+non-Automagic optimizer, so it doesn't trip either, but its description now notes that
+swapping it to Automagic requires accumulation back to 1. **Net: zero shipped presets
+trip the guard; check any future Automagic preset against it before shipping.** The
+Krea2 recipe note in `stepSuggestion.ts` (2026-07-19 entry, above) that recommends
+Automagic v3 as an alternative optimizer for the 16GB config now also carries the
+accumulation caveat, since that note is the one place a user could combine both pieces
+of advice into a config the guard would reject.
+
+Verified: `py_compile` on `config_modules.py`; guard fires/doesn't fire per the four
+constructed-TrainConfig cases (fused automagic3 + accumulation → raises;
+`fused: false` + same accumulation → doesn't; `adamw8bit` + accumulation → doesn't;
+`gradient_accumulation_steps: -1` + fused automagic3 → raises); all 17 real presets and
+`config/examples/*.yaml` still parse; `tsc --noEmit` and `next build` clean.
+
 ## Launcher QoL: drop start.bat auto-open, add create_shortcut.bat (2026-07-20)
 
 `start.bat` used to auto-open a browser tab (`start "" "http://localhost:8675"`) on

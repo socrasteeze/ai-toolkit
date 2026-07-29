@@ -299,7 +299,10 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'Alternative: Automagic v3 (self-adapting per-group LR, no scheduler needed) — used by the community 16GB config this ' +
       'fork ships as a preset. Its LR is a launch point the controller adapts away from (author\'s doc); if you use it, bound ' +
       'the controller with optimizer_params min_lr/max_lr (e.g. 1e-6/1e-4) — the bounds were added upstream 2026-07-17 ' +
-      'specifically to prevent runaway edge cases. Low-confidence: the optimizer is ~6 weeks old with almost no arch-specific data. ' +
+      'specifically to prevent runaway edge cases. Automagic fuses its step into the backward pass by default, so it requires ' +
+      'gradient_accumulation (and the legacy gradient_accumulation_steps) at 1 — reach a larger effective batch by raising ' +
+      'batch size instead, or set optimizer_params.fused: false to accumulate normally (config_modules.py hard-errors on the ' +
+      'fused+accumulating combination). Low-confidence: the optimizer is ~6 weeks old with almost no arch-specific data. ' +
       'Timestep guidance (via LoRA Dataset Studio / RunComfy): linear timestep_type is the Krea-canonical choice.',
   }),
   zimage: tier => ({

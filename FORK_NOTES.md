@@ -48,7 +48,7 @@ Then `npm ci` (not `npm install`) in `ui/` so the lockfile stays untouched.
 | `ui/cron/actions/startJob.ts` | Rewrote `startAndWatchJob` from an async-executor `new Promise` to a plain `async function` with the whole body in one try/catch (`markJobError` helper), and made the fire-and-forget call site (`startJob()`) attach `.catch()`. Fixes a WORKER-process crash: any exception in the unprotected setup code (DB reads, `fs.mkdirSync`/`writeFileSync`) became an unhandled promise rejection that Node treats as fatal, and `concurrently`'s infinite auto-restart turned that into a crash-restart loop that looks like a frozen console — see PLAN.md "Fix: WORKER process crash on job-launch errors (2026-07-17)" | If upstream rewrites this function, re-apply the try/catch restructuring rather than reverting to an async-executor Promise |
 | `ui/cron/worker.ts` | +2 top-level `process.on('unhandledRejection'/'uncaughtException', ...)` handlers that log and keep the process alive, added right after the import | Re-add near the top of the file if upstream restructures it; this is a safety net for the same crash-loop class of bug, not a substitute for fixing the specific cause |
 | `.gitignore` | +2 fork entries appended at the end (`.claude`, `/anima_sample_training`) | Both sides tend to append to the tail, so this conflicts on most syncs. Always resolve by **keeping both lists** — the fork's entries and upstream's new ones — never by taking one side wholesale |
-| `toolkit/config_modules.py` | +1 commented block in `TrainConfig.__init__` directly after `cache_text_embeddings`, adding the fork speed keys (`loss_sync_every` default 1, `ui_db_poll_seconds` default 0.0 — both defaults = upstream behavior) | Re-add the block anywhere in `TrainConfig.__init__`; keys are read via `kwargs.get` so position is cosmetic |
+| `toolkit/config_modules.py` | Two independent insertions in `TrainConfig.__init__`. (1) +1 commented block directly after `cache_text_embeddings`, adding the fork speed keys (`loss_sync_every` default 1, `ui_db_poll_seconds` default 0.0 — both defaults = upstream behavior). (2) +1 guard block directly after the existing `gradient_accumulation`/`gradient_accumulation_steps` mutual-exclusion `raise`: `ValueError` when the optimizer is `automagic*`, accumulation is active (`gradient_accumulation > 1` or legacy `gradient_accumulation_steps > 1`/`-1`), and the optimizer is fused (`optimizer_params.fused` is not `False`) — see "Automagic + gradient accumulation guard" below | (1) Re-add anywhere in `__init__`; keys are read via `kwargs.get` so position is cosmetic. (2) Re-add directly after the mutual-exclusion `raise` — it depends on `self.optimizer`/`self.optimizer_params` already being assigned (they're set earlier in `__init__`, ~line 387) and on running before any accumulation value is consumed elsewhere |
 | `extensions_built_in/sd_trainer/SDTrainer.py` | Speed opt, all gated on `train.loss_sync_every > 1` (default 1 = byte-for-byte upstream behavior): +1 import (`toolkit.fork_speed`), the NaN-loss guard gains a gated `torch.nan_to_num` branch ahead of upstream's `torch.isnan` check, and the `loss_dict` build at the end of `hook_train_loop` gains a gated `DeferredLossTracker` branch ahead of upstream's per-step `.item()` | Three small insertions in two functions (`train_single_accumulation` NaN check, `hook_train_loop` loss_dict). If upstream restructures, re-apply: gate = `self.train_config.loss_sync_every > 1`; on the gated path replace `torch.isnan`-check with `torch.nan_to_num(loss)` and the `.item()` with `DeferredLossTracker.push()` (lazy-init via `getattr`, no `__init__` touch) |
 | `extensions_built_in/sd_trainer/DiffusionTrainer.py` | Speed opt, gated on `train.ui_db_poll_seconds > 0` (default 0 = upstream behavior): one insertion at the top of the `is_ui_trainer` branch of `end_step_hook`, rate-limiting the per-step sqlite work (upstream does 4 blocking SELECTs — stop/return-to-queue/save-now/sample-now, each on a fresh connection — plus the async step write, every step, on the training thread) | Re-apply as an early-`return` time gate (`time.time()` vs `_fork_last_db_poll`, lazy via `getattr`) before `update_step()`/`maybe_stop()`/`maybe_save()`/`maybe_sample()` in `end_step_hook` only — do NOT throttle the other `maybe_stop()` call sites (model load/sample/save), they are rare. UI stop/save/sample buttons take up to `ui_db_poll_seconds` to be noticed when enabled. Legacy `UITrainer.py` (uid `ui_trainer`) deliberately untouched |
 (The fork previously also modified `extensions_built_in/diffusion_models/__init__.py`,
@@ -121,7 +121,11 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
   switch; v3 explains that LR is a launch point (self-adapting, no scheduler) and offers
   a state-aware "Bound it" button that sets `optimizer_params.min_lr`/`max_lr` (which
   have no UI field anywhere else, like `lr_scheduler`). Guidance sourced from the
-  optimizer author's docstrings — see PLAN.md's Automagic v3 research entry
+  optimizer author's docstrings — see PLAN.md's Automagic v3 research entry. Also
+  renders a red warning (above the version-specific content, both branches) when the
+  selected optimizer is fused-and-accumulating — the same condition
+  `toolkit/config_modules.py`'s guard rejects — with one-click fixes ("Un-fuse it" /
+  "Reset accumulation to 1"); see "Automagic + gradient accumulation guard" below
 - `ui/src/components/PresetManager.tsx` — Presets dialog: load / save-as-new / delete,
   plus a per-row **Overwrite** button (writes the current form back over a preset; built-ins
   get a stronger confirm, never blocked). Built-in rows show a "built-in" tag from the GET
@@ -186,6 +190,28 @@ Anima recipe); legacy `UITrainer.py`. **Deferred (Phase 3 stretch, needs
 operator input):** fused backward + stochastic rounding for AdamW (automagic3
 already has a fused path built in), `torch.compile` (Windows/Triton viability
 question), dataloader prefetch rework.
+
+## Automagic + gradient accumulation guard (2026-07-29)
+
+All three Automagic optimizers default to fusing their step into the backward pass via
+`register_post_accumulate_grad_hook` (`toolkit/optimizers/automagic{,2,3}.py`; v1/v2
+have no unfused mode, v3's `fused` param defaults `True`). Fused + multi-backward
+gradient accumulation is a silent wrong-training bug, not a crash: the optimizer steps
+once per micro-batch instead of once per accumulation cycle, and the trainer's
+post-backward grad clipping / NaN-skip (`extensions_built_in/sd_trainer/SDTrainer.py`,
+`hook_train_loop`) never run on the intended cadence. See PLAN.md's 2026-07-29 entry for
+the full trace and the preset-audit result (zero shipped presets trip it — check any new
+Automagic preset against `toolkit/config_modules.py`'s guard before shipping it).
+
+Three pieces, all fork-only additions to existing fork/upstream files (no new files):
+1. **Hard guard** — `toolkit/config_modules.py`'s merge-surface row above.
+2. **UI mirror** — `OptimizerHint.tsx`'s fork-only-files entry above.
+3. **Docs** — `anima_lora_background.json`'s `meta.description` (the one shipped preset
+   using the batch-1 + `gradient_accumulation: 4` pattern) gained one sentence on why
+   swapping its optimizer to Automagic needs accumulation reset to 1; `stepSuggestion.ts`'s
+   Krea2 recipe notes (the only `ARCH_RECIPES` entry recommending an Automagic optimizer)
+   gained the same caveat, since combining that note with the accumulation pattern is
+   exactly the config the guard rejects.
 
 ## Duplication watch (re-check after each upstream merge)
 

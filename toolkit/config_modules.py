@@ -462,6 +462,45 @@ class TrainConfig:
             if self.gradient_accumulation_steps != 1:
                 raise ValueError("gradient_accumulation and gradient_accumulation_steps are mutually exclusive")
 
+        # fork (guard): the Automagic optimizer family fuses its step into the backward
+        # pass via register_post_accumulate_grad_hook (see the automagic3 class
+        # docstring, "fused" param) — with fused=True (the default for all three
+        # versions; v1/v2 have no unfused mode at all) each param updates on every
+        # micro-batch backward instead of once per accumulation cycle, silently
+        # bypasses this trainer's post-backward grad clipping and nan-skip, and never
+        # actually reaches a real accumulated gradient. Multi-backward accumulation
+        # (gradient_accumulation > 1, or gradient_accumulation_steps > 1 or -1, the
+        # accumulate-for-a-whole-epoch mode) combined with a fused Automagic optimizer
+        # is a silent wrong-training bug, not a crash, so it is caught here at
+        # config-parse time instead. See FORK_NOTES.md.
+        _is_automagic = isinstance(self.optimizer, str) and self.optimizer.lower().startswith('automagic')
+        if _is_automagic:
+            _is_accumulating = (
+                self.gradient_accumulation > 1
+                or self.gradient_accumulation_steps > 1
+                or self.gradient_accumulation_steps == -1
+            )
+            _is_fused = self.optimizer_params.get('fused', True) is not False
+            if _is_accumulating and _is_fused:
+                if self.optimizer.lower() == 'automagic3':
+                    remedy = (
+                        "set optimizer_params.fused to false to use a traditional "
+                        "(non-fused) step, or set gradient_accumulation (and "
+                        "gradient_accumulation_steps) back to 1"
+                    )
+                else:
+                    remedy = (
+                        f"'{self.optimizer}' has no unfused mode, so "
+                        "gradient_accumulation (and gradient_accumulation_steps) must be 1"
+                    )
+                raise ValueError(
+                    f"optimizer '{self.optimizer}' is incompatible with gradient accumulation "
+                    "while fused (the default): it steps once per micro-batch instead of once "
+                    "per accumulation cycle, and bypasses this trainer's post-backward grad "
+                    f"clipping and nan-skip. Remedy: {remedy}. Prefer raising batch size over "
+                    "accumulation to reach the same effective batch size."
+                )
+
         # short long captions will double your batch size. This only works when a dataset is
         # prepared with a json caption file that has both short and long captions in it. It will
         # Double up every image and run it through with both short and long captions. The idea

@@ -1,0 +1,73 @@
+{
+  "job": "extension",
+  "config": {
+    "name": "preset",
+    "process": [
+      {
+        "type": "diffusion_trainer",
+        "training_folder": "output",
+        "device": "cuda",
+        "trigger_word": null,
+        "network": {
+          "type": "lora",
+          "linear": 32,
+          "linear_alpha": 32,
+          "conv": 16,
+          "conv_alpha": 16
+        },
+        "save": {
+          "dtype": "bf16",
+          "save_every": 250,
+          "max_step_saves_to_keep": 4,
+          "save_format": "safetensors",
+          "push_to_hub": false
+        },
+        "datasets": [
+          {
+            "folder_path": "/path/to/images/folder",
+            "caption_ext": "txt",
+            "caption_dropout_rate": 0.05,
+            "resolution": [1024],
+            "num_repeats": 1,
+            "cache_latents": true,
+            "cache_latents_to_disk": true
+          }
+        ],
+        "train": {
+          "batch_size": 1,
+          "steps": 2500,
+          "gradient_accumulation": 4,
+          "train_unet": true,
+          "train_text_encoder": false,
+          "gradient_checkpointing": true,
+          "noise_scheduler": "ddpm",
+          "optimizer": "adamw8bit",
+          "content_or_style": "balanced",
+          "lr": 0.0001,
+          "dtype": "bf16",
+          "ui_db_poll_seconds": 2
+        },
+        "model": {
+          "name_or_path": "stabilityai/stable-diffusion-xl-base-1.0",
+          "arch": "sdxl",
+          "quantize": false,
+          "quantize_te": false,
+          "low_vram": true
+        },
+        "sample": {
+          "sampler": "ddpm",
+          "sample_every": 250,
+          "width": 1024,
+          "height": 1024,
+          "guidance_scale": 6,
+          "sample_steps": 25
+        }
+      }
+    ]
+  },
+  "meta": {
+    "name": "[name]",
+    "version": "1.0",
+    "description": "Character LoRA on base SDXL for a 16GB laptop GPU. Recipe values (rank 32/alpha 32 + conv 16/16, adamw8bit, LR 1e-4, 1024 training resolution) are UNCHANGED from sdxl_character_lora. The point of this variant is batch discipline: the in-app advisor recommends batch 4 for vanilla SDXL (ui/src/utils/stepSuggestion.ts), which is sized for a 32GB 5090 and has no VRAM awareness at all - do not click its batch Apply button on this machine. This preset keeps batch 1 and reaches the same effective batch of 4 via gradient_accumulation 4, which costs wall-clock instead of VRAM. The step suggestion divides by effective batch, so it stays correct either way. Other deltas vs sdxl_character_lora: low_vram true (parks idle components on CPU - cheap with a large system-RAM pool), cache_latents true alongside cache_latents_to_disk so latents are served from RAM rather than re-read and deep-copied from disk every step (native Windows runs the dataloader at num_workers 0, so disk reads are serialized with GPU compute), and ui_db_poll_seconds 2 to throttle the UI's per-step sqlite polling (cost: up to 2s of latency on the stop/save-now buttons). SDXL is left unquantized, matching the family default on both sides of the LDS/ATK preset alignment - a 2.6B unet in bf16 has room to spare here, so quantization is held in reserve as an OOM lever rather than spent up front. Preview sampling stays at 1024 (SDXL's native resolution, and cheap relative to the flux-family models). NOT measured on 16GB hardware. Point model.name_or_path at any SDXL-family checkpoint (RealVis, Juggernaut, etc.) to train on it instead."
+  }
+}

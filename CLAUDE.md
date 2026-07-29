@@ -24,10 +24,13 @@ decisions in §9).
 ## Fork hygiene rules (apply to any future change)
 
 1. New functionality goes in new files. Upstream files should only ever get small,
-   easy-to-reapply insertions (currently three files, all single JSX mounts:
-   `ui/src/app/jobs/new/page.tsx`, `ui/src/app/jobs/new/SimpleJob.tsx`, and
-   `ui/src/app/datasets/[datasetName]/page.tsx` — see `FORK_NOTES.md` for the exact
-   lines).
+   easy-to-reapply insertions. As of 2026-07-28 that is **11 files** — get the current
+   list with `git diff upstream/main --name-status | grep -v '^A'`, and the per-file
+   change + conflict-resolution notes from `FORK_NOTES.md`'s "Upstream files modified"
+   table (the authoritative record; this count goes stale, that table does not).
+   The three original JSX mounts (`ui/src/app/jobs/new/page.tsx`,
+   `ui/src/app/jobs/new/SimpleJob.tsx`, `ui/src/app/datasets/[datasetName]/page.tsx`)
+   are still the most conflict-prone.
 2. No Prisma schema changes for fork features — presets are files on disk (`presets/`), not
    DB rows.
 3. After any change, verify `git diff upstream/main --stat` still only shows the upstream

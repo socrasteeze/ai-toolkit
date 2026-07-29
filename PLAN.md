@@ -962,6 +962,22 @@ constructed-TrainConfig cases (fused automagic3 + accumulation → raises;
 `gradient_accumulation_steps: -1` + fused automagic3 → raises); all 17 real presets and
 `config/examples/*.yaml` still parse; `tsc --noEmit` and `next build` clean.
 
+**Follow-up, same day — preset audit re-run after a concurrent merge:** the "Add a 16GB
+laptop preset tier" commit landed while this work was in progress, adding
+`anima_lora_laptop16gb.json`, `flux_lora_laptop16gb.json`,
+`illustriousxl_character_lora_laptop16gb.json`, and `sdxl_character_lora_laptop16gb.json`
+(21 JSON presets total now). These are exactly three of the four "…laptop16gb" files an
+earlier draft of the Automagic task had predicted but which didn't exist at audit time
+above — re-running the audit against the merged set: still zero use an Automagic
+optimizer (all four are `adamw`/`adamw8bit`), but three of the four now join
+`anima_lora_background.json` in the batch-1 + `gradient_accumulation: 4` pattern
+(`anima_lora_laptop16gb`, `illustriousxl_character_lora_laptop16gb`,
+`sdxl_character_lora_laptop16gb` — `flux_lora_laptop16gb` uses accumulation 1, not
+affected). **Net finding unchanged: zero of the 21 shipped presets trip the guard.** All
+three gained the same one-sentence Automagic caveat already added to
+`anima_lora_background.json`'s description. Re-verified: all 21 presets parse through
+`TrainConfig`; `tsc --noEmit` and `next build` still clean.
+
 ## Launcher QoL: drop start.bat auto-open, add create_shortcut.bat (2026-07-20)
 
 `start.bat` used to auto-open a browser tab (`start "" "http://localhost:8675"`) on

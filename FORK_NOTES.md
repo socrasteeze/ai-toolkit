@@ -208,10 +208,13 @@ Automagic preset against `toolkit/config_modules.py`'s guard before shipping it)
 Three pieces, all fork-only additions to existing fork/upstream files (no new files):
 1. **Hard guard** — `toolkit/config_modules.py`'s merge-surface row above.
 2. **UI mirror** — `OptimizerHint.tsx`'s fork-only-files entry above.
-3. **Docs** — `anima_lora_background.json`'s `meta.description` (the one shipped preset
-   using the batch-1 + `gradient_accumulation: 4` pattern) gained one sentence on why
-   swapping its optimizer to Automagic needs accumulation reset to 1; `stepSuggestion.ts`'s
-   Krea2 recipe notes (the only `ARCH_RECIPES` entry recommending an Automagic optimizer)
+3. **Docs** — every shipped preset using the batch-1 + `gradient_accumulation: 4` pattern
+   (`anima_lora_background.json`, `anima_lora_laptop16gb.json`,
+   `illustriousxl_character_lora_laptop16gb.json`, `sdxl_character_lora_laptop16gb.json`
+   — the last three added by the concurrent "16GB laptop preset tier" work, audited
+   against this guard the same day) gained one sentence on why swapping the optimizer to
+   Automagic needs accumulation reset to 1; `stepSuggestion.ts`'s Krea2 recipe notes (the
+   only `ARCH_RECIPES` entry recommending an Automagic optimizer)
    gained the same caveat, since combining that note with the accumulation pattern is
    exactly the config the guard rejects.
 

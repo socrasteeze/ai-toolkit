@@ -87,6 +87,16 @@ top of `PLAN.md`'s Phase 3 section:
   `score_9` caption tag, all Flux2/Flux2-Klein numbers, which are FLUX.1 proxies). Do not
   quietly "resolve" these to a single confident number without new research backing it — the
   honesty about uncertainty is intentional, not a TODO to clean up.
+- **Effective batch (batch_size × gradient_accumulation) is capped at 2 across every recipe
+  and preset** (2026-07-29, operator decision backed by their own runs). This is deliberate
+  and must not be "corrected" back to the batch 4 most community guides quote. Reason:
+  `suggestSteps()` divides by effective batch and then clamps to the arch's `minSteps`
+  floor — at effective batch 4 that quotient falls under the floor for any small/medium
+  dataset, gets clamped back up, and silently inflates real per-image exposure 2–3× past
+  the arch target, so the advisor recommends a step count its own exposure gauge would
+  flag as fry-risk. It also overrides the Anima author's published effective batch 4;
+  that deviation is flagged in-place in the recipe notes and preset descriptions rather
+  than hidden. See PLAN.md's 2026-07-29 entry for the numbers.
 - The LR scheduler (`lr_scheduler`) has no dedicated UI field anywhere else in this app; the
   advisor's Apply button is currently the only way a user sets it from the UI. If a proper
   scheduler dropdown is ever added to the main form, keep the advisor's suggestion in sync
@@ -112,7 +122,7 @@ What remains fork-side for Anima (all adapted to upstream's implementation):
   adamw 2e-5, adapter frozen) expressed in upstream's terms: diffusers-name
   `ignore_if_contains` list replacing sd-scripts' `["adaln_modulation"]`, and NO
   `sigmoid_scale` (upstream's implementation doesn't support it — don't re-add it to
-  `model_kwargs`, it would be silently ignored). `background` (batch 1 + accum 4,
+  `model_kwargs`, it would be silently ignored). `background` (batch 1 + accum 2,
   low_vram) is the default for this shared 5090 machine.
 - The advisor recipe in `stepSuggestion.ts` (`ARCH_RECIPES.anima`) — numbers unchanged,
   implementation-agnostic.

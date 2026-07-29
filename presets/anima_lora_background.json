@@ -44,7 +44,7 @@
         "train": {
           "batch_size": 1,
           "steps": 2000,
-          "gradient_accumulation": 4,
+          "gradient_accumulation": 2,
           "train_unet": true,
           "train_text_encoder": false,
           "gradient_checkpointing": true,
@@ -78,6 +78,6 @@
   "meta": {
     "name": "[name]",
     "version": "2.0",
-    "description": "Anima 2B LoRA, background profile (default): batch 1 + grad accumulation 4 (the author's own config — same effective batch as performance), latent + text-embed caching on, low_vram so idle components park on CPU. Leaves VRAM headroom for concurrent desktop use; expect roughly 2-3x the wall-clock of the performance preset. Author's recipe (rank 32, AdamW 2e-5, LLM adapter frozen — upstream's default). The ignore_if_contains list mirrors sd-scripts' Block-only targeting (no LoRA on AdaLN modulation/embedders/final projection) in upstream's diffusers module names. Note: the author's sigmoid_scale 1.3 timestep widening is not supported by upstream's Anima implementation; plain sigmoid timestep sampling is the closest available. If you swap the optimizer to an Automagic variant, this batch1+accumulation4 pattern will not work as-is — Automagic fuses its step into the backward pass by default, so gradient_accumulation must go back to 1 and the effective batch reached by raising batch size instead."
+    "description": "Anima 2B LoRA, background profile (default): batch 1 + grad accumulation 2 (same effective batch as performance; the author's own config uses 4 — see the exposure note at the end), latent + text-embed caching on, low_vram so idle components park on CPU. Leaves VRAM headroom for concurrent desktop use; expect roughly 2-3x the wall-clock of the performance preset. Author's recipe (rank 32, AdamW 2e-5, LLM adapter frozen — upstream's default). The ignore_if_contains list mirrors sd-scripts' Block-only targeting (no LoRA on AdaLN modulation/embedders/final projection) in upstream's diffusers module names. Note: the author's sigmoid_scale 1.3 timestep widening is not supported by upstream's Anima implementation; plain sigmoid timestep sampling is the closest available. Effective batch is a deliberate fork deviation: the author's recipe is accumulation 4, this ships 2, because at effective batch 4 the in-app step suggestion falls under its step floor on a small/medium dataset and gets clamped up — silently inflating real per-image exposure 2-3x past target. Rank/alpha/LR/optimizer are untouched author values; set accumulation back to 4 to reproduce the author's config exactly on a large dataset. If you swap the optimizer to an Automagic variant, this batch-1-plus-accumulation pattern will not work as-is — Automagic fuses its step into the backward pass by default, so gradient_accumulation must go back to 1 and the effective batch reached by raising batch size instead."
   }
 }

@@ -4,13 +4,17 @@
 # Same author recipe as train_lora_anima_2b.yaml (rank 32, AdamW 2e-5, LLM
 # adapter frozen), with every verified speed lever applied:
 #   - gradient_checkpointing: false — a 2B model on a 32GB card doesn't need
-#     the ~30-40% recompute tax. If 1024 x batch 4 OOMs, drop batch_size to 2
+#     the ~30-40% recompute tax. If 1024 x batch 2 OOMs, drop batch_size to 1
 #     before re-enabling checkpointing.
 #   - cache_latents + cache_latents_to_disk — disk-only caching re-reads every
 #     latent from disk every step; both together = save once, serve from RAM.
 #   - cache_text_embeddings — also hard-unloads the text encoder from VRAM.
-#   - batch_size 4 / accumulation 1 — same effective batch as the author's
-#     1x4, one optimizer step per loop.
+#   - batch_size 2 / accumulation 1 — one optimizer step per loop. NOTE this
+#     is a deliberate fork deviation from the author's effective batch 4:
+#     at 4 the UI's step suggestion divides by effective batch, drops under
+#     its step floor on a small/medium dataset, and gets clamped back up,
+#     silently inflating real per-image exposure 2-3x past target. Set both
+#     this and the preset back to 4 to reproduce the author's config exactly.
 #   - loss_sync_every 4 (fork key) — defer the per-step CUDA sync; loss
 #     display/logs update every 4 steps, training math unchanged.
 #   - ui_db_poll_seconds 2 (fork key) — only matters for UI-launched jobs.
@@ -49,7 +53,7 @@ config:
           cache_latents_to_disk: true
           resolution: [ 512, 768, 1024 ]
       train:
-        batch_size: 4
+        batch_size: 2
         cache_text_embeddings: true
         steps: 2000
         gradient_accumulation: 1

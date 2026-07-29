@@ -58,9 +58,18 @@ export const Modal: React.FC<ModalProps> = ({
 
   return (
     <Fragment>
-      {/* Modal backdrop */}
+      {/*
+        Modal backdrop.
+
+        Fork change (see FORK_NOTES.md): `backdrop-blur-sm` removed. A full-viewport
+        backdrop-filter is recomposited every frame while anything above it scrolls.
+        Measured on the operator's laptop over the New Job page: ~14fps with the blur
+        vs ~59fps without it at 60Hz (median frame 89.9ms -> 16.6ms), with zero main-thread
+        long tasks either way — the cost is entirely GPU compositing. `bg-opacity-75` still
+        dims the page, so the modal reads the same.
+      */}
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-gray-900 bg-opacity-75 backdrop-blur-sm transition-opacity p-2 sm:p-4"
+        className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-gray-900 bg-opacity-75 transition-opacity p-2 sm:p-4"
         onClick={handleOverlayClick}
         aria-modal="true"
         role="dialog"

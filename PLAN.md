@@ -704,6 +704,23 @@ selected subfolder's), rather than what the trainer will actually walk.
   rebuild may need a hard refresh to pick up new JS chunk hashes, but the server itself
   needed no restart.
 
+  **CORRECTION (2026-07-28): the last two sentences above are wrong, and believing them
+  broke the user's running UI.** Testing only top-level route HTML (`/` and `/jobs/new`
+  returning 200) does not exercise the failure. A running `next start` is pinned to the
+  build it launched with: it keeps serving HTML that references the OLD hashed chunk
+  filenames, which `next build` has already deleted, and it returns **404 for the NEW
+  chunk files even though they exist on disk**. The result is `ChunkLoadError: Loading
+  chunk NNNN failed` the moment the user navigates to any route that lazy-loads a chunk
+  (hit live on `/queue`). A browser hard refresh does NOT fix it, because the server
+  itself is the stale side.
+
+  **Rule: after any `next build` against a running production server, the server must be
+  restarted (`stop.bat`, then relaunch).** Verify with
+  `curl -s -o /dev/null -w '%{http_code}' http://localhost:8675/_next/static/chunks/<a-chunk-currently-on-disk>.js`
+  — a 404 for a file that exists on disk means the process is still pinned to the old
+  build. Tell the user to restart in the same message as the rebuild, not at the end of
+  the session.
+
 ## Advisor: full-width suggestion layout + Automagic v3 research (2026-07-19)
 
 **Layout (user report):** the step-suggestion panel — and especially its expanded
@@ -1012,3 +1029,125 @@ Implementation:
 
 Fork hygiene: help *content* stays in fork-only `forkDocs.tsx`; upstream merge surface
 for docs is the three-line `getDoc` merge only. See `FORK_NOTES.md`.
+
+## Fix: modal backdrop blur tanked scroll performance (2026-07-28)
+
+**Symptom (user report):** stutter and frame drops scrolling the preset list.
+
+**Measured, in the operator's Chrome** (the in-app browser pane can't be used for this —
+when it isn't displayed the page doesn't composite, so `requestAnimationFrame` never fires
+and long-task/frame timings are unavailable):
+
+| | frames in 12s | effective fps | median frame |
+|---|---|---|---|
+| `backdrop-blur-sm` ON | 169 | ~14 | 89.9 ms |
+| blur OFF | 712 | ~59 | 16.6 ms |
+
+**Cause:** `Modal.tsx`'s backdrop is `fixed inset-0` with `backdrop-blur-sm`. A
+full-viewport backdrop-filter must be recomposited every frame while anything above it
+scrolls, over the whole New Job page (the app's heaviest route). Cost is ~73 ms/frame —
+entirely GPU compositing, with a `longtask` PerformanceObserver recording **zero**
+main-thread blocking throughout. Fixed by deleting the class; `bg-opacity-75` still dims
+the page so the modal is visually unchanged.
+
+**Two dead ends worth recording, both methodology errors:**
+
+1. The first blur A/B drove scrolling by assigning `scrollTop` each frame and reported *no
+   difference* (4.2 ms both ways, zero dropped frames). Programmatic scrolling does not
+   exercise the same paint path as real input — it produced a false negative that
+   temporarily cleared the actual culprit. **Any scroll-performance test here must use real
+   wheel/trackpad input.**
+2. The `Jobs:` console flood from `useJobsList` (a `console.log` on every poll, plus
+   `setJobs` on a fresh array every 5 s via `ActiveJobWidget`, guaranteeing a re-render even
+   when the list is unchanged) looked like a strong suspect and is not: long tasks stayed at
+   zero across it. Still a real if harmless inefficiency in upstream code, and the polls
+   arrive in **pairs ~3 ms apart** even though `ActiveJobWidget` is mounted once
+   (`Sidebar.tsx:81`), so something drives that hook twice per cycle. Not investigated.
+
+Note the operator's laptop panel runs at ~217 Hz (4.6 ms budget), which is what made this
+so visible; dropping to 60 Hz was the diagnostic that produced the clean A/B above.
+
+## Fix: loading almost any preset crashed the form (2026-07-28)
+
+**Symptom (user report):** loading a preset replaced the whole form with a red
+"Advanced job detected. Please switch to advanced view to continue." That message is
+misleading — it is not a detection of anything. It is the `fallback` of the
+`ErrorBoundary` wrapping `<SimpleJob>` in `jobs/new/page.tsx`, so it renders whenever
+SimpleJob *throws* for any reason.
+
+**Root cause:** `TypeError: Cannot read properties of undefined (reading 'weight_decay')`
+at `SimpleJob.tsx:740`, which dereferences `train.optimizer_params.weight_decay`
+unguarded. `applyPreset()` (fork-only `ui/src/utils/presets.ts`) is supposed to fill gaps
+from `defaultJobConfig` — its own docstring promises "missing fields are filled from the
+defaults so the simple form never hits undefined values," and PLAN.md Feature A says
+"partial configs are fine." It didn't. `deepMerge` replaces arrays wholesale (correct for
+datasets/sample prompts — they're recipes, not lists to union), but `config.process` is
+*itself* an array, so the preset's one-element `process` array replaced the default's
+entirely, discarding every default inside `process[0]`. Datasets were re-merged against
+`defaultDatasetConfig` afterwards; `process[0]` never was.
+
+**Blast radius: 20 of the 21 shipped presets.** Only `krea2_lora_16gb` set
+`optimizer_params` explicitly, so it was the single preset that loaded. Reproduced live on
+the untouched built-in `anima_lora_background`, so this long predates the laptop tier —
+the laptop presets just happened to be what the user loaded first.
+
+**Fix:** re-merge `process[0]` against `defaultJobConfig`'s `process[0]` right after the
+top-level merge, mirroring how datasets are already handled. Fixes every missing optional
+key at once rather than only the one field that happened to crash. Deliberately NOT fixed
+by guarding the read in `SimpleJob.tsx` — that's an upstream file (new merge surface), the
+crash is generic rather than specific to that field, and the real defect is in the fork's
+own merge.
+
+**Verified:** merge logic exercised against seven real preset files (the four laptop ones
+plus anima/sdxl/flux/krea2/zimage/klein built-ins) — all now resolve `weight_decay` from
+defaults while the preset's own lr/batch/optimizer/steps still win over the default, i.e.
+merge direction is correct. `tsc --noEmit` clean in `src/`, production build clean.
+Note that `next start` caches its build manifest at startup, so the running server keeps
+serving the old chunk until it is restarted (`stop.bat` then `start.bat`) — a rebuild
+alone is not enough to see this fix.
+
+## 16 GB laptop tier (2026-07-28)
+
+The fork gained a second machine: an RTX 5080 Laptop (16 GB VRAM, ~15.9 GB usable),
+Core Ultra 9 275HX, 96 GB system RAM, native Windows. Every hardware-tuned number in
+this repo up to now was calibrated for the 32 GB desktop 5090 — `docs/profiles.md`
+says so explicitly ("batch size sized to use most of the 32 GB"). On half the VRAM the
+`performance`/`background` split collapses: `background` *is* the performance option,
+and there was no tier below it for any arch except Krea 2 (`krea2_lora_16gb`).
+
+Four new fork-only presets, all suffixed `_laptop16gb`: anima, flux, sdxl character,
+illustrious character. Chosen because these are the four archs where the existing
+presets leave a real gap on 16 GB — Krea 2 already has a purpose-built 16 GB profile,
+and the Z-Image / FLUX.2 Klein presets are already quantized + `low_vram` + batch 1, so
+a variant would differ only cosmetically. (Those two could still gain the RAM-latent-cache
+flag if a run ever shows it matters.)
+
+**These are profiles, not recipes.** Every rank/alpha/LR/optimizer/scheduler/steps value
+is inherited unchanged from the parent preset, so checkpoints remain interchangeable and
+none of the contested numbers from Phase 3 / the LDS alignment are touched. The full
+lever list and rationale live in `docs/profiles.md`'s new `laptop16gb` section; the short
+version is RAM-served latents (`cache_latents` *plus* `cache_latents_to_disk`),
+`low_vram: true`, 768 preview sampling on the flux-family models, and batch 1 + accum 4
+on SDXL/Illustrious.
+
+That last one is the notable finding of this pass: **the advisor will suggest a batch
+size that OOMs this card.** `ARCH_RECIPES` recommends batch 4 for vanilla SDXL
+(`stepSuggestion.ts:250`), SD 1.5 (`:266`) and Illustrious (`:386`), and batch 2 for Pony
+(`:401`) — all sized for the 5090, and the recipe table has no VRAM awareness whatsoever.
+Deliberately **not** fixed in code: making `ARCH_RECIPES` hardware-aware would mean the
+advisor knowing the local GPU (a new API surface + a new class of wrong answer on a
+machine it guesses badly for), and the honest fix at preset level costs nothing. The
+laptop presets encode the safe batch, and their `meta.description` plus `docs/profiles.md`
+warn against the batch Apply button specifically, while noting the rank/alpha/LR/scheduler
+buttons stay safe. Revisit if a third machine makes this a recurring footgun.
+
+**Status: unmeasured.** Authored and validated statically only — no training run has been
+made on the 16 GB machine, so no VRAM figure in `docs/profiles.md`'s new section is a
+measurement on this hardware (the 14.1 GB peak it reasons from is the 5090 gate-C number).
+FLUX.1-dev is flagged as the highest-risk of the four: 12B params, and `flux_lora_24gb` is
+named for a 24 GB card. Each preset documents its own OOM fallback order.
+
+Also fixed in the same pass: the four new names were added to `BUILTIN_PRESET_NAMES`
+(`ui/src/server/presetsPath.ts`) so the Presets dialog's Overwrite button flags them as
+provenance-tracked, per the 2026-07-21 note that the allowlist must stay in sync with what
+ships in `presets/`. No new upstream touchpoints — every changed file is fork-only.

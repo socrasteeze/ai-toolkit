@@ -27,7 +27,7 @@ on the New Training Job page in the UI.
 | `zimage_character_lora.json` / `zimage_style_lora.json` / `zimage_concept_lora.json` | Z-Image, 32/32 char+style, 16/8 concept | Ported from LDS's researched built-ins |
 | `flux2_klein_character_lora.json` | FLUX.2 Klein 4B, 16/16 char, sigmoid | UNVERIFIED — LDS extrapolation, nothing Klein-specific published |
 | `flux2_klein_style_lora.json` | FLUX.2 Klein 4B style, 64/32 linear + 32/16 conv (4:2:2:1), weighted | Herbst 64-run sweep + BFL official Klein example (LDS ships 128/64/64/32; ATK folds to half scale — see docs/preset_alignment_2026_07.md 2026-07-21) |
-| `*_laptop16gb.json` (anima, flux, sdxl char, illustrious char) | Same recipe as the parent preset — memory/IO profile only | Hardware tier for a 16 GB laptop GPU; see `docs/profiles.md` |
+| `*_laptop16gb.json` (anima, flux, sdxl char, illustrious char, krea2) | Same recipe as the parent preset — memory/IO profile only | Hardware tier for a 16 GB laptop GPU; see `docs/profiles.md` |
 
 **Hardware profiles vs. recipes.** Most files here are *recipes* (rank/LR/optimizer/steps).
 A few are *hardware profiles* that inherit a recipe unchanged and only change how it fits on

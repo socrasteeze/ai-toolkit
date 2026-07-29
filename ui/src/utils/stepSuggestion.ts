@@ -17,7 +17,11 @@ const DEFAULT_HEURISTIC: StepHeuristic = { stepsPerItem: 75, minSteps: 1000, max
 
 // Keyed by model.arch. Prefix matching handles variants (e.g. wan22_14b_i2v matches 'wan').
 // 'sdxl' covers SDXL-family checkpoints like IllustriousXL and Pony.
-const ARCH_HEURISTICS: Record<string, StepHeuristic> = {
+//
+// An entry may be a flat StepHeuristic (the default — one exposure target for the arch) or a
+// function of dataset-size tier, for archs where the right steps/item genuinely moves with
+// dataset size. Only krea2 is tiered today; see its comment for why.
+const ARCH_HEURISTICS: Record<string, StepHeuristic | ((tier: SizeTier) => StepHeuristic)> = {
   sdxl: { stepsPerItem: 100, minSteps: 1200, maxSteps: 4000 },
   sd15: { stepsPerItem: 100, minSteps: 1000, maxSteps: 3000 },
   sd3: { stepsPerItem: 80, minSteps: 1000, maxSteps: 3000 },
@@ -28,22 +32,44 @@ const ARCH_HEURISTICS: Record<string, StepHeuristic> = {
   qwen_image: { stepsPerItem: 60, minSteps: 1000, maxSteps: 3000 },
   hidream: { stepsPerItem: 60, minSteps: 1000, maxSteps: 3000 },
   wan: { stepsPerItem: 100, minSteps: 1000, maxSteps: 4000 },
-  // Krea 2: community-derived, not a published author recipe. Modern flow-matching
-  // backbone (flux-like), reported to hold identity faster than earlier models, so a
-  // slightly lower exposure target than flux. Anchored on the small-dataset consensus
-  // (~20-40 img: 600 steps = minimum viable likeness, ~2000 = the commonly-preferred
-  // "safe" number). CAVEAT: like every fixed steps/item target here, this OVER-warns on
-  // large datasets — published 100-500 img Krea2 recipes converge at only ~15-20 passes
-  // per image, so a 250+ image set reading "cool" at 3000+ steps is usually already fine.
-  // Trust the sample grids over the gauge once the dataset is large. See PLAN.md Phase 5.
-  krea2: { stepsPerItem: 65, minSteps: 600, maxSteps: 4000 },
+  // Krea 2: community-derived, not a published author recipe. Modern flow-matching backbone
+  // (flux-like), reported to hold identity faster than earlier models, so a lower exposure
+  // target than flux. This is the one arch whose steps/item is TIERED (2026-07-29), because
+  // two independent data points disagree by ~2x in a way a single number can't express:
+  //   medium (32/img) — MEASURED. A documented 16GB run (36 images, batch 1, 1152 steps =
+  //     32 passes/image) judged epoch 8 "solid", epoch 12 already over-idealized, and the
+  //     final 32-pass checkpoint the most faithful. 36 x 32 reproduces that 1152 exactly.
+  //     Caveat: that run was musubi-tuner, not this trainer — same rank 32 / alpha 32 /
+  //     LR 1e-4 / adamw8bit recipe, but a different implementation.
+  //   large (20/img) — the published 100-500 image Krea2 recipes converge at only ~15-20
+  //     passes per image. This replaces the old flat 65, which made a 250+ image set read
+  //     "cool" at 3000+ steps when it was usually already fine.
+  //   small (45/img) — EXTRAPOLATION, not measurement: smaller sets need more passes each,
+  //     so it sits above medium, but no run anchors it. Treat as the softest of the three.
+  // Note the maxSteps ceiling (4000), not steps/item, is what still under-reports very large
+  // sets — at 400 images the ceiling binds first. Trust sample grids over the gauge there.
+  krea2: tier => ({
+    stepsPerItem: tier === 'small' ? 45 : tier === 'medium' ? 32 : 20,
+    minSteps: 600,
+    maxSteps: 4000,
+  }),
 };
 
-export const getHeuristic = (arch: string | undefined | null): StepHeuristic => {
+// `tier` only affects archs whose entry is tier-aware (currently just krea2). It defaults to
+// 'medium' so the exported signature stays usable without a dataset size — callers that know
+// the item count should pass getSizeTier(itemCount) so the suggestion and the exposure gauge
+// resolve the SAME target. If those two ever diverge the gauge will contradict the number the
+// advisor just recommended, which is exactly the failure the floor-warning below exists for.
+const resolveHeuristic = (
+  entry: StepHeuristic | ((tier: SizeTier) => StepHeuristic),
+  tier: SizeTier,
+): StepHeuristic => (typeof entry === 'function' ? entry(tier) : entry);
+
+export const getHeuristic = (arch: string | undefined | null, tier: SizeTier = 'medium'): StepHeuristic => {
   if (!arch) return DEFAULT_HEURISTIC;
-  if (arch in ARCH_HEURISTICS) return ARCH_HEURISTICS[arch];
+  if (arch in ARCH_HEURISTICS) return resolveHeuristic(ARCH_HEURISTICS[arch], tier);
   for (const key of Object.keys(ARCH_HEURISTICS)) {
-    if (arch.startsWith(key)) return ARCH_HEURISTICS[key];
+    if (arch.startsWith(key)) return resolveHeuristic(ARCH_HEURISTICS[key], tier);
   }
   return DEFAULT_HEURISTIC;
 };
@@ -74,7 +100,7 @@ export const suggestSteps = (input: StepSuggestionInput): StepSuggestionResult |
   const batchSize = Math.max(1, input.batchSize || 1);
   const gradAccum = Math.max(1, input.gradientAccumulation || 1);
   const effectiveBatch = batchSize * gradAccum;
-  const heuristic = getHeuristic(arch);
+  const heuristic = getHeuristic(arch, getSizeTier(itemCount));
 
   const clamp = (n: number) => Math.min(heuristic.maxSteps, Math.max(heuristic.minSteps, n));
   const raw = (itemCount * heuristic.stepsPerItem) / effectiveBatch;
@@ -128,7 +154,7 @@ export const exposureGauge = (input: {
   const { itemCount, arch, steps } = input;
   if (!itemCount || itemCount <= 0 || !steps || steps <= 0) return null;
   const effectiveBatch = Math.max(1, input.batchSize || 1) * Math.max(1, input.gradientAccumulation || 1);
-  const target = getHeuristic(arch).stepsPerItem;
+  const target = getHeuristic(arch, getSizeTier(itemCount)).stepsPerItem;
   const exposures = (steps * effectiveBatch) / itemCount;
   const ratio = exposures / target;
   let band: ExposureBand;
@@ -311,8 +337,21 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
     ],
     notes:
       'Krea 2: adamw8bit, LR 1e-4, rank 32, batch 1 at 1024 — thin community evidence, treat as a starting point only. ' +
+      'A documented 16GB run (36 images, musubi-tuner, not this trainer) independently landed on this same rank 32 / ' +
+      'alpha 32 / LR 1e-4 / adamw8bit combination, which is the strongest corroboration these numbers have. ' +
+      'Train at 512 or 1024, not in between: match a resolution the base model was actually trained at. ' +
       'No source states an LR scheduler recommendation for this model; scheduler intentionally left unset (defaults to constant). ' +
       'Natural-language captions, describing only what should NOT be learned as a fixed trait (per Krea\'s own guidance). ' +
+      'TRIGGER BLEED (the LoRA showing up in prompts that omit the trigger) is normal LoRA behaviour, not primarily a ' +
+      'caption defect — a LoRA shifts weights globally, it cannot scope itself to one token. The real levers in this ' +
+      'trainer are Differential Output Preservation (train.diff_output_preservation, with _class set to e.g. "person") ' +
+      'and regularization datasets (is_reg / reg_weight), plus a lower LR. Two constraints before enabling DOP: it ' +
+      'REQUIRES a trigger_word (the trainer raises without one), and it is mutually exclusive with cache_text_embeddings ' +
+      '(hard error), so it cannot be combined with the cache-embeds memory strategy — and it costs roughly a second ' +
+      'forward pass per step, which matters on 16GB. Secondary and cheaper: keep invariant identity attributes out of ' +
+      'captions (describe what varies — clothing, pose, framing, light — and let the trigger carry the face), since ' +
+      'the identity can otherwise bind to a description you reuse in other prompts. That last point is a plausible ' +
+      'hypothesis from the 16GB run\'s control grid, not a demonstrated fix — its author never re-ran to confirm it. ' +
       'Turbo variants need the training adapter (set automatically when the arch is selected); keep low_vram on unless you have 48GB+. ' +
       'Alternative: Automagic v3 (self-adapting per-group LR, no scheduler needed) — used by the community 16GB config this ' +
       'fork ships as a preset. Its LR is a launch point the controller adapts away from (author\'s doc); if you use it, bound ' +

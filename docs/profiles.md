@@ -50,7 +50,10 @@ caches warm).
 Second machine: RTX 5080 Laptop (16 GB, ~15.9 GB usable), Core Ultra 9 275HX,
 96 GB system RAM, native Windows. Presets: `anima_lora_laptop16gb`,
 `flux_lora_laptop16gb`, `sdxl_character_lora_laptop16gb`,
-`illustriousxl_character_lora_laptop16gb`.
+`illustriousxl_character_lora_laptop16gb`, `krea2_lora_laptop16gb`
+(added 2026-07-29; parent is `krea2_lora_16gb`, which already targeted 16 GB —
+the laptop variant adds RAM-served latents, 768 preview sampling and the
+sqlite poll throttle, and changes no recipe value).
 
 **Every recipe value is inherited unchanged from the parent preset.** These files
 change only how a run fits in memory and how it feeds the GPU, so checkpoints stay

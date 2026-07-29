@@ -1226,3 +1226,69 @@ at ≤15 images the floor still dominates (SDXL 15 img @ eff 2 = 160×/img 🔥,
 
 Verified: all 21 presets parse through `TrainConfig`; the fast yaml parses; `tsc --noEmit`
 and `next build` clean; re-audit confirms no preset or recipe exceeds effective batch 2.
+
+## Krea 2 guidance from a measured 16GB run (2026-07-29)
+
+A public write-up reported the first real measured Krea 2 LoRA run on a 16GB card (RTX 5080,
+768px, 36 images, 1152 steps, 3.42 s/it, 15,284/16,303 MiB peak), together with a critical
+reply. The operator trains Krea 2 on a 16GB 5080 laptop, so both were worth mining — but the
+run used **musubi-tuner (kohya), not ai-toolkit**, so most of it does not transfer. What was
+checked against this codebase before adopting anything:
+
+| Claim in the write-up | Verdict here |
+|---|---|
+| `--fp8_base/--fp8_scaled`, `--blocks_to_swap` tuning | Not applicable — this trainer uses `quantize`/`qtype`, `low_vram`, `layer_offloading_*` |
+| Must use `krea2_shift` instead of `shift` + `discrete_flow_shift 2.5` | **Already solved here.** `extensions_built_in/diffusion_models/krea2/krea2.py:79-93` configures Krea's resolution-aware exponential mu schedule natively (`base_shift 0.5`, `max_shift 1.15`, `use_dynamic_shifting: True`). No such knob exists or is needed |
+| Don't feed musubi the pre-quantized ComfyUI fp8 file | Partly relevant — our loader (`krea2.py:127-163`) accepts a single `.safetensors` file, a dir, or a hub repo id, so a Comfy mirror file loads via local path; the hub path expects a file literally named `raw.safetensors`, so the repo id can't just be swapped |
+| Official `krea/Krea-2-*` repos are gated | True, and upstream added `gateUrl` for krea2 in the same-day sync. Only the DiT is gated — the TE is separately configurable (`model_kwargs.text_encoder_path`, default `Qwen/Qwen3-VL-4B-Instruct`) |
+| rank 32 / alpha 32 / LR 1e-4 / adamw8bit | **Corroborates** the existing `ARCH_RECIPES.krea2` numbers — the strongest support they have had |
+| 32 passes/image was the best checkpoint | **Adopted** — see the tiering below |
+
+On the critical reply: two of its four points misread the source (it trains on RAW, and it
+explicitly declines to claim a fix), and its resolution point doesn't implicate us since
+`krea2_lora_16gb` already used 512. Its bleed claim is half right and worth encoding: trigger
+bleed *is* structurally normal (a LoRA shifts weights globally and cannot scope itself to a
+token), so the write-up's "I did it to myself in the captions" was over-attributed — though
+its control grid (near control bled, distant controls stayed clean) is real evidence that
+captions modulate *what* binds. Its most useful contribution is that the actual remedies —
+DOP and regularization images — exist in ai-toolkit and not in musubi.
+
+**Change 1 — Krea 2's step target is now dataset-size tiered** (`stepSuggestion.ts`,
+`ARCH_HEURISTICS.krea2`): small 45 / medium 32 / large 20, replacing a flat 65.
+- medium 32 is the *measured* anchor: 36 images x 32 = 1152, reproducing the run's step count
+  and its chosen checkpoint exactly (our clamp rounds to 1150). The run rated epoch 8 (16
+  passes) "solid", epoch 12 (24) already over-idealized, epoch 16 (32) most faithful.
+- large 20 comes from the pre-existing in-code note that published 100-500 image recipes
+  converge at ~15-20 passes/image — the same note that flagged the flat 65 as over-warning.
+- small 45 is **extrapolation, not measurement**, and is labelled as such in the code.
+- Mechanics: `ARCH_HEURISTICS` values may now be `StepHeuristic | ((tier) => StepHeuristic)`;
+  only krea2 is a function, every other arch is untouched. `getHeuristic(arch, tier?)` defaults
+  the tier to `'medium'` so the exported signature stays backward-compatible, and both call
+  sites (`suggestSteps`, `exposureGauge`) pass `getSizeTier(itemCount)` so the suggestion and
+  the gauge resolve the *same* target — that divergence is precisely the bug the same-day
+  effective-batch work was about.
+- Not raising `maxSteps`: at 400 images the 4000 ceiling, not steps/item, is what still
+  under-reports. Tiering moves that ratio from 0.15 to 0.5 but doesn't fix it; raising the
+  ceiling needs its own evidence.
+
+**Change 2 — new `presets/krea2_lora_laptop16gb.json`**, the missing krea2 entry in the
+laptop tier. Follows the established pattern exactly: every recipe value inherited unchanged
+from `krea2_lora_16gb` (so checkpoints stay interchangeable), varying only memory/IO —
+`cache_latents` alongside `cache_latents_to_disk`, preview sampling 1024 -> 768,
+`ui_db_poll_seconds: 2`. Registered in `BUILTIN_PRESET_NAMES`. Effective batch stays 1, within
+the cap set the same day. Resolution deliberately stays 512.
+
+**Change 3 — DOP / regularization documented, not wired.** The krea2 recipe notes and both
+16GB preset descriptions now state that trigger bleed is normal, that
+`train.diff_output_preservation` and reg datasets (`is_reg`/`reg_weight`) are the real levers,
+and the two constraints that would otherwise be silent failures: DOP **requires a
+`trigger_word`** (`SDTrainer.py:90` raises without one, and no krea2 preset sets one) and is
+**mutually exclusive with `cache_text_embeddings`** (`config_modules.py:1527`), so it can't be
+combined with the cache-embeds memory strategy and costs ~a second forward pass per step.
+Deliberately not enabled in any preset — that would ship a config that errors until edited.
+The caption advice is kept as the cheaper secondary measure and explicitly labelled a
+hypothesis its author never re-ran.
+
+Verified: all 22 presets parse through `TrainConfig`; `tsc --noEmit` and `next build` clean;
+numeric check confirms 36 images -> ~1150 steps / 32 passes, 20 -> 45, 200 -> 20; no new
+upstream touchpoints (`stepSuggestion.ts` and `presetsPath.ts` are both fork-only).

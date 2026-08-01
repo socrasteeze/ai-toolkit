@@ -18,12 +18,12 @@ sleep 2
 docker build --build-arg CACHEBUST=$(date +%s) -t aitoolkit:$VERSION -f docker/Dockerfile .
 
 # Tag with version and latest
-docker tag aitoolkit:$VERSION ostris/aitoolkit:$VERSION
-docker tag aitoolkit:$VERSION ostris/aitoolkit:latest
+docker tag aitoolkit:$VERSION socrasteeze/aitoolkit:$VERSION
+docker tag aitoolkit:$VERSION socrasteeze/aitoolkit:latest
 
 # Push both tags
 echo "Pushing images to Docker Hub..."
-docker push ostris/aitoolkit:$VERSION
-docker push ostris/aitoolkit:latest
+docker push socrasteeze/aitoolkit:$VERSION
+docker push socrasteeze/aitoolkit:latest
 
-echo "Successfully built and pushed ostris/aitoolkit:$VERSION and ostris/aitoolkit:latest"
+echo "Successfully built and pushed socrasteeze/aitoolkit:$VERSION and socrasteeze/aitoolkit:latest"

@@ -26,7 +26,7 @@ exit /b
 :full
 echo First run or rebuild requested - installing dependencies and building.
 echo This can take a few minutes...
-call npm install --no-audit --no-fund
+call npm ci --no-audit --no-fund
 if errorlevel 1 goto fail
 call npm run update_db
 if errorlevel 1 goto fail

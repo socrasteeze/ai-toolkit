@@ -139,3 +139,10 @@ What remains fork-side for Anima (all adapted to upstream's implementation):
   `server/datasetTools.ts`). B5's pre-flight is **advisory-only by deliberate
   decision** — do not wire it to block job submission without revisiting PLAN.md's
   B5 note (that would touch upstream's job-start route).
+
+## Local tooling notes
+
+- `build_and_push_docker` pushes to `socrasteeze/aitoolkit` on Docker Hub, not
+  `ostris/aitoolkit` — fork-specific, deliberate (2026-07-31).
+- `hf-cache/` (local HuggingFace cache, several GB) is gitignored — it's runtime cache,
+  never commit it back.

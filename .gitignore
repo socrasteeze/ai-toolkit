@@ -192,3 +192,4 @@ aitk_db.db-shm
 .claude
 /anima_sample_training
 original_repo
+/hf-cache

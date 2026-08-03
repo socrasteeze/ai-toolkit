@@ -1292,3 +1292,33 @@ hypothesis its author never re-ran.
 Verified: all 22 presets parse through `TrainConfig`; `tsc --noEmit` and `next build` clean;
 numeric check confirms 36 images -> ~1150 steps / 32 passes, 20 -> 45, 200 -> 20; no new
 upstream touchpoints (`stepSuggestion.ts` and `presetsPath.ts` are both fork-only).
+
+## start-rebuild.bat: one-click update + rebuild + launch (2026-08-02)
+
+`start.bat rebuild` covers "reinstall and rebuild the UI", but the update itself was still
+manual (`git pull`, then remember the `rebuild` argument, then find out the hard way that
+the old server is still running). `start-rebuild.bat` (fork-only, root) is the single
+double-click that does all of it, in this order:
+
+1. **Dirty-tree guard.** `git status --porcelain` non-empty -> abort with the short status.
+   No stash, no `-f`. (Verified on first run: the script's own untracked file tripped its
+   guard, which is exactly the intended behavior.)
+2. **`git fetch origin` + `git pull --ff-only origin <current branch>`.** Fast-forward only,
+   `origin` only. It will never merge, rebase, or force, and it deliberately does **not**
+   touch `upstream` — merging `ostris/ai-toolkit` stays a manual/`/sync-upstream` job with a
+   human reading the delta (see the sync procedure at the top of FORK_NOTES.md).
+3. **Stop the running server** using `stop.bat`'s exact command-line matcher (port 8675 UI +
+   `cron/worker.js`), then a 2s settle. This step is the actual reason the script exists:
+   `npm ci` deletes `node_modules` and fails with `EPERM: unlink
+   node_modules/.prisma/client/query_engine-windows.dll.node` when the UI is live — and it
+   fails *after* having already deleted most of the tree, so a naive "rebuild while running"
+   leaves a broken install behind (hit for real during the 2026-08-02 upstream sync).
+   Detached training (`run.py`) is left alone, same as `stop.bat` without `all`.
+4. **`npm ci` -> `npm run update_db` -> `npm run build` -> `npm run start`.** `ci`, not
+   `install`, so `ui/package-lock.json` stays byte-identical to upstream (FORK_NOTES rule).
+
+If the pulled range touched any `requirements*.txt` it prints a warning to reinstall the
+python training deps by hand; the script never touches the venv.
+
+`start.bat` is unchanged and remains the normal launcher; `create_shortcut.bat` still points
+at it.

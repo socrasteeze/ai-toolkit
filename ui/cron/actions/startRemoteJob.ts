@@ -451,8 +451,17 @@ async function mirrorLog(peer: Peer, remoteJobID: string, logPath: string, offse
       {},
       30_000,
     );
-    if (typeof res?.log === 'string' && res.log !== '') {
-      await fs.promises.appendFile(logPath, res.log, 'utf-8');
+    let chunk = typeof res?.log === 'string' ? res.log : '';
+    // `reset` means the peer's log was truncated or restarted, so what came
+    // back is a fresh tail, not a continuation of what is already in this file.
+    // Appending it silently would read as one run that repeated itself. The
+    // marker is what tells whoever reads this log later why the step count goes
+    // backwards halfway down it.
+    if (chunk !== '' && res?.reset === true && offset > 0) {
+      chunk = `\n--- the log on ${peer.label} restarted here (fresh tail, not a continuation) ---\n${chunk}`;
+    }
+    if (chunk !== '') {
+      await fs.promises.appendFile(logPath, chunk, 'utf-8');
     }
     return typeof res?.offset === 'number' ? res.offset : offset;
   } catch {

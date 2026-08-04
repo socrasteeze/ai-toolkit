@@ -1393,3 +1393,23 @@ A capability handshake beyond "what GPUs do you have". The hub does not check th
 can train the selected architecture — a peer on older code with no support for the chosen
 model fails at run time with the peer's own error. Adding a real version/feature exchange is
 the obvious next step if the two machines ever drift.
+
+### Fixed after the fact (2026-08-04)
+
+**The watcher did not recognise a SUCCESSFUL run.** `TERMINAL_STATUSES` was
+`['stopped', 'error']`, so the one ending that matters — a clean finish — fell through: the
+poll loop would have run forever against a finished job, and `mirrorCheckpoints` would never
+have fired, leaving the weights on the peer with a hub job row that said `completed` and an
+empty folder beside it. The two failure endings both worked, which is exactly why it read as
+correct.
+
+The cause was writing that list from `JobStatus` in `ui/src/types.ts` — a six-member union
+where `stopped` sits next to `completed` and looks like the same thing. The authority is the
+trainer: `extensions_built_in/sd_trainer/UITrainer.py:246` does
+`update_status("completed", "Training completed")` on a clean exit, and `DiffusionTrainer.py:355`
+does the same. `queued`, `running` and `stopping` are the transient three.
+
+Found while building the sibling project's picker on top of this, which had inherited the
+same wrong list — **the same bug in two repos, from one misreading.** Both are fixed;
+LDS pins it with a test against the real status strings rather than against its own set,
+since a test written from the same list would have inherited the same hole.

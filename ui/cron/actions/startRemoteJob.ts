@@ -48,7 +48,14 @@ const DATASET_EXTENSIONS = [
   '.txt', '.json', '.caption',
 ];
 
-const TERMINAL_STATUSES = ['stopped', 'error'];
+/* Every way a run can END on the peer, taken from the trainer rather than from
+ * `JobStatus`: `UITrainer.update_status` writes `completed` on a clean finish,
+ * and `stopped` / `error` on the other two. `completed` was missing here, which
+ * meant the SUCCESS case was the one the watcher did not recognise — it would
+ * have polled a finished job forever and never mirrored its checkpoints home,
+ * while the local UI sat on a job row that said `completed` with no weights
+ * beside it. `queued`, `running` and `stopping` are the transient ones. */
+const TERMINAL_STATUSES = ['completed', 'stopped', 'error'];
 
 async function markJobError(jobID: string, message: string): Promise<void> {
   try {

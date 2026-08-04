@@ -9,7 +9,8 @@ import { objectCopy } from '@/utils/basic';
 import { useNestedState, setNestedValue } from '@/utils/hooks';
 import { SelectInput } from '@/components/formInputs';
 import useSettings from '@/hooks/useSettings';
-import useGPUInfo from '@/hooks/useGPUInfo';
+// fork addition, see FORK_NOTES.md — replaces useGPUInfo, which it wraps
+import useMachines from '@/hooks/useMachines';
 import useDatasetList from '@/hooks/useDatasetList';
 import YAML from 'yaml';
 import path from 'path';
@@ -32,7 +33,8 @@ export default function TrainingForm() {
   const cloneId = searchParams.get('cloneId');
   const [gpuIDs, setGpuIDs] = useState<string | null>(null);
   const { settings, isSettingsLoaded } = useSettings();
-  const { gpuList, isGPUInfoLoaded } = useGPUInfo();
+  // fork addition, see FORK_NOTES.md — wraps useGPUInfo and adds peer machines
+  const { gpuList, options: gpuOptions, isGPUInfoLoaded } = useMachines();
   const { datasets, status: datasetFetchStatus } = useDatasetList();
   const [datasetOptions, setDatasetOptions] = useState<{ value: string; label: string }[]>([]);
   const [showAdvancedView, setShowAdvancedView] = useState(false);
@@ -209,7 +211,8 @@ export default function TrainingForm() {
               <SelectInput
                 value={`${gpuIDs}`}
                 onChange={value => setGpuIDs(value)}
-                options={gpuList.map((gpu: any) => ({ value: `${gpu.index}`, label: `GPU #${gpu.index}` }))}
+                // fork addition, see FORK_NOTES.md — local GPUs plus any peer machine's
+                options={gpuOptions as any}
               />
             </div>
             <div className="hidden sm:block mx-4 bg-gray-200 dark:bg-gray-800 w-1 h-6"></div>
@@ -333,6 +336,7 @@ export default function TrainingForm() {
               gpuIDs={gpuIDs}
               setGpuIDs={setGpuIDs}
               gpuList={gpuList}
+              gpuOptions={gpuOptions}
               datasetOptions={datasetOptions}
               isLoading={!isSettingsLoaded || !isGPUInfoLoaded || datasetFetchStatus !== 'success'}
             />

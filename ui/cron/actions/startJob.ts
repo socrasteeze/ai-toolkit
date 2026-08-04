@@ -5,6 +5,9 @@ import path from 'path';
 import fs from 'fs';
 import { TOOLKIT_ROOT, getTrainingFolder, getHFToken, getModelsPath } from '../paths';
 import { resolveDetachedPythonPath } from '../pythonPath';
+// Fork: remote execution. See cron/gpuIds.ts and cron/actions/startRemoteJob.ts.
+import { isRemoteGpu } from '../gpuIds';
+import startRemoteJob from './startRemoteJob';
 const isWindows = process.platform === 'win32';
 
 const markJobError = async (jobID: string, message: string) => {
@@ -197,6 +200,14 @@ const startAndWatchJob = async (job: Job): Promise<void> => {
   // async function + outer try/catch below is the fork's crash-loop fix —
   // see FORK_NOTES.md. Upstream's subprocess error/exit listeners are kept.)
   const jobID = job.id;
+  // Fork: a `gpu_ids` that names a machine runs on that machine instead. Every
+  // observable effect below (the Job row advancing, log.txt growing, samples
+  // appearing) is reproduced there by mirroring, so nothing downstream of this
+  // branch — UI, queue, or trainer — knows the difference.
+  if (isRemoteGpu(job.gpu_ids)) {
+    await startRemoteJob(job);
+    return;
+  }
   try {
 
     // setup the training

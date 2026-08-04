@@ -8,6 +8,8 @@ import { getTotalSteps } from '@/utils/jobs';
 import { Cpu, HardDrive, Info, Gauge } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import useJobLog from '@/hooks/useJobLog';
+// fork addition, see FORK_NOTES.md
+import { parseLocalGpuIndices, splitPeerGpu } from '@/utils/gpuIds';
 
 interface JobOverviewProps {
   job: Job;
@@ -18,8 +20,13 @@ export default function JobOverview({ job }: JobOverviewProps) {
     if (job.gpu_ids === 'mps') {
       return [0]; // For MPS, we can just return a single GPU ID since it's virtualized
     }
-    return job.gpu_ids.split(',').map(id => parseInt(id));
+    // fork addition, see FORK_NOTES.md — a job running on another machine has no
+    // local GPU to report on. Parsing "workshop:0" as a number gives [NaN],
+    // which silently matches nothing; an empty list says so honestly.
+    return parseLocalGpuIndices(job.gpu_ids);
   }, [job.gpu_ids]);
+  // fork addition — which machine this job is on, for the header line below
+  const remoteMachine = useMemo(() => splitPeerGpu(job.gpu_ids)?.peerId ?? null, [job.gpu_ids]);
   const { log, status: statusLog, refresh: refreshLog } = useJobLog(job.id, 2000);
   const logRef = useRef<HTMLDivElement>(null);
   // Track whether we should auto-scroll to bottom
@@ -126,7 +133,10 @@ export default function JobOverview({ job }: JobOverviewProps) {
               <Cpu className="w-5 h-5 text-purple-600 dark:text-purple-400" />
               <div>
                 <p className="text-xs text-gray-400">Assigned GPUs</p>
-                <p className="text-sm font-medium text-gray-200">GPUs: {job.gpu_ids}</p>
+                {/* fork addition, see FORK_NOTES.md — name the machine when it isn't this one */}
+                <p className="text-sm font-medium text-gray-200">
+                  {remoteMachine ? `${remoteMachine} — GPU ${splitPeerGpu(job.gpu_ids)?.localGpuIds}` : `GPUs: ${job.gpu_ids}`}
+                </p>
               </div>
             </div>
 

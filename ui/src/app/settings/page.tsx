@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import useSettings from '@/hooks/useSettings';
 import { TopBar, MainContent } from '@/components/layout';
 import { apiClient } from '@/utils/api';
+// fork addition, see FORK_NOTES.md
+import PeerSettings from '@/components/PeerSettings';
 
 export default function Settings() {
   const { settings, setSettings } = useSettings();
@@ -143,6 +145,8 @@ export default function Settings() {
           {status === 'success' && <p className="text-green-500 text-center">Settings saved successfully!</p>}
           {status === 'error' && <p className="text-red-500 text-center">Error saving settings. Please try again.</p>}
         </form>
+        {/* fork addition, see FORK_NOTES.md — outside the form above, it saves itself */}
+        <PeerSettings />
       </MainContent>
     </>
   );

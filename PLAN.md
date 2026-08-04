@@ -1322,3 +1322,74 @@ python training deps by hand; the script never touches the venv.
 
 `start.bat` is unchanged and remains the normal launcher; `create_shortcut.bat` still points
 at it.
+
+## Phase 7: run a job on another machine's GPU (2026-08-04)
+
+### Why
+
+Two machines, one of them usually idle. Everything about a training run already lives in a
+`Job` row and a folder; the only thing tying it to this box was the `spawn` call. The goal
+was to pick another machine in the GPU picker and have the run happen there, with the job
+page behaving exactly as it does for a local run.
+
+### The three decisions that shaped it
+
+**1. Identity goes in `gpu_ids`, not in the schema.** Fork rule 2 forbids Prisma changes,
+which at first read looks like a blocker for "which machine runs this". It is not:
+`Queue.gpu_ids` is `String @unique` and `processQueue` groups jobs by an exact string
+match on it. Encoding the machine as `"<peerId>:<localIndex>"` therefore gives each remote
+GPU its own queue, with its own one-job-at-a-time concurrency, **without editing
+`processQueue.ts` at all**. `'mps'` was already proof the column carries non-numeric
+values. The rule pushed toward the better design rather than around it.
+
+**2. The peer runs unmodified.** Everything the hub needs was already a public route on any
+ai-toolkit instance. Nothing is installed on the peer and it needs no awareness of the hub
+— it just sees an ordinary job appear in its own queue and UI. This is the property that
+makes SwarmUI's remote-instance backend cheap to maintain, and it is worth defending: the
+moment the peer needs a special endpoint, upgrading the two machines independently stops
+being safe.
+
+**3. Mirror home rather than proxy.** The watcher writes the same `Job` row and the same
+`{TRAINING_FOLDER}/{job.name}/` folder that a local run produces — status, step count, log
+bytes, sample images, `.safetensors`. The consequence is that **zero UI code changed**: the
+job page, the log tail, the sample grid and the file list all work against a remote run
+without knowing it is remote. Base model weights deliberately do not cross; the peer
+downloads its own with its own HF token, and those are far larger than anything else here.
+
+### Borrowed rather than rediscovered
+
+The sibling project (LoRA Dataset Studio) has run passes across two machines for a while,
+and its written-up failures shaped four things here:
+
+- **Resume is a manifest, not a guess.** A `.hub_manifest.json` of `name -> size:mtime` is
+  uploaded *after* the files it lists, so an interrupted staging leaves the older, smaller
+  manifest and the next run re-sends the gap. An edited image changes signature and is
+  re-sent. LDS's equivalent bug — a returned cache that silently overwrote a good local one
+  — cost several full re-runs before it was noticed from the artifacts on disk.
+- **Downloads resume.** LDS measured an 85 MB checkpoint needing roughly 100 resumed
+  connections over a home link; a single-shot GET would never have finished. The peer's file
+  route already serves `bytes=N-` to EOF.
+- **Cancel is wired on day one.** LDS shipped remote paths whose stop flag was read and
+  discarded, twice — its remote training and remote ComfyUI jobs both ignored it. Here the
+  watcher checks the local `stop`/`return_to_queue` flags every tick and forwards them.
+- **Failures are never invented.** LDS had a hard-coded `returncode = 0` that made every
+  remote failure report the same meaningless exit status. Every failure path here names the
+  machine and carries the peer's own message.
+
+### Limits, stated rather than discovered later
+
+- A dataset with subfolders, or with a `control_path`, is refused **before** anything is
+  uploaded. The peer's upload route flattens into one directory, so a nested layout would
+  train against a different dataset than the one configured.
+- No loop guard: pointing a peer entry at this same instance is not detected.
+- The peer's queue is its own. A job started on the peer directly puts the hub's job behind
+  it; the hub reports `queued`, which is true, but cannot say what it is waiting for.
+- The optimizer state is not copied back, so a run cannot be resumed on a different machine
+  than it started on.
+
+### What was NOT built
+
+A capability handshake beyond "what GPUs do you have". The hub does not check that the peer
+can train the selected architecture — a peer on older code with no support for the chosen
+model fails at run time with the peer's own error. Adding a real version/feature exchange is
+the obvious next step if the two machines ever drift.

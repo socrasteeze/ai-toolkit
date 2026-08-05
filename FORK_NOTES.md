@@ -41,12 +41,16 @@ Then `npm ci` (not `npm install`) in `ui/` so the lockfile stays untouched.
 
 | File | Change | Notes for conflict resolution |
 |---|---|---|
-| `ui/src/app/jobs/new/page.tsx` | +1 import + JSX mount for `<PresetManager/>`; +1 import + JSX mount for `<HelpModeButton/>` in the TopBar (next to Presets, before Show Advanced) | Re-add both mounts in the TopBar button cluster if upstream restructures it — Presets then Help, before Show Advanced / Create Job |
+| `ui/src/app/jobs/new/page.tsx` | +1 import + JSX mount for `<PresetManager/>`; +1 import + JSX mount for `<HelpModeButton/>` in the TopBar (next to Presets, before Show Advanced); **remote execution (2026-08-04)**: the `useGPUInfo` import/call is replaced by fork-only `useMachines` (which wraps it), the advanced-view GPU `SelectInput`'s inline `gpuList.map(...)` becomes `options={gpuOptions as any}`, and `gpuOptions={gpuOptions}` is passed down to `<SimpleJob/>` | Re-add both mounts in the TopBar button cluster if upstream restructures it — Presets then Help, before Show Advanced / Create Job. For the GPU picker: `useMachines` returns `gpuList` and `isGPUInfoLoaded` with upstream's exact meanings, so a conflict is resolved by keeping upstream's usage and only swapping the hook name back in, plus the `options`/`gpuOptions` lines |
 | `ui/src/app/datasets/[datasetName]/page.tsx` | +1 import, +1 JSX line mounting `<DatasetTools/>` in the TopBar after `<AutoCaptionButton/>` | Re-add next to the Auto Caption button if upstream restructures the TopBar |
 | `ui/src/app/jobs/new/SimpleJob.tsx` | +1 import, +1 JSX line mounting `<StepSuggestion/>` as a full-width sibling AFTER the Training card's column grid (moved out of column 1, 2026-07-19); +1 import, +1 JSX line mounting `<OptimizerHint/>` directly under the Optimizer `SelectInput`; +1 import and +1 JSX line mounting `<DatasetFolderPickerModal/>` next to `<AddSingleImageModal/>`; +1 small block under the "Target Dataset" `SelectInput` showing the resolved current path + a "Browse subfolders…" button (see PLAN.md's dataset-folder-browser entry, 2026-07-19); +1 import `useHelpMode` + `h()` helper and conditional `docKey={h('…')}` on every SimpleJob field that lacks always-on upstream help (Help mode toggle — see PLAN.md) | Re-add the StepSuggestion mount after the `trainingBarClass` grid inside the Training Card; re-add the OptimizerHint mount below the Optimizer select; re-add the DatasetFolderPickerModal mount alongside AddSingleImageModal; re-add the path/browse block directly under the Target Dataset SelectInput if upstream restructures the dataset row; re-add `useHelpMode`/`h()` and the conditional docKeys on fields that previously had no help |
 | `ui/src/docs.tsx` | +1 import of fork-only `forkDocs`; `getDoc` falls through to `forkDocs` when the upstream registry misses a key | Re-add the import + fallthrough in `getDoc` if upstream rewrites the helper; do not dump fork help copy into the upstream `docs` object |
 | `ui/src/components/Modal.tsx` | −1 class: `backdrop-blur-sm` removed from the `fixed inset-0` backdrop (+ a comment block explaining why). A full-viewport backdrop-filter is recomposited every frame while content above it scrolls; measured at ~14fps vs ~59fps at 60Hz on the operator's laptop, with zero main-thread long tasks — see PLAN.md "Fix: modal backdrop blur" (2026-07-28) | Purely a deletion — if upstream restyles the backdrop, just don't reintroduce `backdrop-blur*` on the full-viewport overlay. `bg-opacity-75` is what dims the page and must stay. Scoped blurs on small elements (AddImagesModal, SampleControlImage, etc.) are fine and were left alone |
-| `ui/cron/actions/startJob.ts` | Rewrote `startAndWatchJob` from an async-executor `new Promise` to a plain `async function` with the whole body in one try/catch (`markJobError` helper), and made the fire-and-forget call site (`startJob()`) attach `.catch()`. Fixes a WORKER-process crash: any exception in the unprotected setup code (DB reads, `fs.mkdirSync`/`writeFileSync`) became an unhandled promise rejection that Node treats as fatal, and `concurrently`'s infinite auto-restart turned that into a crash-restart loop that looks like a frozen console — see PLAN.md "Fix: WORKER process crash on job-launch errors (2026-07-17)". **2026-08-01 sync**: upstream independently rewrote the same function to add a Windows subprocess-relay (job launched via a detached `node -e` relay so it survives `taskkill /T`/tree-kills — `WINDOWS_RELAY_SCRIPT`, `readRelayPid`, `isProcessAlive`, `readLogTail`, `watchDetachedJob`, `resolveDetachedPythonPath`). Reconciled by keeping the fork's async/try-catch/`markJobError` wrapper as the outer shape and placing all of upstream's new module-level relay helpers ahead of it, unchanged — they're additive, not conflicting, once the wrapper shape is settled | If upstream rewrites this function again, re-apply the try/catch restructuring rather than reverting to an async-executor Promise; keep any new upstream helpers as top-level consts above `startAndWatchJob` and let its body flow into the fork's outer try/catch as before |
+| `ui/cron/actions/startJob.ts` | Rewrote `startAndWatchJob` from an async-executor `new Promise` to a plain `async function` with the whole body in one try/catch (`markJobError` helper), and made the fire-and-forget call site (`startJob()`) attach `.catch()`. Fixes a WORKER-process crash: any exception in the unprotected setup code (DB reads, `fs.mkdirSync`/`writeFileSync`) became an unhandled promise rejection that Node treats as fatal, and `concurrently`'s infinite auto-restart turned that into a crash-restart loop that looks like a frozen console — see PLAN.md "Fix: WORKER process crash on job-launch errors (2026-07-17)". **2026-08-01 sync**: upstream independently rewrote the same function to add a Windows subprocess-relay (job launched via a detached `node -e` relay so it survives `taskkill /T`/tree-kills — `WINDOWS_RELAY_SCRIPT`, `readRelayPid`, `isProcessAlive`, `readLogTail`, `watchDetachedJob`, `resolveDetachedPythonPath`). Reconciled by keeping the fork's async/try-catch/`markJobError` wrapper as the outer shape and placing all of upstream's new module-level relay helpers ahead of it, unchanged — they're additive, not conflicting, once the wrapper shape is settled. **Remote execution (2026-08-04)**: +2 imports (`isRemoteGpu`, `startRemoteJob`) and a 4-line early branch at the very top of `startAndWatchJob` — if `gpu_ids` names a machine, hand off and return. Nothing below it changed | If upstream rewrites this function again, re-apply the try/catch restructuring rather than reverting to an async-executor Promise; keep any new upstream helpers as top-level consts above `startAndWatchJob` and let its body flow into the fork's outer try/catch as before. The remote branch must stay the FIRST statement in the function, before any local-path setup (folder creation, log rotation, config write) — those are the peer's job, not this machine's |
+| `ui/src/app/settings/page.tsx` | +1 import, +1 JSX line mounting `<PeerSettings/>` immediately after the settings `</form>`, still inside `<MainContent>` | Re-add after the form. It must stay OUTSIDE the `<form>` — it saves itself via `/api/machines` and has nothing to do with the settings POST |
+| `ui/src/components/JobOverview.tsx` | +1 import; `gpuIds` memo calls fork-only `parseLocalGpuIndices` instead of `gpu_ids.split(',').map(parseInt)`; +1 `remoteMachine` memo; the "Assigned GPUs" line names the machine for a remote job | Upstream's expression yields `[NaN]` for a `"peer:0"` value, which silently matches no GPU and renders an empty widget. Re-apply the helper swap; the display line is cosmetic and can be dropped if it conflicts |
+| `ui/src/components/CaptionMonitor.tsx` | +1 import; same `parseLocalGpuIndices` swap in its `gpuIds` memo | Same reason and same fix as `JobOverview.tsx` |
+| `ui/src/components/JobsTable.tsx` | +1 import; +1 early branch in the `jobsDict` memo giving a remote job its own group keyed by the raw `gpu_ids` | Without it, `gpu?.index \|\| '0'` filed every remote job under THIS machine's GPU 0 — reporting the local card busy when it is idle. The group key must remain the raw `gpu_ids` string: the group header looks the queue up with `queues.find(q => q.gpu_ids === gpuKey)` to drive its START/STOP button |
 | `ui/cron/worker.ts` | +2 top-level `process.on('unhandledRejection'/'uncaughtException', ...)` handlers that log and keep the process alive, added right after the import | Re-add near the top of the file if upstream restructures it; this is a safety net for the same crash-loop class of bug, not a substitute for fixing the specific cause |
 | `.gitignore` | +2 fork entries appended at the end (`.claude`, `/anima_sample_training`) | Both sides tend to append to the tail, so this conflicts on most syncs. Always resolve by **keeping both lists** — the fork's entries and upstream's new ones — never by taking one side wholesale |
 | `build_and_push_docker` | Docker Hub tags/push target changed from `ostris/aitoolkit` to `socrasteeze/aitoolkit` (both the `:$VERSION` and `:latest` tags, and the final echo). Deliberate per-machine override — see CLAUDE.md's "Local tooling notes" (2026-07-31); was already diverged from upstream before this table tracked it, found and backfilled during the 2026-08-03 sync | Keep the `socrasteeze/aitoolkit` substitution on both `docker tag`/`docker push` lines and the trailing echo; everything else in the script (the `set -euo pipefail`, build args, chmod +x mode) is upstream's and should be taken as-is |
@@ -140,6 +144,74 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
   Derives the dataset name/subPath to query via `deriveDatasetSelection`, which needs
   `DATASETS_FOLDER` (fetched with `useSettings()`) to split `folder_path` correctly for
   nested selections — see the Duplication watch entry on `resolveDatasetSubPath` below
+- `ui/cron/gpuIds.ts` + `ui/src/utils/gpuIds.ts` — the `"<peerId>:<localIndex>"` encoding
+  for `Job.gpu_ids`. **Two copies on purpose**: the worker build
+  (`tsconfig.worker.json`) includes only `cron/**` and cannot import from `src/`. The same
+  forced split already exists between `cron/paths.ts` and `src/server/settings.ts`. Keep
+  them in step
+- `ui/cron/peers.ts` + `ui/src/server/peers.ts` — the peer registry, stored as one JSON row
+  in `Settings` under key `PEERS` (fork rule 2: no Prisma schema changes). Same two-copy
+  reason as above. The Next-side copy also owns `savePeers`, which preserves a stored token
+  when the browser submits the entry without one — the token is never sent to the browser,
+  so it cannot be sent back
+- `ui/cron/remoteClient.ts` — HTTP client for a peer: auth header, timeouts, errors that
+  name the machine, multipart upload, and a Range-resuming download
+- `ui/cron/actions/startRemoteJob.ts` — the remote lifecycle (stage, rewrite, dispatch,
+  mirror, stop, fail honestly). See "Remote execution" below
+- `ui/src/app/api/machines/route.ts` — GET probes every peer's `/api/gpu` in parallel and
+  reports each as online-with-GPUs or offline-with-a-reason; POST saves the registry
+- `ui/src/hooks/useMachines.ts` — wraps `useGPUInfo` and merges peer GPUs into one option
+  list. Reports `isGPUInfoLoaded` for the LOCAL half only, deliberately: callers gate the
+  whole job form on it and a switched-off peer takes the full probe timeout to answer
+- `ui/src/components/PeerSettings.tsx` — add/remove machines, mounted on the settings page
+
+## Remote execution: running a job on another machine (2026-08-04)
+
+Pick another machine's GPU in the job form and the job trains there. Design history and
+the alternatives considered: PLAN.md.
+
+**The peer runs unmodified.** It is an ordinary install of this fork (or of upstream) with
+its own models and its own Hugging Face token. Every call the hub makes is a route the peer
+already serves — `/api/settings`, `/api/datasets/upload`, `/api/datasets/listImages`,
+`/api/jobs`, `/api/jobs/<id>/{start,stop,log,samples,files}`, `/api/queue/<gpu>/start`,
+`/api/files/<path>`. There is no side-channel protocol and nothing to install. That is the
+property worth protecting on any future change here.
+
+**Identity rides in `gpu_ids`, which is why nothing else changed.** `Queue.gpu_ids` is
+`String @unique` and `processQueue` groups jobs by an exact string match, so `"workshop:0"`
+becomes its own queue with its own one-job-at-a-time concurrency **without a single edit to
+`processQueue.ts`** and without a schema change. `'mps'` already proved the column carries
+non-numeric values.
+
+**What crosses, and what does not:**
+
+| Crosses | Stays put |
+|---|---|
+| Dataset images + captions (only what changed since last run) | Base model weights — the peer downloads its own |
+| The job config, with folders rewritten for the peer | The optimizer state (`optimizer.pt`), too large to be worth it |
+| Log bytes, sample images, `.safetensors` — mirrored home | |
+
+**The mirror writes the same `Job` row and the same `{TRAINING_FOLDER}/{job.name}/` folder
+a local run would.** That is why no UI code needed changing: the job page, log tail, sample
+grid and file list all work against a remote run without knowing it is one.
+
+**Staging is incremental, and the manifest is the marker.** A `.hub_manifest.json` of
+`name -> size:mtime` is uploaded into the staged folder *after* the files it describes, so
+an interrupted staging leaves the previous, smaller manifest and the next run re-sends the
+gap. An edited image changes its signature and is re-sent. `listImages` skips dotfiles, so
+the manifest never shows up as a dataset image.
+
+**Known limits, deliberately not hidden:**
+
+- A dataset with subfolders is refused before anything uploads. The peer's upload route
+  writes every file into one directory, so a nested layout would silently collapse into a
+  different dataset than the one configured.
+- A dataset with a `control_path` is refused for the same reason.
+- There is no loop guard: pointing a peer entry at this same instance is not detected.
+  Doing so would have the machine queue work to itself under a second name.
+- The peer's queue is its own. If someone starts a job on the peer directly, the hub's job
+  waits behind it and reports `queued` — which is accurate, but the hub cannot show what it
+  is waiting for.
 
 ## Speed optimization (Phase 6, 2026-07-19)
 

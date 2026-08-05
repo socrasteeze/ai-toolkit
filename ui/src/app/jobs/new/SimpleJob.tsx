@@ -48,6 +48,8 @@ type Props = {
   gpuIDs: string | null;
   setGpuIDs: (value: string | null) => void;
   gpuList: any;
+  // fork addition, see FORK_NOTES.md — local GPUs plus any peer machine's
+  gpuOptions?: any;
   datasetOptions: any;
   isLoading?: boolean;
 };
@@ -63,6 +65,7 @@ export default function SimpleJob({
   gpuIDs,
   setGpuIDs,
   gpuList,
+  gpuOptions,
   datasetOptions,
   isLoading,
 }: Props) {
@@ -262,7 +265,8 @@ export default function SimpleJob({
                 value={`${gpuIDs}`}
                 docKey="gpuids"
                 onChange={value => setGpuIDs(value)}
-                options={gpuList.map((gpu: any) => ({ value: `${gpu.index}`, label: `GPU #${gpu.index}` }))}
+                // fork addition, see FORK_NOTES.md — local GPUs plus any peer machine's
+                options={(gpuOptions ?? gpuList.map((gpu: any) => ({ value: `${gpu.index}`, label: `GPU #${gpu.index}` }))) as any}
               />
             )}
             {disableSections.includes('trigger_word') ? null : (

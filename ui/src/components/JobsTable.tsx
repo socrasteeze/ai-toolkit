@@ -13,6 +13,8 @@ import useGPUInfo from '@/hooks/useGPUInfo';
 import { openConfirm } from '@/components/ConfirmModal';
 import { deleteJob, getTotalSteps, stopJob } from '@/utils/jobs';
 import { Trash2 } from 'lucide-react';
+// fork addition, see FORK_NOTES.md
+import { splitPeerGpu } from '@/utils/gpuIds';
 
 interface JobsTableProps {
   autoStartQueue?: boolean;
@@ -212,6 +214,25 @@ export default function JobsTable({ onlyActive = false, job_type = null }: JobsT
     });
     jd['Idle'] = { name: 'Idle', jobs: [] };
     jobs.forEach(job => {
+      // fork addition, see FORK_NOTES.md — a job on another machine gets its own
+      // group. Without this it fell through to `gpu?.index || '0'` and was listed
+      // under THIS machine's GPU 0, which says the local card is busy when it is not.
+      // The key is the raw `gpu_ids` because the group header below looks the
+      // queue up by it (`queues.find(q => q.gpu_ids === gpuKey)`) to drive its
+      // START/STOP button — and the hub really does hold a Queue row named that.
+      const remote = splitPeerGpu(job.gpu_ids);
+      if (remote) {
+        const remoteKey = job.gpu_ids;
+        if (!(remoteKey in jd)) {
+          jd[remoteKey] = { name: `${remote.peerId} — GPU ${remote.localGpuIds}`, jobs: [] };
+        }
+        if (['queued', 'running', 'stopping'].includes(job.status)) {
+          jd[remoteKey].jobs.push(job);
+        } else {
+          jd['Idle'].jobs.push(job);
+        }
+        return;
+      }
       const gpu = gpuList.find(gpu => job.gpu_ids?.split(',').includes(gpu.index.toString())) as GpuInfo;
       const key = `${gpu?.index || '0'}`;
       if (['queued', 'running', 'stopping'].includes(job.status) && key in jd) {

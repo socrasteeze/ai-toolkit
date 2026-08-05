@@ -8,6 +8,8 @@ import useGPUInfo from '@/hooks/useGPUInfo';
 import GPUWidget from '@/components/GPUWidget';
 import JobActionBar from '@/components/JobActionBar';
 import { getTotalSteps } from '@/utils/jobs';
+// fork addition, see FORK_NOTES.md
+import { parseLocalGpuIndices } from '@/utils/gpuIds';
 
 interface CaptionMonitorProps {
   datasetPath: string;
@@ -32,7 +34,9 @@ export default function CaptionMonitor({ datasetPath, onHeightChange }: CaptionM
   const gpuIds = useMemo(() => {
     if (!job) return [];
     if (job.gpu_ids === 'mps') return [0];
-    return job.gpu_ids.split(',').map(id => parseInt(id));
+    // fork addition, see FORK_NOTES.md — returns [] for a job on another
+    // machine, instead of the [NaN] a plain parseInt would give.
+    return parseLocalGpuIndices(job.gpu_ids);
   }, [job?.gpu_ids]);
 
   const { gpuList, isGPUInfoLoaded } = useGPUInfo(gpuIds, 5000);

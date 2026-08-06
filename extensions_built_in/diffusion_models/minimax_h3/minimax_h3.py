@@ -276,6 +276,110 @@ class MinimaxH3Model(BaseModel):
             )
         return f"dit_{partition}"
 
+    def load_training_adapter(self, transformer: MiniMaxH3Transformer):
+        """Load an assistant LoRA (e.g. a de-distillation adapter) as a LIVE
+        module: active during training, deactivated by the sampler. It is
+        deliberately NOT merged into the base weights — the transformer is
+        pre-quantized, and a merge would resample every int8 scale.
+
+        Path resolution: a local path is used as-is; otherwise the loras
+        folder under MODELS_PATH is searched recursively for the filename;
+        otherwise a ``user/repo/file.safetensors`` hub path downloads into
+        MODELS_PATH/loras/training_adapters/.
+        """
+        from toolkit.config_modules import NetworkConfig
+        from toolkit.lora_special import LoRASpecialNetwork
+
+        self.print_and_status_update("Loading assistant LoRA")
+        lora_path = self.model_config.assistant_lora_path
+        if not os.path.exists(lora_path):
+            filename = os.path.basename(lora_path)
+            found = self._find_file_recursive(
+                os.path.join(MODELS_PATH, "loras"), filename
+            )
+            if found is not None:
+                lora_path = found
+            else:
+                lora_splits = lora_path.split("/")
+                if len(lora_splits) != 3:
+                    raise ValueError(
+                        f"Assistant LoRA path {lora_path} is not a local path, a "
+                        f"file under {os.path.join(MODELS_PATH, 'loras')}, or a "
+                        "'user/repo/file.safetensors' hub path."
+                    )
+                import huggingface_hub
+
+                target_dir = os.path.join(MODELS_PATH, "loras", "training_adapters")
+                os.makedirs(target_dir, exist_ok=True)
+                try:
+                    lora_path = huggingface_hub.hf_hub_download(
+                        repo_id="/".join(lora_splits[:2]),
+                        filename=lora_splits[2],
+                        local_dir=target_dir,
+                    )
+                except Exception as e:
+                    raise ValueError(
+                        f"Failed to download assistant LoRA from {lora_path}: {e}"
+                    )
+            self.model_config.assistant_lora_path = lora_path
+
+        # load the adapter; it stays a live module (never merged) and the
+        # sampler toggles it off for previews
+        lora_state_dict = load_file(lora_path)
+        dim_key = next(
+            k
+            for k in lora_state_dict
+            if k.endswith("lora_A.weight") or k.endswith("lora_down.weight")
+        )
+        dim = int(lora_state_dict[dim_key].shape[0])
+        lora_state_dict = self.convert_lora_weights_before_load(lora_state_dict)
+
+        network_config = NetworkConfig(
+            **{
+                "type": "lora",
+                "linear": dim,
+                "linear_alpha": dim,
+                "transformer_only": True,
+            }
+        )
+        LoRASpecialNetwork.LORA_PREFIX_UNET = "lora_transformer"
+        network = LoRASpecialNetwork(
+            text_encoder=None,
+            unet=transformer,
+            lora_dim=network_config.linear,
+            multiplier=1.0,
+            alpha=network_config.linear_alpha,
+            train_unet=True,
+            train_text_encoder=False,
+            network_config=network_config,
+            network_type=network_config.type,
+            transformer_only=network_config.transformer_only,
+            is_transformer=True,
+            target_lin_modules=self.target_lora_modules,
+            is_assistant_adapter=True,
+            is_ara=True,
+        )
+        network.apply_to(None, transformer, apply_text_encoder=False, apply_unet=True)
+        network.force_to(self.device_torch, dtype=self.torch_dtype)
+        network._update_torch_multiplier()
+        network.load_weights(lora_state_dict)
+
+        # frozen: the adapter shapes the training distribution but is never
+        # itself trained, so its params must not collect gradients
+        network.is_merged_in = False
+        for param in network.parameters():
+            param.requires_grad_(False)
+        network.eval()
+
+        self.assistant_lora: LoRASpecialNetwork = network
+
+        # live during training; the sampler's non-inverted assistant path
+        # (BaseModel.generate_images) deactivates it for previews and turns
+        # it back on afterwards
+        self.assistant_lora.multiplier = 1.0
+        self.assistant_lora.is_active = True
+        self.invert_assistant_lora = False
+
     def _load_transformer(self) -> MiniMaxH3Transformer:
         dtype = self.torch_dtype
         dit_path = self._resolve_comfy_file(self._dit_component())
@@ -459,6 +563,10 @@ class MinimaxH3Model(BaseModel):
         self.print_and_status_update("Loading MiniMax-H3 model")
 
         transformer = self._load_transformer()
+
+        # load assistant lora if specified (merged into the quantized weights)
+        if self.model_config.assistant_lora_path is not None:
+            self.load_training_adapter(transformer)
 
         if self.model_config.quantize:
             self.print_and_status_update("Quantizing transformer")
@@ -719,13 +827,15 @@ class MinimaxH3Model(BaseModel):
         if self.model.device == torch.device("cpu"):
             self.model.to(device)
 
-        # the primary (loss carrying) prediction is the first one made with grad
-        # enabled. Prior/cfg/guidance passes run under no_grad, and the
-        # preservation pass (diff_output_preservation, blank_prompt_preservation)
-        # runs with grad but after the loss, so it must not restate the audio
-        # prediction the primary pass stored on the batch.
+        # a grad-enabled prediction is the primary (loss carrying) one unless
+        # the trainer declared a secondary slot on the batch (prior /
+        # guidance-unconditional / preservation passes). Trainers that make
+        # several grad predictions per step (e.g. turbo rollouts) get one
+        # primary per prediction, last writer wins.
         is_primary_pred = (
-            torch.is_grad_enabled() and batch is not None and batch.audio_pred is None
+            torch.is_grad_enabled()
+            and batch is not None
+            and batch.audio_pred_slot is None
         )
 
         batch_size, _, t_lat, h_lat, w_lat = latent_model_input.shape
@@ -777,10 +887,20 @@ class MinimaxH3Model(BaseModel):
                 # invert 17n+5 -> 5n+2 from the latent frame count
                 num_frames = (t_lat - 2) // 5 * 17 + 5 if t_lat > 1 else 1
             a_lat = packing.audio_latent_num_frames(num_frames)
+            # audio only trains for video batches from datasets that asked for
+            # it. Cached latents can carry audio after do_audio was turned off,
+            # and image (single frame) batches must never pick up a soundtrack
+            # — either way it rides along as silence with no audio loss.
+            do_audio = (
+                batch is not None
+                and batch.dataset_config is not None
+                and batch.dataset_config.do_audio
+                and num_frames > 1
+            )
             raw_audio = None
-            if batch is not None and batch.audio_latents is not None:
+            if do_audio and batch.audio_latents is not None:
                 raw_audio = batch.audio_latents.to(device, torch.float32)
-            elif batch is not None and getattr(batch, "audio_data", None) is not None:
+            elif do_audio and getattr(batch, "audio_data", None) is not None:
                 raw_audio = self.encode_audio(batch.audio_data).to(
                     device, torch.float32
                 )
@@ -809,10 +929,16 @@ class MinimaxH3Model(BaseModel):
                 batch.audio_latents = raw_audio
                 if batch.audio_target is None:
                     # model predicts clean - noise; audio_pred is negated below
-                    # so the stored target follows ai-toolkit's noise - clean
+                    # so the stored target follows ai-toolkit's noise - clean.
+                    # With the shared noise this is the same value on every
+                    # pass, so first writer is fine (and it keeps a guidance
+                    # extrapolated target from being overwritten).
                     batch.audio_target = (audio_noise - raw_audio).detach()
+                if is_primary_pred:
                     # expose what audio perceptual losses need to rebuild the
-                    # clean estimate (x0 = noisy - sigma_a * pred)
+                    # clean estimate (x0 = noisy - sigma_a * pred). Tied to the
+                    # primary pass so they always match audio_pred, even when a
+                    # trainer makes primary predictions at several sigmas.
                     batch.audio_noisy = audio_rows
                     batch.audio_sigma = sigma_a
             else:
@@ -893,7 +1019,7 @@ class MinimaxH3Model(BaseModel):
             if is_primary_pred:
                 batch.audio_pred = -audio_pred
             else:
-                batch.audio_pred_uncond = -audio_pred
+                batch.set_secondary_audio_pred(-audio_pred)
 
         video_pred = video_pred[:, num_cond:]
         noise_pred = unpatchify_video_tokens(video_pred, t_lat, h_lat, w_lat)

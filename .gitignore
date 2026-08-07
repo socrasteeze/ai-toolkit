@@ -193,3 +193,11 @@ aitk_db.db-shm
 /anima_sample_training
 original_repo
 /hf-cache
+
+# Never commit key material
+*.key
+*.pem
+*.p12
+*.pfx
+id_rsa
+id_ed25519

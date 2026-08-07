@@ -940,7 +940,7 @@ class SDTrainer(BaseSDTrainProcess):
                 prior_loss = torch.nn.functional.mse_loss(pred.float(), prior_pred.float(), reduction="none")
 
             prior_loss = prior_loss * prior_mask_multiplier * self.train_config.inverted_mask_prior_multiplier
-            if torch.isnan(prior_loss).any():
+            if torch.isnan(prior_loss).any() or not torch.isfinite(prior_loss):
                 print_acc("Prior loss is nan")
                 prior_loss = None
             else:
@@ -2168,10 +2168,12 @@ class SDTrainer(BaseSDTrainProcess):
 
                 # check if nan
                 if self.train_config.loss_sync_every > 1:
-                    # fork (speed): neutralize a NaN loss on-device — torch.isnan() on a
-                    # scalar forces a CUDA sync every accumulation (see FORK_NOTES.md)
+                    # fork (speed): neutralize a NaN/inf loss on-device — torch.isnan()/
+                    # torch.isfinite() on a scalar forces a CUDA sync every accumulation
+                    # (see FORK_NOTES.md). nan_to_num already replaces +/-inf as well as
+                    # NaN, so this stays equivalent to upstream's isfinite check below.
                     loss = torch.nan_to_num(loss)
-                elif torch.isnan(loss):
+                elif not torch.isfinite(loss):
                     print_acc("loss is nan")
                     loss = torch.zeros_like(loss).requires_grad_(True)
 

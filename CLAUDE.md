@@ -44,8 +44,15 @@ decisions in §9).
 Standing instructions for `/sync-upstream` (or any "pull in upstream" request):
 
 1. **The `upstream` remote is not committed** and does not survive a fresh clone, so a new
-   session/container will find only `origin`. Add it first:
+   session/container will find only `origin`. Add it first, then immediately make it
+   fetch-only:
    `git remote add upstream https://github.com/ostris/ai-toolkit.git`
+   `git remote set-url --push upstream DISABLED`
+   The second line is not optional — nothing here ever pushes to `ostris/ai-toolkit`, and
+   git has no real "no push URL" state, so a remote with only a fetch URL happily pushes
+   to *that*. The bogus placeholder makes a stray `git push upstream` fail locally before
+   it touches the network. Leave it in place; do not "fix" it back to a real URL. Same
+   threat as rule 2 below (never PR upstream), different mechanism.
 2. **NEVER open a pull request for a sync — push straight to `main`.** No PR, no review
    branch, no exceptions. Standing permission from the user (2026-07-25); it applies to
    upstream syncs specifically, not to feature work. Syncs have always been fast-forwards

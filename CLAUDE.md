@@ -24,10 +24,24 @@ decisions in §9).
 ## Fork hygiene rules (apply to any future change)
 
 1. New functionality goes in new files. Upstream files should only ever get small,
-   easy-to-reapply insertions. As of 2026-07-28 that is **11 files** — get the current
+   easy-to-reapply insertions. As of 2026-08-09 that is **16 files** — get the current
    list with `git diff upstream/main --name-status | grep -v '^A'`, and the per-file
    change + conflict-resolution notes from `FORK_NOTES.md`'s "Upstream files modified"
    table (the authoritative record; this count goes stale, that table does not).
+   **That command only answers correctly when this fork is NOT behind upstream.**
+   It diffs HEAD against `upstream/main`, so while you are behind, every file
+   *upstream* changed and the fork never touched is reported as a fork
+   modification too. Measured 2026-08-09, five commits behind: it said 22, six of
+   which were upstream's own. That is precisely when a sync makes you reach for
+   it. Either `git fetch upstream` and check `git rev-list --count HEAD..upstream/main`
+   is 0 first, or ask the question that does not care:
+
+   ```bash
+   git diff $(git merge-base HEAD upstream/main)..HEAD --name-status | grep -v '^A'
+   ```
+
+   Both forms give 16 once the fork is level; only the second is trustworthy
+   mid-sync. Rule 3 below runs *after* the merge, so the short form is fine there.
    The three original JSX mounts (`ui/src/app/jobs/new/page.tsx`,
    `ui/src/app/jobs/new/SimpleJob.tsx`, `ui/src/app/datasets/[datasetName]/page.tsx`)
    are still the most conflict-prone.

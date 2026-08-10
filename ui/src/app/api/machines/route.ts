@@ -2,9 +2,8 @@
  * The machines a job can be sent to.
  *
  * Returns PEERS ONLY. The local GPU list keeps coming from `/api/gpu`, and the
- * client merges the two (`useMachines`). That split is deliberate: it leaves
- * upstream's `api/gpu/route.ts` byte-identical, and it means a slow or absent
- * peer can never delay or break the local picker.
+ * client merges the two (`useMachines`). That split is deliberate: a slow or
+ * absent peer can never delay or break the local picker.
  *
  * An unreachable peer is reported as offline with a reason, not as an error.
  * A machine that is simply switched off is an ordinary state, and the picker
@@ -13,7 +12,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { cached } from '@/server/apiCache';
+import { cached, invalidateCache } from '@/server/apiCache';
 import { getPeers, savePeers, toPublic, Peer } from '@/server/peers';
 
 /** A peer that is off should be reported quickly, not waited on. */
@@ -73,6 +72,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const saved = await savePeers(body?.peers);
+    invalidateCache('peer-machines');
     return NextResponse.json({ peers: saved.map(toPublic) });
   } catch (error) {
     console.error('Error saving machines:', error);

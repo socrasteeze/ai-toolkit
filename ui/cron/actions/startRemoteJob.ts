@@ -30,6 +30,15 @@ import { getTrainingFolder } from '../paths';
 import { splitPeerGpu } from '../gpuIds';
 import { getPeer, Peer } from '../peers';
 import { PeerError, peerDownloadFile, peerJson, peerUploadFiles } from '../remoteClient';
+import {
+  attemptStopAcknowledgement,
+  downloadAndReplaceFile,
+  reconcileRemoteManifest,
+  RemoteManifestState,
+  sanitizePeerFilenames,
+  shouldSkipExistingDownload,
+  stagedDatasetName,
+} from '../remoteIntegrity';
 
 /** How often the hub asks the peer how the run is going. Matches the UI's own 5s job poll. */
 const WATCH_INTERVAL_MS = 5_000;
@@ -83,12 +92,6 @@ function joinRemote(root: string, ...parts: string[]): string {
   return [trimmed, ...parts].join(sep);
 }
 
-/** A stable, filesystem-safe dataset name on the peer, one per job per dataset slot. */
-function stagedDatasetName(jobName: string, index: number): string {
-  const safe = jobName.replace(/[^a-zA-Z0-9.-]/g, '_');
-  return `hub_${safe}_${index}`;
-}
-
 interface StagedFile {
   localPath: string;
   name: string;
@@ -105,26 +108,21 @@ interface StagedFile {
  * different dataset than the one that was configured. Failing here, before
  * anything is uploaded, is the honest outcome.
  */
-async function collectDatasetFiles(folder: string): Promise<StagedFile[]> {
+async function collectDatasetFiles(folder: string, peer: Peer): Promise<StagedFile[]> {
   const entries = await fs.promises.readdir(folder, { withFileTypes: true });
   const files: StagedFile[] = [];
-  const subdirs: string[] = [];
+  const visibleEntries = entries.filter(entry => !entry.name.startsWith('.'));
+  const subdirs = visibleEntries.filter(entry => entry.isDirectory()).map(entry => entry.name);
 
-  for (const entry of entries) {
-    if (entry.name.startsWith('.')) {
-      continue;
-    }
-    if (entry.isDirectory()) {
-      subdirs.push(entry.name);
-      continue;
-    }
-    if (!entry.isFile()) {
-      continue;
-    }
-    const ext = path.extname(entry.name).toLowerCase();
-    if (!DATASET_EXTENSIONS.includes(ext)) {
-      continue;
-    }
+  const fileEntries = visibleEntries.filter(
+    entry => entry.isFile() && DATASET_EXTENSIONS.includes(path.extname(entry.name).toLowerCase()),
+  );
+  const peerNames = sanitizePeerFilenames(fileEntries.map(entry => entry.name), {
+    rejectCaseCollisions: peer.caseSensitiveFs !== true,
+  });
+
+  for (let i = 0; i < fileEntries.length; i++) {
+    const entry = fileEntries[i];
     const localPath = path.join(folder, entry.name);
     const stat = await fs.promises.stat(localPath);
     files.push({
@@ -132,7 +130,7 @@ async function collectDatasetFiles(folder: string): Promise<StagedFile[]> {
       // Pre-apply the peer's own sanitizer so the manifest records the name the
       // file will actually have there; otherwise every run sees a mismatch and
       // re-uploads the whole dataset.
-      name: entry.name.replace(/[^a-zA-Z0-9.-]/g, '_'),
+      name: peerNames[i],
       signature: `${stat.size}:${Math.round(stat.mtimeMs)}`,
     });
   }
@@ -146,21 +144,38 @@ async function collectDatasetFiles(folder: string): Promise<StagedFile[]> {
   return files;
 }
 
-/** The manifest the last staging left behind, or an empty one. */
-async function readRemoteManifest(peer: Peer, remoteDir: string): Promise<Record<string, string>> {
+/** What the last staging left behind, as far as the peer is willing to say. */
+async function readRemoteManifest(peer: Peer, remoteDir: string): Promise<RemoteManifestState> {
+  let res: Record<string, string> | undefined;
   try {
-    const res = await peerJson<Record<string, string>>(
+    res = await peerJson<Record<string, string>>(
       peer,
       `/api/files/${encodeURIComponent(joinRemote(remoteDir, MANIFEST_NAME))}`,
       {},
       20_000,
     );
-    return res && typeof res === 'object' ? res : {};
-  } catch {
-    // No manifest is the normal first-run case, and a corrupt one only costs a
-    // full re-upload — neither is worth failing the job over.
-    return {};
+  } catch (e: any) {
+    // PeerError carries a status exactly when the peer answered — a 404 for a
+    // never-staged folder, a 500, a body that is not JSON. Those are real
+    // evidence about the folder, so they reset it. A timeout or a refused
+    // connection carries no status and is evidence of nothing; re-send the files
+    // but never let it authorize a delete.
+    return e instanceof PeerError && e.status !== undefined ? { kind: 'untrusted' } : { kind: 'unavailable' };
   }
+
+  // The peer answered with something that is not a manifest: missing or corrupt.
+  // The caller resets the generated staging folder before uploading, so unknown
+  // old files can never leak into the next training set.
+  if (
+    !res ||
+    typeof res !== 'object' ||
+    Array.isArray(res) ||
+    Object.keys(res).length === 0 ||
+    !Object.values(res).every(value => typeof value === 'string')
+  ) {
+    return { kind: 'untrusted' };
+  }
+  return { kind: 'ok', manifest: res };
 }
 
 /**
@@ -176,25 +191,49 @@ async function stageDataset(
   peer: Peer,
   peerDatasetsRoot: string,
   jobName: string,
+  jobID: string,
   index: number,
   localFolder: string,
   onProgress: (message: string) => Promise<void>,
 ): Promise<string> {
-  const datasetName = stagedDatasetName(jobName, index);
+  const datasetName = stagedDatasetName(jobName, jobID, index);
   const remoteDir = joinRemote(peerDatasetsRoot, datasetName);
 
-  const files = await collectDatasetFiles(localFolder);
+  const files = await collectDatasetFiles(localFolder, peer);
   if (files.length === 0) {
     throw new Error(`Dataset folder "${localFolder}" has no images to send.`);
   }
-
-  const previous = await readRemoteManifest(peer, remoteDir);
-  const toSend = files.filter(f => previous[f.name] !== f.signature);
 
   const manifest: Record<string, string> = {};
   for (const file of files) {
     manifest[file.name] = file.signature;
   }
+
+  const previous = await reconcileRemoteManifest(await readRemoteManifest(peer, remoteDir), manifest, async reason => {
+    await onProgress(
+      reason.kind === 'untrusted'
+        ? `Resetting ${peer.label}'s unverified staged dataset before upload…`
+        : `Resetting ${peer.label}'s staged dataset because ${reason.removed.length} local file${reason.removed.length === 1 ? ' was' : 's were'} removed…`,
+    );
+    try {
+      await peerJson(
+        peer,
+        '/api/datasets/delete',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: datasetName }),
+        },
+        60_000,
+      );
+    } catch (e: any) {
+      // A folder that was never staged 404s here, and a delete that genuinely
+      // failed still leaves the re-upload to overwrite what it can. Neither is
+      // worth failing a training job over — the pre-reset code never did.
+      console.error(`Could not reset ${peer.label}'s staged dataset "${datasetName}":`, e?.message ?? e);
+    }
+  });
+  const toSend = files.filter(f => previous[f.name] !== f.signature);
 
   if (toSend.length === 0) {
     await onProgress(`${peer.label} already has all ${files.length} files`);
@@ -319,7 +358,15 @@ export default async function startRemoteJob(job: Job): Promise<void> {
       if (typeof localFolder !== 'string' || localFolder.trim() === '') {
         continue;
       }
-      datasets[i].folder_path = await stageDataset(peer, remote.datasetsFolder, job.name, i, localFolder, setInfo);
+      datasets[i].folder_path = await stageDataset(
+        peer,
+        remote.datasetsFolder,
+        job.name,
+        job.id,
+        i,
+        localFolder,
+        setInfo,
+      );
       // Control images live beside the dataset and are not staged; refuse rather
       // than train against a path that does not exist on the peer.
       if (typeof datasets[i].control_path === 'string' && datasets[i].control_path.trim() !== '') {
@@ -380,12 +427,15 @@ async function watchRemoteJob(
       return;
     }
     if ((local.stop || local.return_to_queue) && !stopSent) {
-      stopSent = true;
-      try {
-        await peerJson(peer, `/api/jobs/${remoteJobID}/stop`, {}, 30_000);
-        await prisma.job.update({ where: { id: jobID }, data: { info: `Stopping on ${peer.label}…` } });
-      } catch (e: any) {
-        console.error(`Could not forward the stop to ${peer.label}:`, e);
+      const result = await attemptStopAcknowledgement(stopSent, () =>
+        peerJson(peer, `/api/jobs/${remoteJobID}/stop`, {}, 30_000),
+      );
+      stopSent = result.acknowledged;
+      if ('error' in result) console.error(`Could not forward the stop to ${peer.label}:`, result.error);
+      if (stopSent) {
+        await prisma.job
+          .update({ where: { id: jobID }, data: { info: `Stopping on ${peer.label}…` } })
+          .catch(() => {});
       }
     }
 
@@ -520,13 +570,21 @@ async function mirrorCheckpoints(
     for (let i = 0; i < weights.length; i++) {
       const name = weights[i].path.split(/[\\/]/).pop() as string;
       const dest = path.join(trainingFolder, name);
-      if (fs.existsSync(dest)) {
+
+      // Checkpoints are immutable once written, so a copy we already hold is the
+      // copy the peer has. Re-queueing a finished job must not re-pull gigabytes.
+      const existing = await fs.promises.stat(dest).catch(() => null);
+      if (shouldSkipExistingDownload(existing?.isFile() ? existing.size : null, weights[i].size)) {
         continue;
       }
+
       await prisma.job
         .update({ where: { id: jobID }, data: { info: `Fetching ${name} from ${peer.label} (${i + 1}/${weights.length})…` } })
         .catch(() => {});
-      await peerDownloadFile(peer, weights[i].path, dest);
+
+      await downloadAndReplaceFile(dest, weights[i].size, tempDest =>
+        peerDownloadFile(peer, weights[i].path, tempDest),
+      );
     }
     await prisma.job
       .update({ where: { id: jobID }, data: { info: `Done. Weights copied from ${peer.label}.` } })

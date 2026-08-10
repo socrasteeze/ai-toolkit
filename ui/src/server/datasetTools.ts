@@ -9,6 +9,7 @@ import path from 'path';
 
 import { resolvePythonPath } from '../../cron/pythonPath';
 import { TOOLKIT_ROOT } from '../../cron/paths';
+import { createToolRunRegistry } from './toolRunRegistry';
 
 export type ToolName = 'preflight' | 'caption' | 'prep';
 
@@ -22,9 +23,9 @@ export interface ToolRun {
   startedAt: number;
 }
 
-const runs = new Map<string, ToolRun>();
-// one run at a time per dataset — the tools mutate caption/image files
-const activeByDataset = new Map<string, string>();
+// Registration, per-dataset ownership and retention live in the registry so they
+// can be tested without spawning Python or loading Prisma — see toolRunRegistry.ts.
+const registry = createToolRunRegistry<ToolRun>();
 
 const SCRIPTS: Record<ToolName, string> = {
   preflight: 'preflight.py',
@@ -33,12 +34,11 @@ const SCRIPTS: Record<ToolName, string> = {
 };
 
 export function getRun(runId: string): ToolRun | undefined {
-  return runs.get(runId);
+  return registry.get(runId);
 }
 
 export function getActiveRun(datasetName: string): ToolRun | undefined {
-  const id = activeByDataset.get(datasetName);
-  return id ? runs.get(id) : undefined;
+  return registry.getActive(datasetName);
 }
 
 export function startToolRun(tool: ToolName, datasetName: string, args: string[]): ToolRun {
@@ -57,37 +57,53 @@ export function startToolRun(tool: ToolName, datasetName: string, args: string[]
     log: '',
     startedAt: Date.now(),
   };
-  runs.set(runId, run);
-  activeByDataset.set(datasetName, runId);
+  registry.register(run);
 
   const script = path.join(TOOLKIT_ROOT, 'scripts', SCRIPTS[tool]);
-  const child = spawn(resolvePythonPath(), ['-u', script, ...args], {
-    cwd: TOOLKIT_ROOT,
-    env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' },
-    windowsHide: true,
-  });
-
-  const append = (chunk: Buffer) => {
-    run.log += chunk.toString('utf-8');
+  const append = (chunk: Buffer | string) => {
+    run.log += typeof chunk === 'string' ? chunk : chunk.toString('utf-8');
     // cap the buffer; these tools log modestly but never trust a child process
     if (run.log.length > 200_000) {
       run.log = run.log.slice(-150_000);
     }
   };
+
+  let finalized = false;
+  const finalize = (status: 'done' | 'failed', exitCode: number) => {
+    if (finalized) return;
+    finalized = true;
+    run.status = status;
+    run.exitCode = exitCode;
+
+    // The finished run stays discoverable until retention expires — exclusivity
+    // does not depend on unregistering it, since the guard below tests
+    // `status === 'running'`.
+    registry.scheduleRetirement(run);
+  };
+
+  let child;
+  try {
+    child = spawn(resolvePythonPath(), ['-u', script, ...args], {
+      cwd: TOOLKIT_ROOT,
+      env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' },
+      windowsHide: true,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    append(`\nfailed to start: ${message}`);
+    finalize('failed', -1);
+    return run;
+  }
+
   child.stdout.on('data', append);
   child.stderr.on('data', append);
   child.on('error', err => {
-    run.log += `\nfailed to start: ${err.message}`;
-    run.status = 'failed';
-    run.exitCode = -1;
+    append(`\nfailed to start: ${err.message}`);
+    finalize('failed', -1);
   });
   child.on('close', code => {
-    run.exitCode = code;
-    run.status = code === 0 ? 'done' : 'failed';
+    finalize(code === 0 ? 'done' : 'failed', code ?? -1);
   });
-
-  // drop finished runs after an hour so the map can't grow unbounded
-  setTimeout(() => runs.delete(runId), 60 * 60 * 1000).unref?.();
 
   return run;
 }

@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
-import path from 'path';
 import { getDatasetsRoot } from '@/server/settings';
-import { sanitizeDatasetName, resolveDatasetSubPath } from '@/server/datasetFiles';
+import { resolveDatasetPath, resolveDatasetSubPath } from '@/server/datasetFiles';
 
 // Fork-only route (see FORK_NOTES.md). Lists the immediate subfolders of a dataset (or a
 // subfolder within it), for the folder-browser modal that lets a job target a nested
@@ -29,11 +28,10 @@ export async function POST(request: Request) {
   }
 
   // datasetName is a folder name directly under the datasets root; never allow traversal
-  const safeDatasetName = sanitizeDatasetName(datasetName);
-  if (!safeDatasetName) {
+  const datasetRoot = resolveDatasetPath(datasetsRoot, datasetName);
+  if (!datasetRoot) {
     return NextResponse.json({ error: 'Invalid datasetName' }, { status: 400 });
   }
-  const datasetRoot = path.join(datasetsRoot, safeDatasetName);
 
   // subPath is a "/"-joined chain of folder names below the dataset root; segments are
   // filtered the same way resolveDatasetSubPath filters them, so both agree on what's

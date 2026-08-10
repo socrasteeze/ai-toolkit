@@ -1,17 +1,24 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
-import path from 'path';
 import { getDatasetsRoot } from '@/server/settings';
+import { resolveDatasetPath, sanitizeDatasetName } from '@/server/datasetFiles';
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    let { name } = body;
-    // clean name by making lower case,  removing special characters, and replacing spaces with underscores
-    name = name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+    const requestedName = sanitizeDatasetName(body?.name);
+    if (!requestedName) {
+      return NextResponse.json({ error: 'Invalid dataset name' }, { status: 400 });
+    }
 
-    let datasetsPath = await getDatasetsRoot();
-    let datasetPath = path.join(datasetsPath, name);
+    // clean name by making lower case,  removing special characters, and replacing spaces with underscores
+    const name = requestedName.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+
+    const datasetsPath = await getDatasetsRoot();
+    const datasetPath = resolveDatasetPath(datasetsPath, name);
+    if (!datasetPath) {
+      return NextResponse.json({ error: 'Invalid dataset name' }, { status: 400 });
+    }
 
     // if folder doesnt exist, create it
     if (!fs.existsSync(datasetPath)) {

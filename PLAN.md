@@ -678,8 +678,8 @@ selected subfolder's), rather than what the trainer will actually walk.
 **Verification:**
 - `tsc --noEmit` clean.
 - Live-tested `count`/`analyze` against the machine's real (and, since the last session,
-  *changed* — `DATASETS_FOLDER` moved from `D:\datasets\_style` to `D:\datasets`)
-  configured datasets root, three levels deep: root count 2176, one level down
+  *changed* — `DATASETS_FOLDER` moved up one level, off the per-style subfolder onto the
+  datasets root itself) configured datasets root, three levels deep: root count 2176, one level down
   (`automatic_giraffe`) 339, two levels down (`automatic_giraffe/original_images`) 171 —
   confirming `subPath` genuinely scopes the count rather than always returning the full
   recursive figure. Re-confirmed the traversal guard still rejects `../` payloads on the
@@ -1413,3 +1413,149 @@ Found while building the sibling project's picker on top of this, which had inhe
 same wrong list — **the same bug in two repos, from one misreading.** Both are fixed;
 LDS pins it with a test against the real status strings rather than against its own set,
 since a test written from the same list would have inherited the same hole.
+
+## Phase 8: fork hardening + measured hot-path pass (2026-08-10)
+
+This pass deliberately optimized the fork as a whole rather than importing another upstream
+feature. The constraints stayed the same: preserve the advisor/presets, remote execution,
+Automagic guard, effective-batch cap, and the unmodified-peer contract; add no npm dependency
+or Prisma schema; keep new logic in fork-only files where possible; document every unavoidable
+upstream touchpoint.
+
+### Training: remove a real CUDA barrier, preserve failure semantics
+
+`get_mean_flow_guided_loss()` contained `if loss.item() > 1e3: pass`. The comparison did
+nothing but `.item()` forced a device-to-host synchronization on every affected step. An
+isolated 2,000-iteration CUDA microbenchmark on the operator's RTX 5090 measured 0.0778s with
+the synchronization and 0.0318s without it (2.44x for that isolated pattern; it is not an
+end-to-end trainer speedup claim). The two dead lines were removed.
+
+The audit also caught a correctness regression in Phase 6's fast path. Bare
+`torch.nan_to_num(loss)` zeros NaN but converts `+inf`/`-inf` to the dtype extrema (about
+±3.4e38 for fp32); upstream's synchronous `isfinite` branch zeros every non-finite loss.
+`neutralize_nonfinite_loss()` now passes explicit replacements for all three values, stays
+on-device, and has CPU tests covering values, dtype/device, and finite-gradient passthrough.
+
+It is **not** equivalent to upstream's synchronous branch, and the first version of this note
+claimed it was. Upstream substitutes `torch.zeros_like(loss).requires_grad_(True)` — a detached
+leaf that cannot backprop at all. `nan_to_num` returns a node still wired into the graph that
+produced the bad number; its own backward zeroes the gradient where the input was non-finite,
+but zero times an infinity already sitting upstream is still NaN. So the fast path fixes the
+reported *value* and does not give the guard's isolation. That is the actual trade behind
+`loss_sync_every > 1`, it is now stated in both the helper and the call site, and a test asserts
+the returned tensor keeps its `grad_fn`.
+
+### Dataset routes: one containment rule for reads, writes and deletion
+
+The fork's 2026-07-19 browser work had already documented why `path.basename('..')` is not a
+traversal defense, but the older create/delete/upload routes and the newer Dataset Tools route
+had not all adopted that rule. The delete route could recursively remove outside the datasets
+root; upload had the matching write primitive.
+
+`ui/src/server/datasetPath.ts` now owns the pure validation and containment rules: validate
+exactly one top-level component, resolve it strictly below `DATASETS_FOLDER`, and detect
+case-insensitive destination aliases. `datasetFiles.ts` re-exports them so existing imports stay
+stable. Create, delete, upload, count, analyze, browse and Dataset Tools all resolve the top-level
+dataset through that helper. Mutation routes reject invalid input with 400 before filesystem
+work; upload validates and deduplicates the entire sanitized filename set before `mkdir` or the
+first write, preventing both partial uploads and silent overwrites. The helper is dependency-free
+and covered by Node tests for empty/dot/dotdot, both separators, valid names, collisions, and a
+filesystem-volume root.
+
+### UI/background work: bounded resources and single-flight refreshes
+
+- Dataset Tools replaced its one-second `setInterval` with the existing post-settle
+  `usePollLoop`: slow requests cannot overlap or resolve out of order, and a transient failure
+  is retried instead of permanently stopping the display. Each attempt has a ten-second Axios
+  timeout and is aborted when the modal closes or the watched run changes.
+- Tool runs remain registered for their full process lifetime. Error/close finalization is
+  idempotent, the per-dataset lock is removed only if it still names that run, and the one-hour
+  retention countdown begins after completion rather than after launch.
+- `presetsPath.ts` now uses the shared server Prisma singleton instead of spawning another
+  query engine/SQLite pool.
+- `apiCache.ts` shares an in-flight promise independently of its result TTL and starts the result
+  TTL when work completes. This closes the concrete case where a six-second peer probe behind a
+  five-second TTL could be launched twice concurrently. A never-settling fetch becomes replaceable
+  after 30 seconds, old completions cannot overwrite their replacement, and rejections remain
+  evicted for immediate retry. Every `nvidia-smi` subprocess is also bounded to ten seconds.
+- Saving Peer Settings invalidates `peer-machines` before the UI's immediate refresh, so an
+  added/removed machine no longer reappears as the five-second-old cached list.
+
+### Remote execution: exact inputs, acknowledged cancellation, current artifacts
+
+The peer remains an ordinary unmodified ai-toolkit install. The hub now rejects two local
+filenames that collapse to the same peer-sanitized name before uploading anything. Names that
+sanitize to the *same string* alias on every filesystem and are always fatal; names that differ
+only in capitalization alias only on a case-insensitive peer, so those are fatal by default and
+allowed when the peer record carries `"caseSensitiveFs": true`. Without that escape hatch a
+Linux hub sending a Linux peer `IMG.JPG` beside `img.jpg` failed a job that had staged fine for
+months. The flag is preserved across peer-settings saves the same way the auth token is — the
+editor never renders it, so an entry returning without it means "unchanged", not "cleared".
+
+Each staging directory includes a stable hash of the real database Job id, so distinct job names
+that sanitize identically cannot share a peer folder. If the peer *answers* and the manifest is
+missing, unreadable, empty or malformed, or if a trusted manifest contains a file removed
+locally, the hub deletes only its generated per-job staging dataset through the peer's existing
+delete route and performs one full re-upload. If the peer does not answer at all — a timeout, a
+refused connection — that is evidence of nothing and must not authorize a delete: the hub
+re-sends the files and leaves the folder alone. `PeerError` already carried a `status` field for
+exactly this distinction ("the peer said no" vs "the peer is not there"). The reset call is also
+wrapped: a folder that was never staged 404s on delete, and no manifest problem should ever fail
+a training job. Additions and edits remain incremental and the manifest is still written last.
+
+A stop request is marked sent only after the peer acknowledges it, so a timeout retries on the
+next watcher tick. Terminal checkpoints are downloaded to a temporary file in the destination
+directory, checked against the peer-reported size, and atomically renamed over any same-name
+artifact — but a checkpoint already on disk at the peer-reported size is skipped outright, since
+checkpoints are immutable once written and re-queueing a finished job must not re-pull gigabytes.
+A local copy at a *different* size is replaced, which is the case the pre-existing `existsSync`
+skip got wrong.
+
+The temporary path is derived deterministically from the destination (a short hash of its
+basename) and nothing else. That is load-bearing: `peerDownloadFile` resumes a transfer from
+`${downloadPath}.part`, which it stats on entry, so a path containing a PID or a UUID silently
+disables resume — and this file's own comments note a home link needing roughly 100 resumed
+connections for one checkpoint. For the same reason a transfer that breaks mid-flight keeps its
+`.part` file; only a completed-but-wrong-size download discards it, because those bytes are
+proven bad. Hashing also keeps the component short for long checkpoint names, which is what the
+PID/UUID scheme was reaching for. Windows replacement semantics were exercised directly on this
+machine. Cleanup retries transient Windows sharing errors and reports any artifact it still
+cannot remove without masking the original transfer failure.
+
+Tool runs stay registered after they finish, too. `getActiveRun` is the only lookup behind
+`GET /api/datasets/tools?datasetName=`, so unregistering a completed run made reopening the
+Dataset Tools modal show an empty panel instead of the finished log; the one-hour retention timer
+now clears both maps together, and exclusivity still works because `startToolRun` tests
+`status === 'running'`. The modal's poll reports its own failures as well: `usePollLoop` swallows
+a rejection and keeps retrying, which is the right behavior for a blip but showed the user
+nothing, leaving the panel on "running" forever with no explanation.
+
+That registration/retention policy now lives in fork-only `ui/src/server/toolRunRegistry.ts`,
+split out of `datasetTools.ts` for the same reason `remoteIntegrity.ts` was split out of
+`startRemoteJob.ts`: the module it came from spawns Python and reaches Prisma through
+`cron/paths`, so none of these rules could be covered without standing both up. The registry
+imports nothing, takes an injectable timer, and is tested for the four things that matter — a
+finished run stays discoverable, the per-dataset writer lock still frees up, retention clears both
+lookups together, and a stale run's timer cannot evict its replacement. That last pair is what
+kept the fix honest; before the extraction this was the one finding of the seven shipped without
+a test.
+
+### Captioner baseline repair and regression coverage
+
+`ideogram4_prompt.py` contained a literal `\uNNNN` inside a normal triple-quoted Python string,
+which is an incomplete Unicode escape and prevented the module from compiling. Making the
+prompt raw both restores importability and preserves its intended literal `\uNNNN`/`\n`
+instructions. The new regression test imports the real module and asserts those examples.
+
+Verification for this phase: focused Python and Node tests, worker/source TypeScript checks, a
+production Next build, full Python compile, and a fork-merge-surface check. `ui/package-lock.json`
+is unchanged — this phase adds no dependency. `ui/package.json` gains exactly one line, a `test`
+script, because the 400-odd lines of Node regression tests added here otherwise only ran if
+someone typed the full `node --test` invocation by hand. That makes it the 23rd upstream file on
+the merge surface; it is in the FORK_NOTES table with the rest.
+
+None of this phase's remote-execution work has an automated end-to-end gate: `startRemoteJob`,
+`mirrorCheckpoints` and the `peerDownloadFile` resume path have no harness, and the SDTrainer loss
+path needs a GPU. The unit tests cover the extracted primitives in `remoteIntegrity.ts` — that is
+why they were extracted — but the wiring between them is verified by reading and by real
+two-machine runs, not by CI.

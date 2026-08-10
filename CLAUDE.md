@@ -24,7 +24,7 @@ decisions in §9).
 ## Fork hygiene rules (apply to any future change)
 
 1. New functionality goes in new files. Upstream files should only ever get small,
-   easy-to-reapply insertions. As of 2026-08-09 that is **16 files** — get the current
+   easy-to-reapply insertions. As of 2026-08-10 that is **23 files** — get the current
    list with `git diff upstream/main --name-status | grep -v '^A'`, and the per-file
    change + conflict-resolution notes from `FORK_NOTES.md`'s "Upstream files modified"
    table (the authoritative record; this count goes stale, that table does not).
@@ -40,7 +40,7 @@ decisions in §9).
    git diff $(git merge-base HEAD upstream/main)..HEAD --name-status | grep -v '^A'
    ```
 
-   Both forms give 16 once the fork is level; only the second is trustworthy
+   Both forms give 23 once the fork is level; only the second is trustworthy
    mid-sync. Rule 3 below runs *after* the merge, so the short form is fine there.
    The three original JSX mounts (`ui/src/app/jobs/new/page.tsx`,
    `ui/src/app/jobs/new/SimpleJob.tsx`, `ui/src/app/datasets/[datasetName]/page.tsx`)
@@ -133,8 +133,8 @@ do not resurrect the port on future merges. Full history and the port→upstream
 adaptation notes: `PLAN.md` Phase 4 ("Upstream Anima collision → fork port SUNSET").
 The spec (`ANIMA_INTEGRATION_SPEC.md`) and gate artifacts (`docs/anima_delta_catalog.md`,
 `docs/anima_a4_parity.md`, `docs/profiles.md`) describe the RETIRED port — historical
-record only. TrainFlow retirement is the user's own task; leave
-`W:\GitHub\Anima-TrainFlow` untouched.
+record only. TrainFlow retirement is the user's own task; leave the local
+Anima-TrainFlow clone untouched.
 
 What remains fork-side for Anima (all adapted to upstream's implementation):
 

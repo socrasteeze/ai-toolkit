@@ -25,10 +25,19 @@ export interface Peer {
   id: string;
   /** Human label for the picker. */
   label: string;
-  /** Base URL of the peer's ai-toolkit UI, e.g. "http://100.80.1.2:8675". */
+  /** Base URL of the peer's ai-toolkit UI, e.g. "http://203.0.113.10:8675". */
   url: string;
   /** The peer's AI_TOOLKIT_AUTH value, if it has one set. */
   token?: string;
+  /**
+   * Whether the peer's dataset filesystem tells `IMG.JPG` from `img.jpg`.
+   *
+   * Absent means "assume it does not", which is the safe reading: on a
+   * case-insensitive peer two such files collapse into one and the run silently
+   * trains on fewer images than it was given. Set it to `true` for a Linux or
+   * macOS peer whose datasets legitimately contain case-differing names.
+   */
+  caseSensitiveFs?: boolean;
 }
 
 /** Drops anything malformed rather than letting a bad row break the picker. */
@@ -48,6 +57,9 @@ function sanitize(raw: any): Peer | null {
   };
   if (typeof raw.token === 'string' && raw.token !== '') {
     peer.token = raw.token;
+  }
+  if (typeof raw.caseSensitiveFs === 'boolean') {
+    peer.caseSensitiveFs = raw.caseSensitiveFs;
   }
   return peer;
 }

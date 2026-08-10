@@ -1,11 +1,13 @@
 type CacheEntry = {
   promise: Promise<unknown>;
   timestamp: number;
+  pending: boolean;
 };
 
 const cache = new Map<string, CacheEntry>();
 
 const DEFAULT_STALE_TIME_MS = 5000;
+export const CACHE_PENDING_TIMEOUT_MS = 30_000;
 
 /**
  * Universal cache for slow API work. Results are cached per key + params and
@@ -27,19 +29,37 @@ export async function cached<T>(
   const now = Date.now();
 
   const entry = cache.get(cacheKey);
-  if (entry && now - entry.timestamp < staleTimeMs) {
-    return entry.promise as Promise<T>;
+  // Share in-flight work past the result TTL, but not forever. A fetcher that
+  // never settles must not poison this key for the lifetime of the server.
+  // The previous start-time TTL could launch duplicate slow work (for example,
+  // a six-second peer probe behind a five-second cache) while the first request
+  // was still running.
+  if (entry) {
+    const age = now - entry.timestamp;
+    if ((entry.pending && age < CACHE_PENDING_TIMEOUT_MS) || (!entry.pending && age < staleTimeMs)) {
+      return entry.promise as Promise<T>;
+    }
   }
 
   const promise = fetcher();
-  cache.set(cacheKey, { promise, timestamp: now });
+  const nextEntry: CacheEntry = { promise, timestamp: now, pending: true };
+  cache.set(cacheKey, nextEntry);
 
-  // Drop failed fetches so the next call retries instead of caching the error
-  promise.catch(() => {
-    if (cache.get(cacheKey)?.promise === promise) {
-      cache.delete(cacheKey);
-    }
-  });
+  void promise.then(
+    () => {
+      // Freshness begins when the slow work finishes, not when it starts.
+      if (cache.get(cacheKey)?.promise === promise) {
+        nextEntry.pending = false;
+        nextEntry.timestamp = Date.now();
+      }
+    },
+    () => {
+      // Drop failed fetches so the next call retries instead of caching the error.
+      if (cache.get(cacheKey)?.promise === promise) {
+        cache.delete(cacheKey);
+      }
+    },
+  );
 
   return promise;
 }

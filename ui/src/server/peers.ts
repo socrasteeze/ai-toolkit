@@ -17,6 +17,8 @@ export interface Peer {
   label: string;
   url: string;
   token?: string;
+  /** See `cron/peers.ts` — absent means "assume a case-insensitive filesystem". */
+  caseSensitiveFs?: boolean;
 }
 
 /** What the browser is allowed to see. The token never leaves the server. */
@@ -38,6 +40,9 @@ function sanitize(raw: any): Peer | null {
   };
   if (typeof raw.token === 'string' && raw.token !== '') {
     peer.token = raw.token;
+  }
+  if (typeof raw.caseSensitiveFs === 'boolean') {
+    peer.caseSensitiveFs = raw.caseSensitiveFs;
   }
   return peer;
 }
@@ -94,6 +99,14 @@ export async function savePeers(incoming: any[]): Promise<Peer[]> {
       // An explicit empty string means "clear it"; an absent key means "keep it".
       if (prior?.token && entry?.token !== '') {
         peer.token = prior.token;
+      }
+    }
+    if (peer.caseSensitiveFs === undefined) {
+      // Same reasoning as the token: the peer editor never renders this flag, so
+      // an entry that comes back without it means "unchanged", not "cleared".
+      const prior = byId.get(peer.id);
+      if (prior?.caseSensitiveFs !== undefined) {
+        peer.caseSensitiveFs = prior.caseSensitiveFs;
       }
     }
     seen.add(peer.id);

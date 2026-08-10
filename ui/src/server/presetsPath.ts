@@ -1,14 +1,13 @@
 import fs from 'fs';
 import path from 'path';
-import { PrismaClient } from '@prisma/client';
 import NodeCache from 'node-cache';
 import { TOOLKIT_ROOT } from '@/paths';
+import prisma from '@/server/prisma';
 
 // Fork-only file (see FORK_NOTES.md). Mirrors the getDatasetsRoot() pattern in
 // ./settings.ts, but kept separate so upstream changes to settings.ts never conflict.
 // Short TTL so a PRESETS_FOLDER settings change is picked up without a restart.
 const myCache = new NodeCache({ stdTTL: 60 });
-const prisma = new PrismaClient();
 
 export const defaultPresetsFolder = path.join(TOOLKIT_ROOT, 'presets');
 

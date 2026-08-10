@@ -38,7 +38,7 @@ from toolkit.models.diffusion_feature_extraction import DiffusionFeatureExtracto
 from toolkit.util.losses import wavelet_loss, stepped_loss
 import torch.nn.functional as F
 from toolkit.unloader import unload_text_encoder
-from toolkit.fork_speed import DeferredLossTracker
+from toolkit.fork_speed import DeferredLossTracker, neutralize_nonfinite_loss
 from PIL import Image
 from torchvision.transforms import functional as TF
 from toolkit.basic import flush
@@ -1176,8 +1176,6 @@ class SDTrainer(BaseSDTrainProcess):
             pure_loss.requires_grad_(True)
 
         loss = loss.mean()
-        if loss.item() > 1e3:
-            pass
         self.accelerator.backward(loss)
         return pure_loss
 
@@ -2195,9 +2193,12 @@ class SDTrainer(BaseSDTrainProcess):
                 if self.train_config.loss_sync_every > 1:
                     # fork (speed): neutralize a NaN/inf loss on-device — torch.isnan()/
                     # torch.isfinite() on a scalar forces a CUDA sync every accumulation
-                    # (see FORK_NOTES.md). nan_to_num already replaces +/-inf as well as
-                    # NaN, so this stays equivalent to upstream's isfinite check below.
-                    loss = torch.nan_to_num(loss)
+                    # (see FORK_NOTES.md). This fixes the logged/reported value only; it
+                    # does NOT reproduce the branch below, which swaps in a detached leaf
+                    # and so cannot backprop at all. Here the graph stays attached, so a
+                    # NaN already in it can still reach the weights. That is the price of
+                    # loss_sync_every > 1 — see toolkit/fork_speed.py.
+                    loss = neutralize_nonfinite_loss(loss)
                 elif not torch.isfinite(loss):
                     print_acc("loss is nan")
                     loss = torch.zeros_like(loss).requires_grad_(True)

@@ -11,6 +11,7 @@ import { Button } from '@headlessui/react';
 import { Modal } from '@/components/Modal';
 import { TextInput, NumberInput, Checkbox } from '@/components/formInputs';
 import { apiClient } from '@/utils/api';
+import usePollLoop from '@/hooks/usePollLoop';
 
 type ToolName = 'preflight' | 'caption' | 'prep';
 
@@ -32,10 +33,12 @@ const TOOL_LABELS: Record<ToolName, string> = {
   caption: 'WD14 Auto-Tag',
   prep: 'Smart Resize/Crop',
 };
+const POLL_TIMEOUT_MS = 10_000;
 
 export default function DatasetTools({ datasetName, onDatasetChanged }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [run, setRun] = useState<ToolRun | null>(null);
+  const [pollRunId, setPollRunId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // WD14 options
@@ -48,51 +51,87 @@ export default function DatasetTools({ datasetName, onDatasetChanged }: Props) {
   const [outName, setOutName] = useState('');
 
   const logRef = useRef<HTMLPreElement | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollAbortRef = useRef<AbortController | null>(null);
+  const pollRun = useCallback(async () => {
+    if (!isOpen || !pollRunId) return;
 
-  const stopPolling = () => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
+    const controller = new AbortController();
+    pollAbortRef.current?.abort();
+    pollAbortRef.current = controller;
+    try {
+      const res = await apiClient.get(`/api/datasets/tools?runId=${encodeURIComponent(pollRunId)}`, {
+        signal: controller.signal,
+        timeout: POLL_TIMEOUT_MS,
+      });
+      const nextRun: ToolRun | null = res.data.run;
+      if (!nextRun) {
+        setPollRunId(null);
+        return;
+      }
+
+      setRun({ ...nextRun });
+      // A poll that got through clears whatever the last failed one reported, so
+      // a blip that recovers on its own does not leave a stale error on screen.
+      setError(null);
+      if (nextRun.status !== 'running') {
+        setPollRunId(null);
+        if (nextRun.tool !== 'preflight') onDatasetChanged?.();
+      }
+    } catch (err: any) {
+      // usePollLoop swallows a rejection and keeps polling, which is what we want
+      // for a transient failure — but it shows the user nothing, so the panel
+      // would sit on "running" forever with no explanation. Report and keep going.
+      if (err?.code !== 'ERR_CANCELED') {
+        setError(err?.response?.data?.error ?? 'Lost contact with the tool run — still retrying');
+      }
+    } finally {
+      if (pollAbortRef.current === controller) pollAbortRef.current = null;
     }
-  };
+  }, [isOpen, pollRunId, onDatasetChanged]);
 
-  const poll = useCallback(
-    (runId: string) => {
-      stopPolling();
-      pollRef.current = setInterval(() => {
-        apiClient
-          .get(`/api/datasets/tools?runId=${encodeURIComponent(runId)}`)
-          .then(res => {
-            const r: ToolRun | null = res.data.run;
-            if (!r) return;
-            setRun({ ...r });
-            if (r.status !== 'running') {
-              stopPolling();
-              if (r.tool !== 'preflight' && onDatasetChanged) onDatasetChanged();
-            }
-          })
-          .catch(() => stopPolling());
-      }, 1000);
-    },
-    [onDatasetChanged],
-  );
+  // usePollLoop schedules only after the request settles, so a slow response
+  // cannot overlap the next poll. Rejections are caught by the hook and retried.
+  usePollLoop(pollRun, isOpen && pollRunId ? 1000 : null, [isOpen, pollRunId]);
+
+  useEffect(() => {
+    return () => {
+      pollAbortRef.current?.abort();
+      pollAbortRef.current = null;
+    };
+  }, [isOpen, pollRunId]);
 
   // resume watching an in-flight run if the modal is reopened
   useEffect(() => {
     if (!isOpen) {
-      stopPolling();
+      setPollRunId(null);
       return;
     }
-    apiClient.get(`/api/datasets/tools?datasetName=${encodeURIComponent(datasetName)}`).then(res => {
-      const r: ToolRun | null = res.data.run;
-      if (r) {
-        setRun(r);
-        if (r.status === 'running') poll(r.runId);
-      }
-    });
-    return stopPolling;
-  }, [isOpen, datasetName, poll]);
+
+    let cancelled = false;
+    const controller = new AbortController();
+    apiClient
+      .get(`/api/datasets/tools?datasetName=${encodeURIComponent(datasetName)}`, {
+        signal: controller.signal,
+        timeout: POLL_TIMEOUT_MS,
+      })
+      .then(res => {
+        if (cancelled) return;
+        const activeRun: ToolRun | null = res.data.run;
+        if (activeRun) {
+          setRun(activeRun);
+          if (activeRun.status === 'running') setPollRunId(activeRun.runId);
+        }
+      })
+      .catch(err => {
+        if (!cancelled && err?.code !== 'ERR_CANCELED') {
+          setError(err?.response?.data?.error ?? 'Failed to check dataset tools');
+        }
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [isOpen, datasetName]);
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
@@ -110,7 +149,7 @@ export default function DatasetTools({ datasetName, onDatasetChanged }: Props) {
       .post('/api/datasets/tools', { datasetName, tool, options })
       .then(res => {
         setRun({ runId: res.data.runId, tool, status: 'running', exitCode: null, log: '' });
-        poll(res.data.runId);
+        setPollRunId(res.data.runId);
       })
       .catch(err => setError(err?.response?.data?.error ?? 'Failed to start'));
   };

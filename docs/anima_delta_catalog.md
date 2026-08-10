@@ -302,8 +302,8 @@ User decisions:
 
 ## 10. Reference materials
 
-- TrainFlow clone: `W:\GitHub\Anima-TrainFlow` (vendored sd-scripts at
-  `training\sd-scripts`)
+- TrainFlow clone: a local checkout of `Anima-TrainFlow` (vendored sd-scripts at
+  `training/sd-scripts` inside it)
 - Upstream comparison clone + diffusion-pipe clone: session scratchpad (temporary)
 - Sample dataset + known-good diffusion-pipe config: `anima_sample_training/` (gitignored)
 - Anima weights: HF `circlestone-labs/Anima` (`anima-preview3-base.safetensors`,

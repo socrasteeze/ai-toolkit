@@ -16,6 +16,29 @@ on top of upstream without modifying upstream's training code.
   it records *why* numbers are what they are and which are still contested/unverified, not
   just what they are.
 
+## Git identity (non-negotiable)
+
+Every commit — author AND committer — is `socrasteeze <socradeez@gmail.com>`. Local git
+config is NOT part of a clone: a fresh checkout, container, or agent sandbox inherits
+whatever global identity happens to be set there and will silently commit as someone (or
+something) else. This already happened — `fe9c37a` (2026-08-10) landed with the correct
+author but committer `Claude <noreply@anthropic.com>`, discovered and fixed via
+`commit-tree` on 2026-08-11 after it had already been pushed to `main`. Set the identity
+once, per clone, before the first commit, and never override it afterwards:
+
+```
+git config user.name  'socrasteeze'
+git config user.email 'socradeez@gmail.com'
+```
+
+No `Co-authored-by:`, `Generated-by:`, `Assisted-by:`, or any other AI-attribution trailer,
+in any commit message, on any branch, ever. No model name (Claude, GPT, Codex, or otherwise)
+as author or committer. If a tool, hook, or the environment's global git config pushes
+toward a vendor identity, override it locally — do not let it stand. A bad author or
+committer found on a commit already made is fixed with `git commit-tree` (preserving parents
+exactly, rewriting only the identity), never with `rebase` — a rebase across a sync rewrites
+the merged upstream commits too and breaks ancestry against `upstream/main`.
+
 For anything Anima-related, also read `ANIMA_INTEGRATION_SPEC.md` (the original requirements
 and gates — now all passed, kept as the historical record) and `docs/anima_delta_catalog.md`
 (the A1 recon: architecture, training math, LoRA key format, and the user's resolved

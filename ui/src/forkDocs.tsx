@@ -449,16 +449,10 @@ const forkDocs: { [key: string]: ConfigDoc } = {
       </>
     ),
   },
-  'datasets.caption_dropout_rate': {
-    title: 'Caption Dropout Rate',
-    description: (
-      <>
-        Probability (0–1) of dropping the caption for a sample during training, which trains the model with an empty /
-        unconditional-style prompt on those steps. Helps reduce caption over-reliance. Does not work with Cache Text
-        Embeddings (that path cannot change prompts dynamically).
-      </>
-    ),
-  },
+  // 'datasets.caption_dropout_rate' was here until the 2026-08-11 sync. Upstream
+  // shipped its own always-on doc for this field, and getDoc() checks docs before
+  // forkDocs, so this copy was shadowed AND wrong: it said caption dropout does not
+  // work with Cache Text Embeddings, which is exactly what upstream's ab5fef8 fixed.
   'datasets.caption_ext': {
     title: 'Caption Extension',
     description: (

@@ -371,6 +371,24 @@ Consequences to preserve on any future edit:
 
 ## Duplication watch (re-check after each upstream merge)
 
+- **`ui/src/forkDocs.tsx` keys that upstream later adds to `ui/src/docs.tsx` go dead
+  silently, and can go WRONG.** `getDoc` checks `docs` first and `forkDocs` only as a
+  fallback, so the moment upstream ships its own doc for a key the fork already
+  documented, the fork's copy stops rendering — no error, no test, nothing to notice.
+  It bit on 2026-08-11: upstream's `ab5fef8` added `datasets.caption_dropout_rate` to
+  `docs.tsx`, and the fork's shadowed copy still told users caption dropout "does not
+  work with Cache Text Embeddings" — which is precisely the limitation that commit
+  removed. The fork's entry was deleted. After every merge, list the overlap and
+  delete the fork side of each hit (upstream's is the one users see anyway):
+
+  ```bash
+  comm -12 <(grep -oE "^  '[a-z0-9_.]+':" ui/src/forkDocs.tsx | tr -d " ':" | sort -u) \
+           <(grep -oE "^  '[a-z0-9_.]+':" ui/src/docs.tsx     | tr -d " ':" | sort -u)
+  ```
+
+  The matching `docKey` in `SimpleJob.tsx` moves with it: `h()` gates help for fields
+  that **lack always-on upstream help**, so a field upstream has just documented takes
+  the bare `docKey="…"` literal rather than the conditional form.
 - `ui/src/server/datasetFiles.ts` duplicates the media-extension whitelist and `_controls`
   exclusion from `ui/src/app/api/datasets/listImages/route.ts` (route files can't export
   helpers). If upstream changes that list, mirror it.

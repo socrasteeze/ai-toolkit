@@ -449,16 +449,6 @@ const forkDocs: { [key: string]: ConfigDoc } = {
       </>
     ),
   },
-  'datasets.caption_dropout_rate': {
-    title: 'Caption Dropout Rate',
-    description: (
-      <>
-        Probability (0–1) of dropping the caption for a sample during training, which trains the model with an empty /
-        unconditional-style prompt on those steps. Helps reduce caption over-reliance. Does not work with Cache Text
-        Embeddings (that path cannot change prompts dynamically).
-      </>
-    ),
-  },
   'datasets.caption_ext': {
     title: 'Caption Extension',
     description: (

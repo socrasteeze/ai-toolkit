@@ -23,6 +23,7 @@ from toolkit.dataloader_mixins import CaptionMixin, BucketsMixin, LatentCachingM
 from toolkit.data_transfer_object.data_loader import FileItemDTO, DataLoaderBatchDTO
 from toolkit.print import print_acc
 from toolkit.accelerator import get_accelerator
+from toolkit.dataset_selection import list_dataset_media_files
 
 import platform
 
@@ -434,11 +435,12 @@ class AiToolkitDataset(LatentCachingMixin, ControlCachingMixin, CLIPCachingMixin
                 # look for videos and images. Video models can train on both;
                 # images are bucketed separately as single-frame items
                 extensions = video_extensions + image_extensions
-            # prune hidden dirs (.thumbs, .tmp) so their contents never train
-            file_list = []
-            for root, dirs, files in os.walk(self.dataset_path):
-                dirs[:] = [d for d in dirs if not d.startswith('.')]
-                file_list.extend(os.path.join(root, file) for file in files if file.lower().endswith(tuple(extensions)) and not file.startswith('.'))
+            file_list = list_dataset_media_files(
+                self.dataset_path,
+                extensions,
+                include_loose_files=dataset_config.include_loose_files,
+                include_subfolders=dataset_config.include_subfolders,
+            )
         else:
             # assume json
             with open(self.dataset_path, 'r') as f:

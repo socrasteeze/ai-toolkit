@@ -7,6 +7,9 @@ import path from 'path';
 // (toolkit/data_loader.py skips the _controls folder) — keep them in sync.
 
 import { getImageDimensions } from './imageSize';
+import { DatasetScopeOptions, listScopedDatasetFiles } from './datasetScope';
+
+export { parseDatasetScope } from './datasetScope';
 
 // Kept re-exported from this established module so existing route imports remain stable.
 export { findCaseInsensitiveNameCollision, resolveDatasetPath, sanitizeDatasetName } from './datasetPath';
@@ -42,30 +45,21 @@ export interface DatasetFileCounts {
   totalCount: number;
 }
 
-export const countDatasetFiles = async (dir: string): Promise<DatasetFileCounts> => {
+export const countDatasetFiles = async (dir: string, scope: DatasetScopeOptions = {}): Promise<DatasetFileCounts> => {
   const counts: DatasetFileCounts = { imageCount: 0, videoCount: 0, audioCount: 0, totalCount: 0 };
-  const entries = await fs.promises.readdir(dir, { withFileTypes: true });
-
-  const subdirs: string[] = [];
-  for (const entry of entries) {
-    const name = entry.name;
-    if (name.startsWith('.')) continue;
-    if (entry.isDirectory()) {
-      if (name === '_controls') continue;
-      subdirs.push(path.join(dir, name));
-    } else if (entry.isFile()) {
+  const files = await listScopedDatasetFiles(
+    dir,
+    name => {
       const ext = path.extname(name).toLowerCase();
-      if (imageExtensions.includes(ext)) counts.imageCount++;
-      else if (videoExtensions.includes(ext)) counts.videoCount++;
-      else if (audioExtensions.includes(ext)) counts.audioCount++;
-    }
-  }
-
-  const nested = await Promise.all(subdirs.map(subdir => countDatasetFiles(subdir)));
-  for (const sub of nested) {
-    counts.imageCount += sub.imageCount;
-    counts.videoCount += sub.videoCount;
-    counts.audioCount += sub.audioCount;
+      return imageExtensions.includes(ext) || videoExtensions.includes(ext) || audioExtensions.includes(ext);
+    },
+    scope,
+  );
+  for (const file of files) {
+    const ext = path.extname(file).toLowerCase();
+    if (imageExtensions.includes(ext)) counts.imageCount++;
+    else if (videoExtensions.includes(ext)) counts.videoCount++;
+    else if (audioExtensions.includes(ext)) counts.audioCount++;
   }
   counts.totalCount = counts.imageCount + counts.videoCount + counts.audioCount;
   return counts;
@@ -84,26 +78,15 @@ export interface DatasetImageAnalysis {
 // caption files the trainer accepts sit next to the image with the same stem
 const captionExtensions = ['.txt', '.json', '.caption'];
 
-const listImageFiles = async (dir: string): Promise<string[]> => {
-  const entries = await fs.promises.readdir(dir, { withFileTypes: true });
-  const files: string[] = [];
-  const subdirs: string[] = [];
-  for (const entry of entries) {
-    const name = entry.name;
-    if (name.startsWith('.')) continue;
-    if (entry.isDirectory()) {
-      if (name === '_controls') continue;
-      subdirs.push(path.join(dir, name));
-    } else if (entry.isFile() && imageExtensions.includes(path.extname(name).toLowerCase())) {
-      files.push(path.join(dir, name));
-    }
-  }
-  const nested = await Promise.all(subdirs.map(listImageFiles));
-  return files.concat(...nested);
+const listImageFiles = async (dir: string, scope: DatasetScopeOptions = {}): Promise<string[]> => {
+  return listScopedDatasetFiles(dir, name => imageExtensions.includes(path.extname(name).toLowerCase()), scope);
 };
 
-export const analyzeDatasetImages = async (dir: string): Promise<DatasetImageAnalysis> => {
-  const files = await listImageFiles(dir);
+export const analyzeDatasetImages = async (
+  dir: string,
+  scope: DatasetScopeOptions = {},
+): Promise<DatasetImageAnalysis> => {
+  const files = await listImageFiles(dir, scope);
   const analysis: DatasetImageAnalysis = {
     imageCount: files.length,
     dimensionCounts: {},

@@ -25,19 +25,31 @@ type Props = {
 };
 
 interface DatasetSelection {
-  key: string; // "datasetName" or "datasetName::subPath" — unique per selected folder
+  key: string; // selected path + scope, unique for the count/analysis caches
   datasetName: string;
   subPath: string; // "" for the dataset's own root
+  includeLooseFiles: boolean;
+  includeSubfolders: string[] | null;
   numRepeats: number;
 }
 
-// counts are cached per selection key ("datasetName" or "datasetName::subPath") for the
-// lifetime of the page
+const datasetSelectionKey = (
+  datasetName: string,
+  subPath: string,
+  includeLooseFiles: boolean,
+  includeSubfolders: string[] | null,
+) => {
+  const pathKey = subPath ? `${datasetName}::${subPath}` : datasetName;
+  const foldersKey = includeSubfolders === null ? '*' : JSON.stringify([...includeSubfolders].sort());
+  return `${pathKey}::scope=${includeLooseFiles ? 'loose' : 'no-loose'}:${foldersKey}`;
+};
+
+// Counts are cached per selected path and folder scope for the lifetime of the page.
 const countCache = new Map<string, number>();
 const inFlight = new Map<string, Promise<number>>();
 
-const fetchCount = (datasetName: string, subPath: string): Promise<number> => {
-  const key = subPath ? `${datasetName}::${subPath}` : datasetName;
+const fetchCount = (selection: DatasetSelection): Promise<number> => {
+  const { key, datasetName, subPath, includeLooseFiles, includeSubfolders } = selection;
   if (countCache.has(key)) {
     return Promise.resolve(countCache.get(key) as number);
   }
@@ -45,7 +57,7 @@ const fetchCount = (datasetName: string, subPath: string): Promise<number> => {
     return inFlight.get(key) as Promise<number>;
   }
   const promise = apiClient
-    .post('/api/datasets/count', { datasetName, subPath })
+    .post('/api/datasets/count', { datasetName, subPath, includeLooseFiles, includeSubfolders })
     .then(res => {
       const total = res.data?.totalCount ?? 0;
       countCache.set(key, total);
@@ -66,14 +78,19 @@ interface DatasetAnalysis {
   unreadable: number;
 }
 
-// analysis results cached per selection key for the lifetime of the page
+// Analysis results are cached per selected path and folder scope for the page lifetime.
 const analysisCache = new Map<string, DatasetAnalysis>();
 
-const fetchAnalysis = async (datasetName: string, subPath: string): Promise<DatasetAnalysis | null> => {
-  const key = subPath ? `${datasetName}::${subPath}` : datasetName;
+const fetchAnalysis = async (selection: DatasetSelection): Promise<DatasetAnalysis | null> => {
+  const { key, datasetName, subPath, includeLooseFiles, includeSubfolders } = selection;
   if (analysisCache.has(key)) return analysisCache.get(key) as DatasetAnalysis;
   try {
-    const res = await apiClient.post('/api/datasets/analyze', { datasetName, subPath });
+    const res = await apiClient.post('/api/datasets/analyze', {
+      datasetName,
+      subPath,
+      includeLooseFiles,
+      includeSubfolders,
+    });
     const analysis = res.data as DatasetAnalysis;
     analysisCache.set(key, analysis);
     return analysis;
@@ -143,8 +160,17 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
       .map(d => {
         const selection = deriveDatasetSelection(d.folder_path, settings.DATASETS_FOLDER);
         if (!selection) return null;
-        const key = selection.subPath ? `${selection.datasetName}::${selection.subPath}` : selection.datasetName;
-        return { key, datasetName: selection.datasetName, subPath: selection.subPath, numRepeats: d.num_repeats || 1 };
+        const includeLooseFiles = d.include_loose_files !== false;
+        const includeSubfolders = d.include_subfolders ?? null;
+        const key = datasetSelectionKey(selection.datasetName, selection.subPath, includeLooseFiles, includeSubfolders);
+        return {
+          key,
+          datasetName: selection.datasetName,
+          subPath: selection.subPath,
+          includeLooseFiles,
+          includeSubfolders,
+          numRepeats: d.num_repeats || 1,
+        };
       })
       .filter((d): d is DatasetSelection => d !== null);
   }, [datasets, settings.DATASETS_FOLDER]);
@@ -162,7 +188,7 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
       return;
     }
     Promise.all(
-      datasetInputs.map(d => fetchCount(d.datasetName, d.subPath).then(count => [d.key, count] as const)),
+      datasetInputs.map(d => fetchCount(d).then(count => [d.key, count] as const)),
     ).then(results => {
       if (cancelled) return;
       const next: Record<string, number> = {};
@@ -195,7 +221,7 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
     setShowAnalysis(true);
     const results: Record<string, DatasetAnalysis> = {};
     for (const d of datasetInputs) {
-      const analysis = await fetchAnalysis(d.datasetName, d.subPath);
+      const analysis = await fetchAnalysis(d);
       if (analysis) results[d.key] = analysis;
     }
     setAnalyses(results);

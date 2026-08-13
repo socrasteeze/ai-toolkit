@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import { getDatasetsRoot } from '@/server/settings';
-import { countDatasetFiles, resolveDatasetPath, resolveDatasetSubPath } from '@/server/datasetFiles';
+import { countDatasetFiles, parseDatasetScope, resolveDatasetPath, resolveDatasetSubPath } from '@/server/datasetFiles';
 
 // Fork-only route (see FORK_NOTES.md). Lightweight file count for a dataset (or a
 // subfolder within it, via optional subPath — see PLAN.md's dataset-folder-browser
@@ -11,7 +11,7 @@ import { countDatasetFiles, resolveDatasetPath, resolveDatasetSubPath } from '@/
 export async function POST(request: Request) {
   const datasetsPath = await getDatasetsRoot();
   const body = await request.json();
-  const { datasetName, subPath } = body;
+  const { datasetName, subPath, includeLooseFiles, includeSubfolders } = body;
   if (!datasetName || typeof datasetName !== 'string') {
     return NextResponse.json({ error: 'datasetName is required' }, { status: 400 });
   }
@@ -24,6 +24,10 @@ export async function POST(request: Request) {
   if (!datasetFolder) {
     return NextResponse.json({ error: 'Invalid subPath' }, { status: 400 });
   }
+  const scope = parseDatasetScope(includeLooseFiles, includeSubfolders);
+  if (!scope) {
+    return NextResponse.json({ error: 'Invalid dataset scope' }, { status: 400 });
+  }
 
   try {
     try {
@@ -32,7 +36,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `Folder '${datasetName}' not found` }, { status: 404 });
     }
 
-    const counts = await countDatasetFiles(datasetFolder);
+    const counts = await countDatasetFiles(datasetFolder, scope);
     return NextResponse.json(counts);
   } catch (error) {
     console.error('Error counting dataset files:', error);

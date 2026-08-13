@@ -427,7 +427,9 @@ const forkDocs: { [key: string]: ConfigDoc } = {
     description: (
       <>
         Folder of training images (and matching caption files). Pick a top-level dataset from the list, or use Browse
-        subfolders to point at a nested folder under that dataset root.
+        and scope to target a nested folder or control what a selected parent includes. Loose files means media placed
+        directly in the chosen folder. Child-folder selections include their full subtrees. Selecting a nested folder
+        excludes the parent&apos;s loose files and every sibling folder.
       </>
     ),
   },
@@ -449,6 +451,10 @@ const forkDocs: { [key: string]: ConfigDoc } = {
       </>
     ),
   },
+  // 'datasets.caption_dropout_rate' was here until the 2026-08-11 sync. Upstream
+  // shipped its own always-on doc for this field, and getDoc() checks docs before
+  // forkDocs, so this copy was shadowed AND wrong: it said caption dropout does not
+  // work with Cache Text Embeddings, which is exactly what upstream's ab5fef8 fixed.
   'datasets.caption_ext': {
     title: 'Caption Extension',
     description: (

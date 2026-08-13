@@ -5,7 +5,7 @@ import fsp from 'fs/promises';
 import path from 'path';
 import archiver from 'archiver';
 import { getDatasetsRoot, getTrainingFolder } from '@/server/settings';
-import { resolveDatasetPath } from '@/server/datasetPath';
+import { resolveDatasetPath, sanitizeDatasetName } from '@/server/datasetFiles';
 
 export const runtime = 'nodejs'; // ensure Node APIs are available
 export const dynamic = 'force-dynamic'; // long-running, non-cached
@@ -46,14 +46,15 @@ async function collectFiles(dir: string, captionsOnly: boolean): Promise<string[
 
 async function zipDataset(datasetName: string, captionsOnly: boolean) {
   const datasetsRoot = await resolveSafe(await getDatasetsRoot());
-  const unresolvedFolder = resolveDatasetPath(datasetsRoot, datasetName);
-  if (!unresolvedFolder) {
-    return NextResponse.json({ error: 'Invalid dataset name' }, { status: 400 });
+  const safeName = sanitizeDatasetName(datasetName);
+  const unresolvedFolderPath = resolveDatasetPath(datasetsRoot, safeName);
+  if (!safeName || !unresolvedFolderPath) {
+    return NextResponse.json({ error: 'Invalid datasetName' }, { status: 400 });
   }
-  const safeName = path.basename(unresolvedFolder);
+
   let folderPath: string;
   try {
-    folderPath = await resolveSafe(unresolvedFolder);
+    folderPath = await resolveSafe(unresolvedFolderPath);
   } catch {
     return NextResponse.json({ error: `Dataset '${datasetName}' not found` }, { status: 404 });
   }

@@ -1215,7 +1215,13 @@ export default function SimpleJob({
                         label="Target Dataset"
                         docKey={h('datasets.folder_path')}
                         value={dataset.folder_path}
-                        onChange={value => setJobConfig(value, `config.process[0].datasets[${i}].folder_path`)}
+                        onChange={value => {
+                          const updatedDatasets = objectCopy(jobConfig.config.process[0].datasets);
+                          updatedDatasets[i].folder_path = value;
+                          updatedDatasets[i].include_loose_files = true;
+                          updatedDatasets[i].include_subfolders = null;
+                          setJobConfig(updatedDatasets, 'config.process[0].datasets');
+                        }}
                         options={datasetOptions}
                       />
                       {/* fork addition, see FORK_NOTES.md — the SelectInput above only lists
@@ -1238,18 +1244,38 @@ export default function SimpleJob({
                           <div className="flex items-center justify-between gap-2 mt-1">
                             <span className="text-xs text-gray-500 truncate" title={dataset.folder_path}>
                               {currentSubPath ? `${selectedOption.label}/${currentSubPath}` : selectedOption.label}
+                              {' · '}
+                              {dataset.include_subfolders == null
+                                ? 'all content'
+                                : [
+                                    dataset.include_loose_files !== false ? 'loose files' : null,
+                                    ...dataset.include_subfolders,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(' + ') || 'nothing selected'}
                             </span>
                             <button
                               type="button"
                               className="text-xs text-blue-400 hover:text-blue-300 underline shrink-0"
                               onClick={() =>
-                                openDatasetFolderPicker(selectedOption.label, currentSubPath, subPath => {
-                                  const newPath = subPath ? `${selectedOption.value}/${subPath}` : selectedOption.value;
-                                  setJobConfig(newPath, `config.process[0].datasets[${i}].folder_path`);
-                                })
+                                openDatasetFolderPicker(
+                                  selectedOption.label,
+                                  currentSubPath,
+                                  dataset.include_loose_files !== false,
+                                  dataset.include_subfolders ?? null,
+                                  selection => {
+                                    const updatedDatasets = objectCopy(jobConfig.config.process[0].datasets);
+                                    updatedDatasets[i].folder_path = selection.subPath
+                                      ? `${selectedOption.value}/${selection.subPath}`
+                                      : selectedOption.value;
+                                    updatedDatasets[i].include_loose_files = selection.includeLooseFiles;
+                                    updatedDatasets[i].include_subfolders = selection.includeSubfolders;
+                                    setJobConfig(updatedDatasets, 'config.process[0].datasets');
+                                  },
+                                )
                               }
                             >
-                              Browse subfolders…
+                              Browse and scope…
                             </button>
                           </div>
                         );

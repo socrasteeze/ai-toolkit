@@ -14,6 +14,7 @@ import useSettings from '@/hooks/useSettings';
 import { pathJoin } from '@/utils/basic';
 import AutoCaptionButton from '@/components/AutoCaptionButton';
 import DatasetTools from '@/components/DatasetTools'; // fork addition, see FORK_NOTES.md
+import DatasetActionBar from '@/components/DatasetActionBar';
 import CaptionMonitor from '@/components/CaptionMonitor';
 import { CreatableSelectInput } from '@/components/formInputs';
 
@@ -160,9 +161,15 @@ export default function DatasetPage({ params }: { params: { datasetName: string 
             <span className="sm:hidden">+ Add</span>
             <span className="hidden sm:inline">Add Images</span>
           </Button>
+          <DatasetActionBar datasetName={datasetName} />
         </div>
       </TopBar>
-      <MainContent ref={scrollParentCallback}>
+      <MainContent
+        ref={scrollParentCallback}
+        belowTopBar
+        className="transition-[bottom] duration-300"
+        style={{ bottom: `${captionBarHeight}px` }}
+      >
         {PageInfoContent}
         {status === 'success' && imgList.length > 0 && scrollParent && (
           <VirtuosoGrid
@@ -189,9 +196,9 @@ export default function DatasetPage({ params }: { params: { datasetName: string 
             computeItemKey={index => imgList[index]?.img_path ?? index}
           />
         )}
-        {/* Spacer so the last cards stay accessible above the floating caption bar.
-            Always keeps a baseline gap, plus the bar height when it is showing. */}
-        <div style={{ height: `${captionBarHeight + 24}px` }} className="transition-[height] duration-300" />
+        {/* Baseline gap below the last row of cards. The caption bar itself is handled by
+            shrinking MainContent's bottom to the bar height, so no dynamic spacer is needed. */}
+        <div className="h-6" />
       </MainContent>
       <AddImagesModal />
       {isSettingsLoaded && (

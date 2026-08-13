@@ -37,6 +37,12 @@ git checkout upstream/main -- ui/package.json ui/package-lock.json
 
 Then `npm ci` (not `npm install`) in `ui/` so the lockfile stays untouched.
 
+## Upstream sync log
+
+| Date | Window | Result | Clean-merge catch | Verification |
+|---|---|---|---|---|
+| 2026-08-12 | 13 commits, `cbf910a` through `742a4c8` | 8 adopted as-is, 5 adopted with divergence work, 0 rejected | New dataset ZIP route used `path.basename()` and accepted `..`; replaced with the shared validator plus a post-`realpath` containment check | UI/worker static checks, touched-Python compile, production build, HTTP boot smoke, divergence/hygiene scans: PASS. Contract suites: 27 Node + 7 Python passed, identical to baseline |
+
 ## Upstream files modified (the entire merge surface)
 
 | File | Change | Notes for conflict resolution |
@@ -58,6 +64,7 @@ Then `npm ci` (not `npm install`) in `ui/` so the lockfile stays untouched.
 | `ui/src/app/api/datasets/create/route.tsx` | Validates the requested top-level name and resolves it through fork-only `resolveDatasetPath` before creating a directory | Keep validation before `existsSync`/`mkdirSync`; invalid input returns 400, not a normalized path outside `DATASETS_FOLDER` |
 | `ui/src/app/api/datasets/delete/route.tsx` | Resolves the requested name through fork-only `resolveDatasetPath` before recursive deletion | This is a destructive route: never restore a raw `path.join(datasetsRoot, name)`. Invalid input must return 400 before `rmSync` |
 | `ui/src/app/api/datasets/upload/route.ts` | Validates the dataset directory and every peer-sanitized filename, then rejects case-insensitive sanitized-name collisions, before creating the directory or writing any file | Keep the entire validation/deduplication pass ahead of `mkdir` so invalid or aliasing later files cannot leave a partial upload or silently overwrite an earlier file |
+| `ui/src/app/api/zip/route.ts` | Dataset downloads validate the requested top-level name through fork-only `sanitizeDatasetName`/`resolveDatasetPath`, then confirm the real path remains below `DATASETS_FOLDER` before reading or writing the archive | Upstream's original `path.basename(datasetName)` accepted `..` unchanged and could archive outside the dataset root. Keep invalid input at 400 before I/O and retain the post-`realpath` containment check so a dataset-root symlink cannot escape |
 | `ui/package.json` | +1 `test` script: `node --experimental-strip-types --test "tests/*.test.mjs"`. The fork's Node regression tests are written as `.mjs` importing `.ts` directly, which needs the strip-types flag on Node 22; the repo's own `.nvmrc`-less setup means the flag cannot be assumed away | One added line in `scripts`, nothing else. Re-add it if upstream rewrites the script block. Deliberately NOT chained into `build` — a failing fork test must not block an upstream build path. Drop the `--experimental-strip-types` flag once the floor is Node 23+ |
 | `.gitignore` | Fork entries appended at the end: `.claude`, `/anima_sample_training`, `/hf-cache`, plus a "Never commit key material" block (`*.key`, `*.pem`, `*.p12`, `*.pfx`, `id_rsa`, `id_ed25519`, added 2026-08-06). Nothing matching those patterns is tracked, so the block is purely preventative | Both sides tend to append to the tail, so this conflicts on most syncs. Always resolve by **keeping both lists** — the fork's entries and upstream's new ones — never by taking one side wholesale |
 | `build_and_push_docker` | Docker Hub tags/push target changed from `ostris/aitoolkit` to `socrasteeze/aitoolkit` (both the `:$VERSION` and `:latest` tags, and the final echo). Deliberate per-machine override — see CLAUDE.md's "Local tooling notes" (2026-07-31); was already diverged from upstream before this table tracked it, found and backfilled during the 2026-08-03 sync | Keep the `socrasteeze/aitoolkit` substitution on both `docker tag`/`docker push` lines and the trailing echo; everything else in the script (the `set -euo pipefail`, build args, chmod +x mode) is upstream's and should be taken as-is |
@@ -397,8 +404,9 @@ Consequences to preserve on any future edit:
   that accepts a client-supplied top-level dataset name — `path.basename()` alone does NOT
   stop traversal (`path.basename('..')` returns `'..'` unchanged), and raw `path.join`
   previously exposed both recursive delete and arbitrary upload outside `DATASETS_FOLDER`.
-  Current consumers include `count`, `analyze`, `browse`, `tools`, `create`, `delete` and
-  `upload`; any new read/write/destructive route must use the shared helper before I/O.
+  Current consumers include `count`, `analyze`, `browse`, `tools`, `create`, `delete`,
+  `upload`, and dataset downloads in `zip`; any new read/write/destructive route must use
+  the shared helper before I/O.
 - `resolveDatasetSubPath` (`datasetFiles.ts`) is the required resolver for any route that
   scopes an operation to a nested folder within a dataset via an optional `subPath` —
   `count`, `analyze`, and `browse` all use it; any new such route must too, rather than

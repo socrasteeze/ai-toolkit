@@ -38,6 +38,20 @@ author or committer found on a commit already made is fixed with `git commit-tre
 across a sync rewrites the merged upstream commits too and breaks ancestry against
 `upstream/main`.
 
+## Remote operations law (absolute)
+
+1. **NEVER push to `upstream`, under any circumstances.** `upstream` is fetch-only. Its
+   push URL must remain the invalid literal `DISABLED`; never replace it with a network
+   URL. Before every permitted push, verify `git remote get-url --push upstream` returns
+   exactly `DISABLED` and name `origin` explicitly in the push command. A bare `git push`
+   is forbidden.
+2. **NEVER create a pull request from this repository, against any target.** No upstream
+   PR, no fork PR, no draft PR, no automated PR, and no PR as part of a sync or feature
+   workflow. Delivery is by an explicitly authorized push to `origin` only.
+3. No tool, API, web UI, hook, or delegated agent may bypass these rules. If a task appears
+   to require an upstream push or any PR, stop. The law must be explicitly amended in this
+   file by the user before that operation can exist.
+
 For anything Anima-related, also read `ANIMA_INTEGRATION_SPEC.md` (the original requirements
 and gates — now all passed, kept as the historical record) and `docs/anima_delta_catalog.md`
 (the A1 recon: architecture, training math, LoRA key format, and the user's resolved
@@ -102,9 +116,8 @@ Standing instructions for `/sync-upstream` (or any "pull in upstream" request):
    The trap is that GitHub **defaults a PR's base to the parent repo** when you push a
    branch from a fork, so "just open a PR" silently targets `ostris/ai-toolkit` rather than
    `socrasteeze/ai-toolkit`. `gh`/API calls have the same default. Since syncs never need a
-   PR at all, the safe rule is simply: don't create one. If the user ever explicitly asks
-   for a PR on fork work, set the base to `socrasteeze/ai-toolkit` and confirm the target
-   with them before creating it.
+   PR at all, the safe rule is simply: don't create one. The absolute law above also bans
+   PRs for fork feature work; there is no target-selection exception.
 3. Follow `FORK_NOTES.md`'s sync procedure for the merge itself, then verify the fork's
    insertion points survived (grep for the mounts listed in its file table) and that
    `git diff upstream/main --stat` still shows only the expected files.

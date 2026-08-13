@@ -1,9 +1,14 @@
+import os
 import torch
 from safetensors.torch import load_file, save_file
 from collections import OrderedDict
 
-model_path = "/home/jaret/Dev/models/hf/PixArt-Sigma-XL-2-1024_tiny/transformer/diffusion_pytorch_model_orig.safetensors"
-output_path = "/home/jaret/Dev/models/hf/PixArt-Sigma-XL-2-1024_tiny/transformer/diffusion_pytorch_model.safetensors"
+model_path = os.environ.get("MODEL_PATH")
+output_path = os.environ.get("OUTPUT_PATH")
+if not model_path or not output_path:
+    raise RuntimeError(
+        "Set MODEL_PATH and OUTPUT_PATH before running this utility."
+    )
 
 state_dict = load_file(model_path)
 

@@ -44,7 +44,7 @@ def convert_cog(lora_path, embedding_path):
 
     # # normal dict
     # normal_dict = OrderedDict()
-    # example_path = "/mnt/Models/stable-diffusion/models/LoRA/sdxl/LogoRedmond_LogoRedAF.safetensors"
+    # example_path = "/path/to/model.safetensors"
     # with safe_open(example_path, framework="pt", device='cpu') as f:
     #     keys = list(f.keys())
     #     for key in keys:

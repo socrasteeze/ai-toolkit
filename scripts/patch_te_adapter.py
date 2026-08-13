@@ -1,11 +1,19 @@
+import os
 import torch
 from safetensors.torch import save_file, load_file
 from collections import OrderedDict
 meta = OrderedDict()
 meta["format"] ="pt"
 
-attn_dict = load_file("/mnt/Train/out/ip_adapter/sd15_bigG/sd15_bigG_000266000.safetensors")
-state_dict = load_file("/home/jaret/Dev/models/hf/OstrisDiffusionV1/unet/diffusion_pytorch_model.safetensors")
+adapter_path = os.environ.get("ADAPTER_PATH")
+model_path = os.environ.get("MODEL_PATH")
+if not adapter_path or not model_path:
+    raise RuntimeError(
+        "Set ADAPTER_PATH and MODEL_PATH before running this utility."
+    )
+
+attn_dict = load_file(adapter_path)
+state_dict = load_file(model_path)
 
 attn_list = []
 for key, value in state_dict.items():
@@ -37,6 +45,6 @@ for i in range(len(adapter_names)):
 for key, value in state_dict.items():
     state_dict[key] = value.cpu().to(torch.float16)
 
-save_file(state_dict, "/home/jaret/Dev/models/hf/OstrisDiffusionV1/unet/diffusion_pytorch_model.safetensors", metadata=meta)
+save_file(state_dict, model_path, metadata=meta)
 
 print("Done")

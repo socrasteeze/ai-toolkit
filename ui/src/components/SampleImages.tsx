@@ -29,7 +29,7 @@ export const SampleImagesMenu = ({ job }: SampleImagesMenuProps) => {
         jobName: job?.name,
       });
 
-      const zipPath = res.data.zipPath; // e.g. /mnt/Train2/out/ui/.../samples.zip
+      const zipPath = res.data.zipPath; // e.g. /path/to/training/output/.../samples.zip
       if (!zipPath) throw new Error('No zipPath in response');
 
       const downloadPath = `/api/files/${encodeURIComponent(zipPath)}`;

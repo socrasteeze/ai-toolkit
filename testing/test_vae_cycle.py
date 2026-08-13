@@ -11,7 +11,9 @@ import json
 
 device = torch.device('cpu')
 dtype = torch.float32
-vae_path = '/mnt/Models/stable-diffusion/models/VAE/vae-ft-mse-840000-ema-pruned/vae-ft-mse-840000-ema-pruned.safetensors'
+vae_path = os.environ.get('VAE_PATH')
+if not vae_path:
+    raise RuntimeError('Set VAE_PATH before running this utility.')
 
 find_matches = False
 

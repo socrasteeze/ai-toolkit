@@ -1,3 +1,4 @@
+import os
 import torch
 from safetensors.torch import load_file, save_file
 from collections import OrderedDict
@@ -36,9 +37,15 @@ def reduce_bias(bias, target_size):
         return bias.view(-1, original_size // target_size).mean(dim=1)[:target_size]
 
 
+model_path = os.environ.get("MODEL_PATH")
+output_path = os.environ.get("OUTPUT_PATH")
+if not model_path or not output_path:
+    raise RuntimeError(
+        "Set MODEL_PATH and OUTPUT_PATH before running this utility."
+    )
+
 # Load your original state dict
-state_dict = load_file(
-    "/home/jaret/Dev/models/hf/PixArt-Sigma-XL-2-512_MS_t5large_raw/transformer/diffusion_pytorch_model.orig.safetensors")
+state_dict = load_file(model_path)
 
 # Create a new state dict for the reduced model
 new_state_dict = {}
@@ -77,8 +84,7 @@ for key, value in new_state_dict.items():
     new_state_dict[key] = value.cpu().to(torch.float16)
 
 # Save the new state dict
-save_file(new_state_dict,
-          "/home/jaret/Dev/models/hf/PixArt-Sigma-XL-2-512_MS_t5large_raw/transformer/diffusion_pytorch_model.safetensors",
+save_file(new_state_dict, output_path,
           metadata=meta)
 
 print("Done!")

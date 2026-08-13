@@ -7,14 +7,14 @@ from safetensors.torch import load_file, save_file
 from collections import OrderedDict
 import json
 
-# model_path = "/home/jaret/Dev/models/hf/kl-f16-d42_sd15_v01_000527000"
-# te_path = "google/flan-t5-xl"
-# te_aug_path = "/mnt/Train/out/ip_adapter/t5xx_sd15_v1/t5xx_sd15_v1_000032000.safetensors"
-# output_path = "/home/jaret/Dev/models/hf/kl-f16-d42_sd15_t5xl_raw"
-model_path = "/home/jaret/Dev/models/hf/objective-reality-16ch"
+model_path = os.environ.get("MODEL_PATH")
 te_path = "google/flan-t5-xl"
-te_aug_path = "/mnt/Train2/out/ip_adapter/t5xl-sd15-16ch_v1/t5xl-sd15-16ch_v1_000115000.safetensors"
-output_path = "/home/jaret/Dev/models/hf/t5xl-sd15-16ch_sd15_v1"
+te_aug_path = os.environ.get("TE_ADAPTER_PATH")
+output_path = os.environ.get("OUTPUT_PATH")
+if not model_path or not te_aug_path or not output_path:
+    raise RuntimeError(
+        "Set MODEL_PATH, TE_ADAPTER_PATH, and OUTPUT_PATH before running this utility."
+    )
 
 
 print("Loading te adapter")

@@ -4,10 +4,10 @@ config:
   name: example_name
   process:
     - type: 'image_reference_slider_trainer'
-      training_folder: "/mnt/Train/out/LoRA"
+      training_folder: "/path/to/training/output"
       device: cuda:0
       # for tensorboard logging
-      log_dir: "/home/jaret/Dev/.tensorboard"
+      log_dir: "/path/to/tensorboard/logs"
       network:
         type: "lora"
         linear: 8

@@ -427,7 +427,9 @@ const forkDocs: { [key: string]: ConfigDoc } = {
     description: (
       <>
         Folder of training images (and matching caption files). Pick a top-level dataset from the list, or use Browse
-        subfolders to point at a nested folder under that dataset root.
+        and scope to target a nested folder or control what a selected parent includes. Loose files means media placed
+        directly in the chosen folder. Child-folder selections include their full subtrees. Selecting a nested folder
+        excludes the parent&apos;s loose files and every sibling folder.
       </>
     ),
   },

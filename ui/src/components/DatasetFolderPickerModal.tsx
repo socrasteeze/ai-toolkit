@@ -1,21 +1,29 @@
 'use client';
-// Fork-only component (see FORK_NOTES.md). Breadcrumb-navigable folder browser for
-// picking a nested folder inside a dataset (e.g. "Dataset/Folder 1/Folder 1a") as a
-// job's dataset folder_path, instead of only the top-level dataset. See PLAN.md's
-// dataset-folder-browser entry for the full rationale. Global-state modal, mirroring
-// AddSingleImageModal's open.../use() convention so it needs only one mount point and
-// no prop-drilling.
+// Fork-only component (see FORK_NOTES.md). Breadcrumb-navigable folder browser and
+// per-folder scope selector. It can point folder_path at a nested folder or keep a
+// parent selected while choosing its loose files and immediate child subtrees. See
+// PLAN.md's dataset-folder-browser/scope entries. Global-state modal, mirroring
+// AddSingleImageModal's open.../use() convention so it needs one mount and no prop-drilling.
 
 import { createGlobalState } from 'react-global-hooks';
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react';
 import { ChevronRight, Folder, Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { apiClient } from '@/utils/api';
+import { Checkbox } from '@/components/formInputs';
+
+export interface DatasetFolderSelection {
+  subPath: string;
+  includeLooseFiles: boolean;
+  includeSubfolders: string[] | null;
+}
 
 interface DatasetFolderPickerState {
   datasetName: string;
   initialSubPath: string;
-  onSelect: (subPath: string) => void;
+  initialIncludeLooseFiles: boolean;
+  initialIncludeSubfolders: string[] | null;
+  onSelect: (selection: DatasetFolderSelection) => void;
 }
 
 interface BreadcrumbEntry {
@@ -36,9 +44,17 @@ export const datasetFolderPickerState = createGlobalState<DatasetFolderPickerSta
 export const openDatasetFolderPicker = (
   datasetName: string,
   currentSubPath: string,
-  onSelect: (subPath: string) => void,
+  includeLooseFiles: boolean,
+  includeSubfolders: string[] | null,
+  onSelect: (selection: DatasetFolderSelection) => void,
 ) => {
-  datasetFolderPickerState.set({ datasetName, initialSubPath: currentSubPath, onSelect });
+  datasetFolderPickerState.set({
+    datasetName,
+    initialSubPath: currentSubPath,
+    initialIncludeLooseFiles: includeLooseFiles,
+    initialIncludeSubfolders: includeSubfolders,
+    onSelect,
+  });
 };
 
 export default function DatasetFolderPickerModal() {
@@ -50,10 +66,17 @@ export default function DatasetFolderPickerModal() {
   const [folders, setFolders] = useState<FolderEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [includeLooseFiles, setIncludeLooseFiles] = useState(true);
+  const [includeAllSubfolders, setIncludeAllSubfolders] = useState(true);
+  const [selectedSubfolders, setSelectedSubfolders] = useState<string[]>([]);
 
   // Reset navigation to wherever the field currently points every time the modal opens.
   useEffect(() => {
-    if (info) setSubPath(info.initialSubPath || '');
+    if (!info) return;
+    setSubPath(info.initialSubPath || '');
+    setIncludeLooseFiles(info.initialIncludeLooseFiles);
+    setIncludeAllSubfolders(info.initialIncludeSubfolders === null);
+    setSelectedSubfolders(info.initialIncludeSubfolders ?? []);
   }, [info]);
 
   useEffect(() => {
@@ -61,6 +84,7 @@ export default function DatasetFolderPickerModal() {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setFolders([]);
     apiClient
       .post('/api/datasets/browse', { datasetName: info.datasetName, subPath })
       .then(res => {
@@ -83,9 +107,35 @@ export default function DatasetFolderPickerModal() {
 
   const onCancel = () => setInfo(null);
 
+  const navigateTo = (nextSubPath: string) => {
+    setSubPath(nextSubPath);
+    if (info && nextSubPath === info.initialSubPath) {
+      setIncludeLooseFiles(info.initialIncludeLooseFiles);
+      setIncludeAllSubfolders(info.initialIncludeSubfolders === null);
+      setSelectedSubfolders(info.initialIncludeSubfolders ?? []);
+    } else {
+      setIncludeLooseFiles(true);
+      setIncludeAllSubfolders(true);
+      setSelectedSubfolders([]);
+    }
+  };
+
+  const toggleSubfolder = (name: string, checked: boolean) => {
+    setSelectedSubfolders(current =>
+      checked ? [...new Set([...current, name])] : current.filter(selected => selected !== name),
+    );
+  };
+
+  const emptyScope =
+    !includeLooseFiles && (folders.length === 0 || (!includeAllSubfolders && selectedSubfolders.length === 0));
+
   const onSelectCurrent = () => {
-    if (info) {
-      info.onSelect(subPath);
+    if (info && !emptyScope) {
+      info.onSelect({
+        subPath,
+        includeLooseFiles,
+        includeSubfolders: includeAllSubfolders ? null : selectedSubfolders,
+      });
       setInfo(null);
     }
   };
@@ -105,7 +155,7 @@ export default function DatasetFolderPickerModal() {
           >
             <div className="bg-gray-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
               <DialogTitle as="h3" className="text-base font-semibold text-gray-200 mb-3">
-                Browse Dataset Folder
+                Browse and Scope Dataset Folder
               </DialogTitle>
 
               {/* Breadcrumb trail: click any segment to jump back up to it */}
@@ -115,7 +165,7 @@ export default function DatasetFolderPickerModal() {
                     {i > 0 && <ChevronRight className="w-3 h-3" />}
                     <button
                       type="button"
-                      onClick={() => setSubPath(crumb.path)}
+                      onClick={() => navigateTo(crumb.path)}
                       className={
                         crumb.path === subPath
                           ? 'text-gray-200 font-medium cursor-default'
@@ -145,7 +195,7 @@ export default function DatasetFolderPickerModal() {
                     <button
                       key={folder.path}
                       type="button"
-                      onClick={() => setSubPath(folder.path)}
+                      onClick={() => navigateTo(folder.path)}
                       className="w-full flex items-center gap-2 text-left px-3 py-2 text-sm text-gray-200 hover:bg-gray-700/60 border-b border-gray-800 last:border-b-0"
                     >
                       <Folder className="w-4 h-4 text-amber-400 shrink-0" />
@@ -153,12 +203,55 @@ export default function DatasetFolderPickerModal() {
                     </button>
                   ))}
               </div>
+
+              {!loading && !error && (
+                <div className="mt-4 border border-gray-700 rounded-md p-3 bg-gray-900/40 space-y-3">
+                  <div>
+                    <div className="text-sm font-medium text-gray-200">Selection scope</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      A selected child folder includes its full subtree. Navigating into a child and selecting it
+                      excludes parent loose files and sibling folders.
+                    </div>
+                  </div>
+                  <Checkbox
+                    label="Include loose files in this folder"
+                    checked={includeLooseFiles}
+                    onChange={setIncludeLooseFiles}
+                  />
+                  {folders.length > 0 && (
+                    <>
+                      <Checkbox
+                        label="Include every child folder"
+                        checked={includeAllSubfolders}
+                        onChange={checked => {
+                          setIncludeAllSubfolders(checked);
+                          if (!checked) setSelectedSubfolders(folders.map(folder => folder.name));
+                        }}
+                      />
+                      {!includeAllSubfolders && (
+                        <div className="pl-4 space-y-2 border-l border-gray-700">
+                          {folders.map(folder => (
+                            <Checkbox
+                              key={folder.path}
+                              label={folder.name}
+                              checked={selectedSubfolders.includes(folder.name)}
+                              onChange={checked => toggleSubfolder(folder.name, checked)}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {emptyScope && <div className="text-xs text-rose-400">Select at least one file source.</div>}
+                </div>
+              )}
             </div>
             <div className="bg-gray-700 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6 gap-2">
               <button
                 type="button"
                 onClick={onSelectCurrent}
-                className="mt-3 inline-flex w-full justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-500 sm:mt-0 sm:w-auto"
+                disabled={emptyScope}
+                className="mt-3 inline-flex w-full justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed sm:mt-0 sm:w-auto"
               >
                 Select this folder
               </button>

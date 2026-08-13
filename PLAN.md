@@ -638,6 +638,36 @@ function to reach for.
   side effect (npm-version metadata churn, not a real dependency change) before
   committing, to keep the change scoped to the feature.
 
+## Dataset folder scope: loose files and selected child folders (2026-08-12)
+
+The nested-folder browser originally chose only a recursive starting point. Selecting a
+parent still meant every loose file and every descendant trained together, with no way to
+keep the parent as the visible dataset while excluding loose files or sibling folders.
+
+Each dataset config now carries two backward-compatible scope keys:
+
+- `include_loose_files` (default `true`) controls media directly inside `folder_path`.
+- `include_subfolders` (default `null`) controls immediate child folders. `null` means all
+  children, a list selects only those named children, and `[]` selects none. Every selected
+  child is recursive, so choosing `Folder A` includes its full subtree.
+
+The folder modal exposes the same contract. Turning off "Include every child folder"
+reveals checkboxes for the current folder's immediate children. Navigating into `Folder A`
+and selecting it changes `folder_path` to `Folder A`; parent loose files and sibling folders
+are therefore outside the trainer's walk regardless of the child scope.
+
+Trainer enumeration lives in fork-only `toolkit/dataset_selection.py`, called by the small
+`toolkit/data_loader.py` insertion. The UI's count/analyze routes use the equivalent
+fork-only `ui/src/server/datasetScope.ts` traversal so step suggestions, exposure counts,
+bucket analysis, and caption coverage measure exactly what will train. Scope values are
+part of the advisor cache key; two rows pointing at the same path with different filters
+cannot share a stale count.
+
+Regression coverage locks the contract on both sides: root loose-only, loose exclusion,
+one selected child with recursive descendants, legacy all-content behavior, nested-folder
+isolation, hidden/`_controls` exclusion, duplicate normalization, and unsafe child-name
+rejection.
+
 ## Fix: step suggestion disappeared for nested subfolder selections (2026-07-19)
 
 **Regression from the folder browser feature above.** Selecting a nested folder via the

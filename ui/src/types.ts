@@ -84,6 +84,8 @@ export interface SaveConfig {
 
 export interface DatasetConfig {
   folder_path: string;
+  include_loose_files?: boolean;
+  include_subfolders?: string[] | null;
   mask_path: string | null;
   mask_min_value: number;
   default_caption: string;

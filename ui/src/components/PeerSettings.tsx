@@ -152,7 +152,7 @@ export default function PeerSettings() {
         />
         <input
           className={inputClasses}
-          placeholder="Address (e.g. http://192.168.1.20:8675)"
+          placeholder="Address (e.g. http://192.0.2.20:8675)"
           value={draft.url}
           onChange={e => setDraft({ ...draft, url: e.target.value })}
         />

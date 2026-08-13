@@ -972,6 +972,17 @@ class DatasetConfig:
         # can be json or folder path
         self.dataset_path: str = kwargs.get('dataset_path', None)
 
+        # Dataset-folder scope. None keeps the legacy recursive walk; a list selects
+        # immediate child folders, each included recursively. Loose files are files
+        # directly inside folder_path, not files inside a selected child subtree.
+        from toolkit.dataset_selection import normalize_included_subfolders
+        self.include_loose_files: bool = kwargs.get('include_loose_files', True)
+        if not isinstance(self.include_loose_files, bool):
+            raise ValueError('include_loose_files must be true or false')
+        self.include_subfolders: Optional[List[str]] = normalize_included_subfolders(
+            kwargs.get('include_subfolders', None)
+        )
+
         self.default_caption: str = kwargs.get('default_caption', None)
         # trigger word for just this dataset
         self.trigger_word: str = kwargs.get('trigger_word', None)

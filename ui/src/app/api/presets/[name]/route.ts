@@ -7,7 +7,7 @@ import { findPresetFile } from '@/server/presetsPath';
 // YAML parsing happens server-side so the client always receives a plain config object,
 // whether the file is a UI JSON export or a CLI-style YAML from config/examples.
 
-export async function GET(request: NextRequest, { params }: { params: { name: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ name: string }> }) {
   const { name } = await params;
   try {
     const filePath = await findPresetFile(name);
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest, { params }: { params: { name: st
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { name: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ name: string }> }) {
   const { name } = await params;
   try {
     const filePath = await findPresetFile(name);

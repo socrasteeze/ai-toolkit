@@ -60,7 +60,9 @@ decisions in §9).
 ## Fork hygiene rules (apply to any future change)
 
 1. New functionality goes in new files. Upstream files should only ever get small,
-   easy-to-reapply insertions. As of 2026-08-13 that is **26 files** — get the current
+   easy-to-reapply insertions. As of 2026-08-13 that is **57 files** (jumped from 26 the
+   same day: a Next 15 route/page `params` type fix — see FORK_NOTES.md — touched 16 App
+   Router route handlers plus `ui/src/app/jobs/[jobID]/page.tsx`) — get the current
    list with `git diff upstream/main --name-status | grep -v '^A'`, and the per-file
    change + conflict-resolution notes from `FORK_NOTES.md`'s "Upstream files modified"
    table (the authoritative record; this count goes stale, that table does not).

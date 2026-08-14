@@ -293,7 +293,7 @@ touching anything Anima. Summary of what Phase 4 added:
     to the sigmoid timestep sampler.
 - Registered in `extensions_built_in/diffusion_models/__init__.py` (upstream file,
   +1 import +1 list entry — recorded in FORK_NOTES.md).
-- UI arch entry appended last in `ui/src/app/jobs/new/options.ts` (upstream file);
+- UI arch entry appended last in `ui/src/app/jobs/new/options.tsx` (upstream file);
   recipe added to ARCH_RECIPES in `ui/src/utils/stepSuggestion.ts` (fork file). The
   Anima recipe is the model author's own published numbers (rank 32, adamw 2e-5,
   batch 1 + accum 4, adapter frozen) — highest confidence of any arch.
@@ -380,7 +380,7 @@ anima/anima.py`) with the SAME `arch = "anima"` key and its own diffusers→comf
 conversion. The initial merge that day kept the fork's port, but the user reversed that
 the same day: **Decision (user, 2026-07-16, final): sunset the fork's port and adopt
 upstream's implementation wholesale** — `extensions_built_in/diffusion_models/anima/`,
-`diffusion_models/__init__.py`, and `options.ts` are byte-identical to upstream again,
+`diffusion_models/__init__.py`, and `options.tsx` are byte-identical to upstream again,
 and the vendored sd-scripts transformer (`anima_model.py`, `src/`) is deleted. The
 Phase 4 gate artifacts (`docs/anima_delta_catalog.md`, `docs/anima_a4_parity.md`,
 `docs/profiles.md`, `ANIMA_INTEGRATION_SPEC.md`) remain as historical record of the

@@ -165,7 +165,7 @@ top of `PLAN.md`'s Phase 3 section:
 The fork's Phase 4 Anima port (vendored sd-scripts transformer, A1–A4 gates all passed
 2026-07-12) was **retired on 2026-07-16** after upstream shipped its own diffusers-based
 Anima support (ostris#860). `extensions_built_in/diffusion_models/anima/`,
-`diffusion_models/__init__.py`, and `options.ts` are byte-identical to upstream again —
+`diffusion_models/__init__.py`, and `options.tsx` are byte-identical to upstream again —
 do not resurrect the port on future merges. Full history and the port→upstream
 adaptation notes: `PLAN.md` Phase 4 ("Upstream Anima collision → fork port SUNSET").
 The spec (`ANIMA_INTEGRATION_SPEC.md`) and gate artifacts (`docs/anima_delta_catalog.md`,

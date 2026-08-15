@@ -193,6 +193,7 @@ aitk_db.db-shm
 /anima_sample_training
 original_repo
 /hf-cache
+.next
 
 # Never commit key material
 *.key

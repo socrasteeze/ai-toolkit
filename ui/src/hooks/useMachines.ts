@@ -4,10 +4,10 @@
  * The full list of GPUs a job can be sent to: this machine's, plus every
  * reachable peer's.
  *
- * Local GPUs still come from `useGPUInfo` -> `/api/gpu`, untouched. Peers come
- * from `/api/machines`. Merging here rather than server-side keeps upstream's
- * GPU route byte-identical and means a sleeping peer cannot slow down or break
- * the local half of the picker.
+ * Local GPUs come from `useGPUInfo` and upstream's shared `/api/monitor` stream.
+ * Peers come from `/api/machines`, which probes each peer's stock `/api/gpu`
+ * route. Keeping peer discovery separate means a sleeping peer cannot slow down
+ * or break the local half of the picker.
  *
  * Each option's `value` is exactly what goes into `Job.gpu_ids`: a bare index
  * for local, `"<peerId>:<index>"` for a peer. See `utils/gpuIds.ts`.

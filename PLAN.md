@@ -1508,6 +1508,10 @@ filesystem-volume root.
   five-second TTL could be launched twice concurrently. A never-settling fetch becomes replaceable
   after 30 seconds, old completions cannot overwrite their replacement, and rejections remain
   evicted for immediate retry. Every `nvidia-smi` subprocess is also bounded to ten seconds.
+- Upstream's 2026-08-14 always-on SSE device monitor replaced local UI polling with a resident
+  `nvidia-smi` loop and a one-shot fallback. The loop has its upstream watchdog; the fork adds the
+  same ten-second timeout to the fallback so a hung driver cannot pin the monitor tick forever.
+  Remote machines remain unmodified and are still probed through their stock `/api/gpu` route.
 - Saving Peer Settings invalidates `peer-machines` before the UI's immediate refresh, so an
   added/removed machine no longer reappears as the five-second-old cached list.
 

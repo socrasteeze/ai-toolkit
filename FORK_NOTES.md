@@ -24,12 +24,13 @@ git push origin main
 > `ostris/ai-toolkit`, not `socrasteeze/ai-toolkit`. `gh` and the API behave the same
 > way. Don't create one.
 
-**`ui/package.json` / `ui/package-lock.json` are deliberately kept byte-identical to
-upstream** — the fork adds no npm dependencies (the QoL Python deps live in
-`scripts/requirements-qol.txt`). A local `npm install` can still rewrite the lockfile as a
-side effect (different npm versions write different optional-dep metadata, e.g. the `libc`
-arrays npm 11+ emits and npm 10 does not). On any merge, resolve both files by just taking
-upstream's:
+**`ui/package-lock.json` is deliberately kept byte-identical to upstream; `ui/package.json`
+differs by exactly the fork's dependency-free `test` script.** The fork adds no npm
+dependencies (the QoL Python deps live in `scripts/requirements-qol.txt`). A local
+`npm install` can still rewrite the lockfile as a side effect (different npm versions write
+different optional-dep metadata, e.g. the `libc` arrays npm 11+ emits and npm 10 does not).
+On any merge, take upstream's lockfile, then preserve only the documented test-script line
+in the manifest:
 
 ```bash
 git checkout upstream/main -- ui/package.json ui/package-lock.json
@@ -41,6 +42,7 @@ Then `npm ci` (not `npm install`) in `ui/` so the lockfile stays untouched.
 
 | Date | Window | Result | Clean-merge catch | Verification |
 |---|---|---|---|---|
+| 2026-08-14 | 3 commits, `695b0ba` through `5f53ecd` (live SSE device monitor + thumbnail-backed viewer controls) | 2 adopted as-is, 1 adopted with divergence work, 0 rejected | The new monitor's one-shot `nvidia-smi` fallback had no timeout; added the fork's mandatory 10s bound. Retained both sides of the `.gitignore` append conflict, preserved dataset-scope types, and updated remote-GPU discovery notes for the new stream | PENDING final gates; pre-merge baseline: `npm ci`, UI/worker TypeScript, production build, 29 Node + 13 Python contracts PASS |
 | 2026-08-14 | 1 commit, `5261d3f` (Add checkpointing to the Wan2.1 encoder) | 1 adopted as-is, 0 adopted with divergence work, 0 rejected | None — the Wan2.1 encoder checkpointing change touched one upstream-owned Python file outside the fork merge surface; all 57 modified upstream surfaces and documented insertion tripwires remained intact | `npm ci`, UI/worker static checks, touched-Python compile/import, production build, HTTP boot smoke, package/docs/divergence/hygiene scans: PASS. Contract suites: 29 Node + 13 Python passed, identical to baseline |
 | 2026-08-13 | 2 commits, `6ea2819` through `0e4b6e8` | 1 adopted as-is, 1 adopted with divergence checks, 0 rejected | None — all 26 documented upstream-modified surfaces and fork insertion tripwires remained intact; the MiniMax H3 Ref2Vid changes landed only on upstream-owned diffusion-model and job-option paths | `npm ci`, UI/worker static checks, touched-Python compile, production build, HTTP boot smoke, divergence/hygiene scans: PASS. Contract suites: 29 Node + 13 Python + 10 Python subtests passed, identical to baseline |
 | 2026-08-13 | 2 commits, `6b7fb60a` through `ab18528f` (the second window of the day; the clone was shallow on arrival and had to be unshallowed before any merge-base question could be answered) | 2 adopted as-is, 0 rejected | None — the only touched fork file was `toolkit/config_modules.py`, and upstream's one-line `guidance_loss_schedule` default change auto-merged clear of all three fork insertions. Each was re-verified present rather than assumed: the `include_loose_files`/`include_subfolders` scope block in `DatasetConfig`, the `loss_sync_every`/`ui_db_poll_seconds` speed keys in `TrainConfig`, and the Automagic fused+accumulation guard. The other three incoming files (`Qwen3OmniCaptioner.py`, `captionJobConfig.ts`, `captionOptions.ts`) are not fork touchpoints | `npm ci` (lockfile untouched), `npx tsc --noEmit` **0 errors**, `npx next build` clean, `py_compile` on both touched Python files: PASS. Contract suites: **29 Node passed**, **7 Python + 7 subtests passed**. `testing/test_fork_speed.py` could not run — no Torch in this container — so 6 of the usual 13 Python cases are uncovered here; that file is fork-only and untouched by this window. Fork surface re-derived after the merge: still exactly the **26** modified upstream files this table records, `ui/package-lock.json` byte-identical to upstream |
@@ -68,6 +70,7 @@ Then `npm ci` (not `npm install`) in `ui/` so the lockfile stays untouched.
 | `ui/cron/worker.ts` | +2 top-level `process.on('unhandledRejection'/'uncaughtException', ...)` handlers that log and keep the process alive, added right after the import | Re-add near the top of the file if upstream restructures it; this is a safety net for the same crash-loop class of bug, not a substitute for fixing the specific cause |
 | `ui/src/server/apiCache.ts` | Cache entries carry a `pending` flag; callers share in-flight work past the result TTL, freshness starts when the fetch resolves, failed promises are evicted, and a never-settling fetch becomes replaceable after 30s. Prevents a slow 6s peer probe behind a 5s TTL from duplicating while avoiding a permanently poisoned key | Preserve the separate resolved TTL and pending deadline. A superseded old promise may finish, but identity checks prevent it from replacing the newer entry |
 | `ui/src/app/api/gpu/route.ts` | Adds a 10s timeout to the `nvidia-smi -L`/`which` availability subprocess and the full stats query | Keep every external GPU subprocess bounded; this pairs with `apiCache`'s pending deadline so a hung driver command cannot accumulate forever or poison GPU polling |
+| `ui/src/server/monitor.ts` | Adds the same 10s timeout to upstream's one-shot `nvidia-smi` fallback for the always-on SSE device monitor | Keep the resident loop's watchdog and the fallback timeout. A driver command that hangs must not hold the monitor tick forever |
 | `ui/src/app/api/datasets/create/route.tsx` | Validates the requested top-level name and resolves it through fork-only `resolveDatasetPath` before creating a directory | Keep validation before `existsSync`/`mkdirSync`; invalid input returns 400, not a normalized path outside `DATASETS_FOLDER` |
 | `ui/src/app/api/datasets/delete/route.tsx` | Resolves the requested name through fork-only `resolveDatasetPath` before recursive deletion | This is a destructive route: never restore a raw `path.join(datasetsRoot, name)`. Invalid input must return 400 before `rmSync` |
 | `ui/src/app/api/datasets/upload/route.ts` | Validates the dataset directory and every peer-sanitized filename, then rejects case-insensitive sanitized-name collisions, before creating the directory or writing any file | Keep the entire validation/deduplication pass ahead of `mkdir` so invalid or aliasing later files cannot leave a partial upload or silently overwrite an earlier file |

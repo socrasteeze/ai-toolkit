@@ -1593,3 +1593,24 @@ None of this phase's remote-execution work has an automated end-to-end gate: `st
 path needs a GPU. The unit tests cover the extracted primitives in `remoteIntegrity.ts` — that is
 why they were extracted — but the wiring between them is verified by reading and by real
 two-machine runs, not by CI.
+
+## Upstream per-dataset batch integration (2026-08-21)
+
+Upstream added an optional `batch_size` to each dataset config. Bucketed datasets already emit
+pre-batched items before `ConcatDataset` combines them, so an override changes the real number of
+images consumed by a training step. The fork's advisor previously assumed every selected dataset
+used `train.batch_size`; after adopting upstream unchanged, that would make its step suggestion,
+exposure gauge, and thin-bucket warnings disagree with the trainer.
+
+For mixed batches, the advisor now computes the item-weighted harmonic mean:
+`total selected items / sum(dataset items / dataset batch size)`. Multiplying that microbatch
+size by gradient accumulation reproduces the global-batch formula when no override is set and
+correctly models the number of passes when datasets use different batches. The calculation lives
+in dependency-free `ui/src/utils/advisorBatch.ts` with Node regression coverage. Thin-bucket
+warnings are evaluated separately for each dataset at its own batch size because upstream batches
+inside each `AiToolkitDataset`; pooling dimension counts first would hide a thin bucket in one
+dataset behind images from another.
+
+The existing recipe cap remains a recommendation on train-level settings, not a prohibition on
+upstream's manual dataset override. Scope and batch stay orthogonal: the fork first counts the
+selected loose/child files with repeats, then applies that dataset row's batch size.

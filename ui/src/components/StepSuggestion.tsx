@@ -9,13 +9,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiClient } from '@/utils/api';
 import { JobConfig } from '@/types';
-import {
-  suggestSteps,
-  exposureGauge,
-  analyzeBuckets,
-  resolutionAdvice,
-  getArchRecipe,
-} from '@/utils/stepSuggestion';
+import { suggestSteps, exposureGauge, analyzeBuckets, resolutionAdvice, getArchRecipe } from '@/utils/stepSuggestion';
+import { weightedBatchSize } from '@/utils/advisorBatch';
 import { defaultDatasetConfig } from '@/app/jobs/new/jobConfig';
 import useSettings from '@/hooks/useSettings';
 
@@ -25,12 +20,14 @@ type Props = {
 };
 
 interface DatasetSelection {
+  rowIndex: number;
   key: string; // selected path + scope, unique for the count/analysis caches
   datasetName: string;
   subPath: string; // "" for the dataset's own root
   includeLooseFiles: boolean;
   includeSubfolders: string[] | null;
   numRepeats: number;
+  batchSize: number;
 }
 
 const datasetSelectionKey = (
@@ -106,7 +103,10 @@ const fetchAnalysis = async (selection: DatasetSelection): Promise<DatasetAnalys
 // the LAST path segment as "the dataset name", which broke for nested selections (it
 // queried for a dataset literally named after the subfolder, got a 404, and the whole
 // suggestion panel disappeared since itemCount fell to 0) — see PLAN.md.
-const deriveDatasetSelection = (folderPath: string, datasetsRoot: string): { datasetName: string; subPath: string } | null => {
+const deriveDatasetSelection = (
+  folderPath: string,
+  datasetsRoot: string,
+): { datasetName: string; subPath: string } | null => {
   if (!folderPath || !datasetsRoot || folderPath === defaultDatasetConfig.folder_path) return null;
   const normalize = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '');
   const root = normalize(datasetsRoot);
@@ -139,6 +139,9 @@ const valuesEqual = (a: any, b: any): boolean => {
   return String(a) === String(b);
 };
 
+const formatBatchSize = (value: number): string =>
+  Number.isInteger(value) ? `${value}` : value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+
 const bandColor: Record<string, string> = {
   cool: 'text-sky-400',
   healthy: 'text-green-400',
@@ -151,29 +154,31 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
   const process = jobConfig.config.process[0];
   const datasets = process.datasets || [];
   const arch = process.model.arch;
-  const batchSize = process.train.batch_size;
+  const defaultBatchSize = process.train.batch_size;
   const gradAccum = process.train.gradient_accumulation;
   const currentSteps = process.train.steps;
 
   const datasetInputs = useMemo(() => {
     return datasets
-      .map(d => {
+      .map((d, rowIndex) => {
         const selection = deriveDatasetSelection(d.folder_path, settings.DATASETS_FOLDER);
         if (!selection) return null;
         const includeLooseFiles = d.include_loose_files !== false;
         const includeSubfolders = d.include_subfolders ?? null;
         const key = datasetSelectionKey(selection.datasetName, selection.subPath, includeLooseFiles, includeSubfolders);
         return {
+          rowIndex,
           key,
           datasetName: selection.datasetName,
           subPath: selection.subPath,
           includeLooseFiles,
           includeSubfolders,
           numRepeats: d.num_repeats || 1,
+          batchSize: Math.max(1, d.batch_size ?? defaultBatchSize ?? 1),
         };
       })
       .filter((d): d is DatasetSelection => d !== null);
-  }, [datasets, settings.DATASETS_FOLDER]);
+  }, [datasets, settings.DATASETS_FOLDER, defaultBatchSize]);
 
   const datasetsKey = datasetInputs.map(d => d.key).join('|');
   const [counts, setCounts] = useState<Record<string, number>>({});
@@ -187,9 +192,7 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
       setCounts({});
       return;
     }
-    Promise.all(
-      datasetInputs.map(d => fetchCount(d).then(count => [d.key, count] as const)),
-    ).then(results => {
+    Promise.all(datasetInputs.map(d => fetchCount(d).then(count => [d.key, count] as const))).then(results => {
       if (cancelled) return;
       const next: Record<string, number> = {};
       for (const [key, count] of results) {
@@ -212,9 +215,21 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
     return total;
   }, [datasetInputs, counts]);
 
+  const advisorBatchSize = useMemo(
+    () =>
+      weightedBatchSize(
+        datasetInputs.map(d => ({
+          itemCount: Math.max(0, counts[d.key] ?? 0) * d.numRepeats,
+          batchSize: d.batchSize,
+        })),
+        defaultBatchSize,
+      ),
+    [datasetInputs, counts, defaultBatchSize],
+  );
+
   const suggestion = useMemo(() => {
-    return suggestSteps({ itemCount, arch, batchSize, gradientAccumulation: gradAccum });
-  }, [itemCount, arch, batchSize, gradAccum]);
+    return suggestSteps({ itemCount, arch, batchSize: advisorBatchSize, gradientAccumulation: gradAccum });
+  }, [itemCount, arch, advisorBatchSize, gradAccum]);
 
   const runAnalysis = async () => {
     setAnalyzing(true);
@@ -257,13 +272,40 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
   }, [datasets]);
 
   const gauge = useMemo(() => {
-    return exposureGauge({ itemCount, arch, steps: currentSteps, batchSize, gradientAccumulation: gradAccum });
-  }, [itemCount, arch, currentSteps, batchSize, gradAccum]);
+    return exposureGauge({
+      itemCount,
+      arch,
+      steps: currentSteps,
+      batchSize: advisorBatchSize,
+      gradientAccumulation: gradAccum,
+    });
+  }, [itemCount, arch, currentSteps, advisorBatchSize, gradAccum]);
 
   const bucketAnalyses = useMemo(() => {
     if (Object.keys(merged.dimensionCounts).length === 0) return [];
-    return resolutions.map(res => analyzeBuckets(merged.dimensionCounts, res, batchSize));
-  }, [merged, resolutions, batchSize]);
+    return resolutions.map(res => analyzeBuckets(merged.dimensionCounts, res, 1));
+  }, [merged, resolutions]);
+
+  const thinBucketWarnings = useMemo(
+    () =>
+      resolutions.flatMap(resolution =>
+        datasetInputs.flatMap(dataset => {
+          const analysis = analyses[dataset.key];
+          if (!analysis || dataset.batchSize <= 1) return [];
+          const weightedDimensions = Object.fromEntries(
+            Object.entries(analysis.dimensionCounts).map(([dims, count]) => [dims, count * dataset.numRepeats]),
+          );
+          return analyzeBuckets(weightedDimensions, resolution, dataset.batchSize).thin.map(bucket => ({
+            resolution,
+            datasetIndex: dataset.rowIndex,
+            datasetLabel: dataset.subPath ? `${dataset.datasetName}/${dataset.subPath}` : dataset.datasetName,
+            batchSize: dataset.batchSize,
+            bucket,
+          }));
+        }),
+      ),
+    [resolutions, datasetInputs, analyses],
+  );
 
   const resAdvice = useMemo(() => {
     if (Object.keys(merged.dimensionCounts).length === 0) return null;
@@ -307,8 +349,8 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
           <span className={bandColor[gauge.band]}>
             {gauge.exposures} exposures/image — {gauge.label}
           </span>{' '}
-          ({currentSteps} steps · eff. batch {Math.max(1, batchSize || 1) * Math.max(1, gradAccum || 1)} · {itemCount}{' '}
-          files)
+          ({currentSteps} steps · eff. batch {formatBatchSize(advisorBatchSize * Math.max(1, gradAccum || 1))} ·{' '}
+          {itemCount} files)
         </div>
       )}
 
@@ -342,12 +384,18 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
                       .join('  ·  ')}
                     {ba.buckets.length > 8 && `  ·  +${ba.buckets.length - 8} more`}
                   </div>
-                  {ba.thin.map(b => (
-                    <div key={`${b.width}x${b.height}`} className="text-orange-400">
-                      ⚠️ Bucket {b.width}×{b.height} holds {b.count} image{b.count !== 1 ? 's' : ''} &lt; batch{' '}
-                      {batchSize} — lower the batch size or add images at this aspect ratio
-                    </div>
-                  ))}
+                  {thinBucketWarnings
+                    .filter(warning => warning.resolution === ba.resolution)
+                    .map(warning => (
+                      <div
+                        key={`${warning.datasetIndex}-${warning.bucket.width}x${warning.bucket.height}`}
+                        className="text-orange-400"
+                      >
+                        ⚠️ {warning.datasetLabel} bucket {warning.bucket.width}×{warning.bucket.height} holds{' '}
+                        {warning.bucket.count} image{warning.bucket.count !== 1 ? 's' : ''} &lt; batch{' '}
+                        {warning.batchSize} — lower that dataset batch size or add images at this aspect ratio
+                      </div>
+                    ))}
                 </div>
               ))}
             </div>

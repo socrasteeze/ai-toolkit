@@ -60,10 +60,8 @@ const ARCH_HEURISTICS: Record<string, StepHeuristic | ((tier: SizeTier) => StepH
 // the item count should pass getSizeTier(itemCount) so the suggestion and the exposure gauge
 // resolve the SAME target. If those two ever diverge the gauge will contradict the number the
 // advisor just recommended, which is exactly the failure the floor-warning below exists for.
-const resolveHeuristic = (
-  entry: StepHeuristic | ((tier: SizeTier) => StepHeuristic),
-  tier: SizeTier,
-): StepHeuristic => (typeof entry === 'function' ? entry(tier) : entry);
+const resolveHeuristic = (entry: StepHeuristic | ((tier: SizeTier) => StepHeuristic), tier: SizeTier): StepHeuristic =>
+  typeof entry === 'function' ? entry(tier) : entry;
 
 export const getHeuristic = (arch: string | undefined | null, tier: SizeTier = 'medium'): StepHeuristic => {
   if (!arch) return DEFAULT_HEURISTIC;
@@ -93,6 +91,8 @@ export interface StepSuggestionResult {
 }
 
 const roundTo50 = (n: number) => Math.max(50, Math.round(n / 50) * 50);
+const formatBatchSize = (n: number) =>
+  Number.isInteger(n) ? `${n}` : n.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 
 export const suggestSteps = (input: StepSuggestionInput): StepSuggestionResult | null => {
   const { itemCount, arch } = input;
@@ -115,14 +115,15 @@ export const suggestSteps = (input: StepSuggestionInput): StepSuggestionResult |
   // explanation, so a floor-bound suggestion could read as authoritative while actually landing
   // in the exposure gauge's fry band. Say so instead, and point at the lever that fixes it.
   const flooredUp = raw < heuristic.minSteps;
+  const effectiveBatchLabel = formatBatchSize(effectiveBatch);
   const explanation =
-    `${itemCount} files × ${heuristic.stepsPerItem} steps/file ÷ effective batch ${effectiveBatch}` +
+    `${itemCount} files × ${heuristic.stepsPerItem} steps/file ÷ effective batch ${effectiveBatchLabel}` +
     ` = ${Math.round(raw)}, clamped to ${heuristic.minSteps}–${heuristic.maxSteps} for ${arch || 'this model'}.` +
     ` Each file is seen ≈${epochsEquivalent}× at the suggested count.` +
     (flooredUp
       ? ` Note: the ${heuristic.minSteps}-step floor raised this above the computed ${Math.round(raw)}, so exposure` +
         ` (≈${epochsEquivalent}×) runs above the ~${heuristic.stepsPerItem}× target for this arch — lower the effective` +
-        ` batch (batch size × gradient accumulation, currently ${effectiveBatch}) to bring the two back in line.`
+        ` batch (batch size × gradient accumulation, currently ${effectiveBatchLabel}) to bring the two back in line.`
       : '');
 
   return { suggested, low, high, epochsEquivalent, explanation };
@@ -218,10 +219,7 @@ export const analyzeBuckets = (
 
 // Which of the selected training resolutions the source images can actually fill:
 // flags a resolution when most images would need upscaling to reach it.
-export const resolutionAdvice = (
-  dimensionCounts: Record<string, number>,
-  resolutions: number[],
-): string | null => {
+export const resolutionAdvice = (dimensionCounts: Record<string, number>, resolutions: number[]): string | null => {
   const entries = Object.entries(dimensionCounts);
   if (entries.length === 0) return null;
   const total = entries.reduce((sum, [, count]) => sum + count, 0);
@@ -341,7 +339,7 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'alpha 32 / LR 1e-4 / adamw8bit combination, which is the strongest corroboration these numbers have. ' +
       'Train at 512 or 1024, not in between: match a resolution the base model was actually trained at. ' +
       'No source states an LR scheduler recommendation for this model; scheduler intentionally left unset (defaults to constant). ' +
-      'Natural-language captions, describing only what should NOT be learned as a fixed trait (per Krea\'s own guidance). ' +
+      "Natural-language captions, describing only what should NOT be learned as a fixed trait (per Krea's own guidance). " +
       'TRIGGER BLEED (the LoRA showing up in prompts that omit the trigger) is normal LoRA behaviour, not primarily a ' +
       'caption defect — a LoRA shifts weights globally, it cannot scope itself to one token. The real levers in this ' +
       'trainer are Differential Output Preservation (train.diff_output_preservation, with _class set to e.g. "person") ' +
@@ -351,10 +349,10 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'forward pass per step, which matters on 16GB. Secondary and cheaper: keep invariant identity attributes out of ' +
       'captions (describe what varies — clothing, pose, framing, light — and let the trigger carry the face), since ' +
       'the identity can otherwise bind to a description you reuse in other prompts. That last point is a plausible ' +
-      'hypothesis from the 16GB run\'s control grid, not a demonstrated fix — its author never re-ran to confirm it. ' +
+      "hypothesis from the 16GB run's control grid, not a demonstrated fix — its author never re-ran to confirm it. " +
       'Turbo variants need the training adapter (set automatically when the arch is selected); keep low_vram on unless you have 48GB+. ' +
       'Alternative: Automagic v3 (self-adapting per-group LR, no scheduler needed) — used by the community 16GB config this ' +
-      'fork ships as a preset. Its LR is a launch point the controller adapts away from (author\'s doc); if you use it, bound ' +
+      "fork ships as a preset. Its LR is a launch point the controller adapts away from (author's doc); if you use it, bound " +
       'the controller with optimizer_params min_lr/max_lr (e.g. 1e-6/1e-4) — the bounds were added upstream 2026-07-17 ' +
       'specifically to prevent runaway edge cases. Automagic fuses its step into the backward pass by default, so it requires ' +
       'gradient_accumulation (and the legacy gradient_accumulation_steps) at 1 — reach a larger effective batch by raising ' +
@@ -363,14 +361,25 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'Timestep guidance (via LoRA Dataset Studio / RunComfy): linear timestep_type is the Krea-canonical choice.',
   }),
   zimage: tier => ({
-    settings: [lrSetting(0.0001), rankSetting(tier === 'small' ? 16 : 32), alphaSetting(tier === 'small' ? 16 : 32), batchSetting(1)],
+    settings: [
+      lrSetting(0.0001),
+      rankSetting(tier === 'small' ? 16 : 32),
+      alphaSetting(tier === 'small' ? 16 : 32),
+      batchSetting(1),
+    ],
     notes:
       'Z-Image: adamw8bit, LR 1e-4, batch 1 at 1024. No arch-specific scheduler research found — left unset (defaults to constant). ' +
       'Timestep guidance (options.ts + Ostris subject guidance, via LoRA Dataset Studio): sigmoid for characters/subjects, weighted for style and concept training.',
   }),
   qwen_image: tier => ({
-    settings: [lrSetting(0.0001), rankSetting(tier === 'small' ? 16 : 32), alphaSetting(tier === 'small' ? 16 : 32), batchSetting(1)],
-    notes: 'Qwen-Image: adamw8bit, LR 1e-4, batch 1 at 1024. No arch-specific scheduler research found — left unset (defaults to constant).',
+    settings: [
+      lrSetting(0.0001),
+      rankSetting(tier === 'small' ? 16 : 32),
+      alphaSetting(tier === 'small' ? 16 : 32),
+      batchSetting(1),
+    ],
+    notes:
+      'Qwen-Image: adamw8bit, LR 1e-4, batch 1 at 1024. No arch-specific scheduler research found — left unset (defaults to constant).',
   }),
   // FLUX.2 Klein: ai-toolkit has native support (arch keys flux2_klein_4b/9b) but almost no
   // FLUX.2-specific tuning literature exists yet — these numbers are the FLUX.1 consensus
@@ -390,7 +399,7 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       '"leave the learning rate alone" — with training dose (steps × batch × accum vs image count) the main lever, and ' +
       'weight decay mattering more than expected (their style runs preferred 1e-5 over the 1e-4 default). ' +
       'Timestep guidance (LoRA Dataset Studio, itself extrapolated/not Klein-verified): sigmoid for characters, weighted for style. ' +
-      'STYLE-specific network (that same sweep + BFL\'s official Klein example): a linear+Conv2d LoRA at ratio 4:2:2:1 — LDS ships 128/64/64/32; the flux2_klein_style_lora.json preset folds that to a half-scale 64/32 linear + 32/16 conv (128 judged too heavy for a 4B). This ramp is linear-only; use the style preset for the conv recipe.',
+      "STYLE-specific network (that same sweep + BFL's official Klein example): a linear+Conv2d LoRA at ratio 4:2:2:1 — LDS ships 128/64/64/32; the flux2_klein_style_lora.json preset folds that to a half-scale 64/32 linear + 32/16 conv (128 judged too heavy for a 4B). This ramp is linear-only; use the style preset for the conv recipe.",
   }),
   flux2_klein_9b: tier => ({
     settings: [
@@ -407,7 +416,7 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       '"leave the learning rate alone" — with training dose (steps × batch × accum vs image count) the main lever, and ' +
       'weight decay mattering more than expected (their style runs preferred 1e-5 over the 1e-4 default). ' +
       'Timestep guidance (LoRA Dataset Studio, itself extrapolated/not Klein-verified): sigmoid for characters, weighted for style. ' +
-      'STYLE-specific network (that same sweep + BFL\'s official Klein example): a linear+Conv2d LoRA at ratio 4:2:2:1 — LDS ships 128/64/64/32; the flux2_klein_style_lora.json preset folds that to a half-scale 64/32 linear + 32/16 conv (128 judged too heavy for a 4B). This ramp is linear-only; use the style preset for the conv recipe.',
+      "STYLE-specific network (that same sweep + BFL's official Klein example): a linear+Conv2d LoRA at ratio 4:2:2:1 — LDS ships 128/64/64/32; the flux2_klein_style_lora.json preset folds that to a half-scale 64/32 linear + 32/16 conv (128 judged too heavy for a 4B). This ramp is linear-only; use the style preset for the conv recipe.",
   }),
   // Anima 2B (native upstream arch since ostris#860): unusually well-sourced — the numbers below are the model
   // author's own published recipe (Circlestone Labs finetuning tips + his diffusion-pipe
@@ -423,12 +432,12 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       schedulerSetting('constant'),
     ],
     notes:
-      'Anima 2B: plain adamw (author\'s config), LR 2e-5 at rank 32 — the model author\'s own recipe, the most ' +
+      "Anima 2B: plain adamw (author's config), LR 2e-5 at rank 32 — the model author's own recipe, the most " +
       'authoritative of any arch here. DELIBERATE FORK DEVIATION: the author pairs this with batch 1 + grad ' +
       'accumulation 4 (effective batch 4); this fork suggests accumulation 2 instead, because at effective batch 4 ' +
       'the step suggestion below drops under its floor on small sets and gets clamped up, inflating real exposure ' +
       'per image 2-3x past target. Rank/alpha/LR/optimizer are untouched author values — set accumulation back to 4 ' +
-      'if you are reproducing the author\'s config exactly on a larger dataset. Never train the LLM adapter (default off): ' +
+      "if you are reproducing the author's config exactly on a larger dataset. Never train the LLM adapter (default off): " +
       'it shapes all text conditioning and degrades easily. Anima is a base model with no aesthetic tuning to overcome — ' +
       '"a light touch is all you need". Danbooru-style tag captions work well (anime-focused base).',
   }),

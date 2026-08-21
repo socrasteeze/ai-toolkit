@@ -106,6 +106,7 @@ export interface SaveConfig {
 }
 
 export interface DatasetConfig {
+  batch_size?: number;
   folder_path: string;
   include_loose_files?: boolean;
   include_subfolders?: string[] | null;

@@ -4,7 +4,8 @@ This is a personal fork of [ostris/ai-toolkit](https://github.com/ostris/ai-tool
 diffusion LoRA/fine-tuning trainer with a Next.js UI). The fork adds personal-use features
 on top of upstream without modifying upstream's training code.
 
-**Read these two files before touching anything in this repo:**
+**Read these two files before touching anything in this repo** (`PLAN.md` is ~1,600
+lines — read the relevant phase, not the whole file):
 
 - `FORK_NOTES.md` — the authoritative, always-current list of every place the fork diverges
   from upstream (which files are fork-only vs. upstream-modified, and the exact insertion
@@ -12,7 +13,8 @@ on top of upstream without modifying upstream's training code.
   update it whenever a change adds a new upstream touchpoint or a new fork-only file.
 - `PLAN.md` — the design history, phase by phase (Phase 1: presets + step suggestion. Phase
   2: dataset analyzer + per-arch advisor. Phase 3: research-backed recipe overhaul. Phase 4:
-  Anima 2B architecture port). Read the relevant phase before changing advisor/recipe logic —
+  Anima 2B architecture port — retired, see the Anima section below). Read the relevant
+  phase before changing advisor/recipe logic —
   it records *why* numbers are what they are and which are still contested/unverified, not
   just what they are.
 
@@ -60,8 +62,8 @@ decisions in §9).
 ## Fork hygiene rules (apply to any future change)
 
 1. New functionality goes in new files. Upstream files should only ever get small,
-   easy-to-reapply insertions. As of 2026-08-13 that is **57 files** (jumped from 26 the
-   same day: a Next 15 route/page `params` type fix — see FORK_NOTES.md — touched 16 App
+   easy-to-reapply insertions. As of 2026-08-23 that is **58 files** (it jumped from 26 to 57 on
+   2026-08-13: a Next 15 route/page `params` type fix — see FORK_NOTES.md — touched 16 App
    Router route handlers plus `ui/src/app/jobs/[jobID]/page.tsx`) — get the current
    list with `git diff upstream/main --name-status | grep -v '^A'`, and the per-file
    change + conflict-resolution notes from `FORK_NOTES.md`'s "Upstream files modified"
@@ -78,7 +80,7 @@ decisions in §9).
    git diff $(git merge-base HEAD upstream/main)..HEAD --name-status | grep -v '^A'
    ```
 
-   Both forms give 26 once the fork is level; only the second is trustworthy
+   Both forms give the same number once the fork is level; only the second is trustworthy
    mid-sync. Rule 3 below runs *after* the merge, so the short form is fine there.
    The three original JSX mounts (`ui/src/app/jobs/new/page.tsx`,
    `ui/src/app/jobs/new/SimpleJob.tsx`, `ui/src/app/datasets/[datasetName]/page.tsx`)
@@ -123,9 +125,14 @@ Standing instructions for `/sync-upstream` (or any "pull in upstream" request):
 3. Follow `FORK_NOTES.md`'s sync procedure for the merge itself, then verify the fork's
    insertion points survived (grep for the mounts listed in its file table) and that
    `git diff upstream/main --stat` still shows only the expected files.
-4. Validate before pushing: `npm ci` + `npx tsc --noEmit` + `npx next build` in `ui/`, and
-   `python3 -m py_compile` on any touched Python. Note in the report what the build can't
-   cover (runtime-only paths like the cron worker, and anything needing a GPU).
+4. Validate before pushing: `npm ci` + `npx tsc --noEmit` + `npx next build` + `npm test`
+   in `ui/` (the last runs the fork's 32 Node contract tests), the fork's Python suites in
+   `testing/` (`test_dataset_selection`, `test_fork_speed`, `test_ideogram4_prompt`,
+   `test_lora_compile_scalars`, via the repo `.venv`), and `-m py_compile` on any touched
+   Python. **The interpreter on this Windows box is `python`, not `python3`** — bare
+   `python3` hits the Microsoft Store alias stub and fails; `python3` only works in the
+   Linux containers the older sync logs were written from. Note in the report what the
+   build can't cover (runtime-only paths like the cron worker, and anything needing a GPU).
 
 ## Current state of the training advisor (`ui/src/utils/stepSuggestion.ts`)
 
@@ -175,7 +182,7 @@ Anima-TrainFlow clone untouched.
 
 What remains fork-side for Anima (all adapted to upstream's implementation):
 
-- Presets `presets/anima_lora_{performance,background}.json` (v2.0) and
+- Presets `presets/anima_lora_{performance,background,5090_fast,laptop16gb}.json` (v2.0) and
   `config/examples/train_lora_anima_2b.yaml` — the model author's recipe (rank 32,
   adamw 2e-5, adapter frozen) expressed in upstream's terms: diffusers-name
   `ignore_if_contains` list replacing sd-scripts' `["adaln_modulation"]`, and NO

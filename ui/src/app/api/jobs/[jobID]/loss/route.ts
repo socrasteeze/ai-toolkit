@@ -105,7 +105,7 @@ function run(db: sqlite3.Database, sql: string, params: any[] = []) {
 
 // Delete every logged step in [min_step, max_step] (inclusive) across all
 // metric keys. Used by the loss graph's "Delete Selected Range" action.
-export async function DELETE(request: NextRequest, { params }: { params: { jobID: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ jobID: string }> }) {
   const { jobID } = await params;
 
   const job = await prisma.job.findUnique({ where: { id: jobID } });

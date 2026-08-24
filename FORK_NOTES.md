@@ -79,7 +79,7 @@ Then `npm ci` (not `npm install`) in `ui/` so the lockfile stays untouched.
 | `ui/src/app/api/datasets/delete/route.tsx` | Resolves the requested name through fork-only `resolveDatasetPath` before recursive deletion | This is a destructive route: never restore a raw `path.join(datasetsRoot, name)`. Invalid input must return 400 before `rmSync` |
 | `ui/src/app/api/datasets/upload/route.ts` | Validates the dataset directory and every peer-sanitized filename, then rejects case-insensitive sanitized-name collisions, before creating the directory or writing any file | Keep the entire validation/deduplication pass ahead of `mkdir` so invalid or aliasing later files cannot leave a partial upload or silently overwrite an earlier file |
 | `ui/src/app/api/zip/route.ts` | Dataset downloads validate the requested top-level name through fork-only `sanitizeDatasetName`/`resolveDatasetPath`, then confirm the real path remains below `DATASETS_FOLDER` before reading or writing the archive | Upstream's original `path.basename(datasetName)` accepted `..` unchanged and could archive outside the dataset root. Keep invalid input at 400 before I/O and retain the post-`realpath` containment check so a dataset-root symlink cannot escape |
-| `ui/package.json` | +1 `test` script: `node --experimental-strip-types --test "tests/*.test.mjs"`. The fork's Node regression tests are written as `.mjs` importing `.ts` directly, which needs the strip-types flag on Node 22; the repo's own `.nvmrc`-less setup means the flag cannot be assumed away | One added line in `scripts`, nothing else. Re-add it if upstream rewrites the script block. Deliberately NOT chained into `build` — a failing fork test must not block an upstream build path. Drop the `--experimental-strip-types` flag once the floor is Node 23+ |
+| `ui/package.json` | +1 `test` script: `node --experimental-strip-types --import ./tests/register.mjs --test "tests/*.test.mjs"`. The fork's Node regression tests are written as `.mjs` importing `.ts` directly, which needs the strip-types flag on Node 22; the repo's own `.nvmrc`-less setup means the flag cannot be assumed away. `--import ./tests/register.mjs` was added 2026-08-24 (fork-only, no npm dependency) so the suites can reach app modules that use Next-style extensionless relative imports — without it only leaf modules with zero relative imports are testable, which is why coverage previously stopped at `advisorBatch.ts` and could not reach `stepSuggestion.ts` | One added line in `scripts`, nothing else. Re-add it if upstream rewrites the script block. Deliberately NOT chained into `build` — a failing fork test must not block an upstream build path. Drop the `--experimental-strip-types` flag once the floor is Node 23+; keep the `--import` hook regardless, it is resolution, not syntax |
 | `.gitignore` | Fork entries appended at the end: `.claude`, `/anima_sample_training`, `/hf-cache`, plus a "Never commit key material" block (`*.key`, `*.pem`, `*.p12`, `*.pfx`, `id_rsa`, `id_ed25519`, added 2026-08-06). Nothing matching those patterns is tracked, so the block is purely preventative | Both sides tend to append to the tail, so this conflicts on most syncs. Always resolve by **keeping both lists** — the fork's entries and upstream's new ones — never by taking one side wholesale |
 | `build_and_push_docker` | Docker Hub tags/push target changed from `ostris/aitoolkit` to `socrasteeze/aitoolkit` (both the `:$VERSION` and `:latest` tags, and the final echo). Deliberate per-machine override — see CLAUDE.md's "Local tooling notes" (2026-07-31); was already diverged from upstream before this table tracked it, found and backfilled during the 2026-08-03 sync | Keep the `socrasteeze/aitoolkit` substitution on both `docker tag`/`docker push` lines and the trailing echo; everything else in the script (the `set -euo pipefail`, build args, chmod +x mode) is upstream's and should be taken as-is |
 | `toolkit/config_modules.py` | Three independent fork insertions. (1) `DatasetConfig.__init__` validates/stores `include_loose_files` and `include_subfolders` through fork-only `normalize_included_subfolders`; absent keys preserve upstream recursive behavior. Upstream's optional dataset `batch_size` assignment immediately before `type` is retained. (2) In `TrainConfig.__init__`, +1 commented block after `cache_text_embeddings` adds the fork speed keys (`loss_sync_every` default 1, `ui_db_poll_seconds` default 0.0). (3) The Automagic fused+accumulation guard directly follows the existing accumulation mutual-exclusion `raise` | Keep upstream's `DatasetConfig.batch_size`, then re-add the dataset-scope block directly after `dataset_path`; never reinterpret selected names as paths. Preserve the two existing TrainConfig insertions at their documented anchors |
@@ -121,6 +121,8 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
 - `presets/anima_lora_performance.json`, `presets/anima_lora_background.json`
 - `presets/anima_lora_5090_fast.json` — the Phase 6 fast profile (see PLAN.md Phase 6 + the Speed optimization section below)
 - `presets/*_laptop16gb.json` — the 16 GB laptop tier (2026-07-28): `anima_lora_laptop16gb`, `flux_lora_laptop16gb`, `sdxl_character_lora_laptop16gb`, `illustriousxl_character_lora_laptop16gb`, plus `krea2_lora_laptop16gb` (added 2026-07-29). Memory/IO profiles only — every recipe value is inherited unchanged from the parent preset (see PLAN.md "16 GB laptop tier" and, for the krea2 one, "Krea 2 guidance from a measured 16GB run")
+- `presets/flux2_klein_9b_character_lora.json`, `presets/flux2_klein_9b_style_lora.json` — the 9B tier (2026-08-24). Identical to the 4B presets except `arch` and `name_or_path`; previously the 9B was only reachable by hand-editing those two fields out of the 4B preset's description text. Just as UNVERIFIED as the 4B pair — no Klein-specific recipe is published
+- `presets/*_automagic.json` — automagic3 variants (2026-08-24): `flux2_klein_character_lora_automagic`, `illustriousxl_character_lora_automagic`, `anima_lora_automagic`. Each is its parent preset with `optimizer: automagic3`, `min_lr`/`max_lr` rails (`max_lr` = the parent's own LR, so the controller can only adapt downward — the pattern from `krea2_lora_16gb`), no scheduler, and `gradient_accumulation` pinned to 1 because fused Automagic cannot accumulate. UNVERIFIED per arch: Krea 2 is still the only arch in this fork with a measured automagic3 run
 - `ui/src/utils/stepSuggestion.ts` also carries the Anima recipe in `ARCH_RECIPES` (fork file, listed above)
 - `start.bat` — double-click launcher for the UI (`start.bat rebuild` after pulling upstream). No longer auto-opens a browser tab on launch (2026-07-20) — `create_shortcut.bat` below is the intended entry point for click-to-open use
 - `stop.bat` — killswitch companion to `start.bat`: stops the UI (port 8675) + cron worker even when the launching terminal is gone/frozen, matched by command-line signature so it never touches unrelated node/python. Leaves detached training alone by default; `stop.bat all` also stops a running `run.py` training
@@ -222,10 +224,15 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
   `ui/tests/remoteIntegrity.test.mjs`, `ui/tests/toolRunRegistry.test.mjs`,
   `ui/tests/stepSuggestion.test.mjs` — CPU-only Node regression coverage for containment,
   upload aliases, bounded in-flight caching, remote reset/stop/artifact lifecycle integrity,
-  tool-run retention, and mixed per-dataset batch math. Run them with `npm test`
+  tool-run retention, mixed per-dataset batch math, and (2026-08-24) the effective-batch
+  ceiling sweep. Run them with `npm test`
   in `ui/`. Keep them dependency-free: no Prisma, no network, no child processes — that
   constraint is why `toolRunRegistry.ts` and `remoteIntegrity.ts` exist as separate modules
   at all
+- `ui/tests/register.mjs` + `ui/tests/tsResolve.mjs` — fork-only ESM resolve hook wired into
+  the `test` script (2026-08-24). Lets the dependency-free suites follow Next-style
+  extensionless relative imports, which is what made `stepSuggestion.ts` testable at all.
+  Bare Node only — no npm dependency, and it affects nothing outside `npm test`
 
 ## Remote execution: running a job on another machine (2026-08-04)
 
@@ -376,29 +383,47 @@ Three pieces, all fork-only additions to existing fork/upstream files (no new fi
    gained the same caveat, since combining that note with the accumulation pattern is
    exactly the config the guard rejects.
 
-## Effective batch cap of 2 (2026-07-29)
+## Effective batch: size-gated ceiling of 4 (2026-08-24, supersedes the flat cap of 2)
 
-**Every arch recipe in `stepSuggestion.ts` and every preset in `presets/` caps
-`batch_size × gradient_accumulation` at 2.** Do not raise any of them back to 4 to match a
-community guide — the cap is a deliberate operator decision backed by their own runs, and
-the reason is structural, not taste:
+**Effective batch (`batch_size × gradient_accumulation`) may go up to 4, but only where the
+dataset is large enough that the `minSteps` floor doesn't bind.** From 2026-07-29 to
+2026-08-24 this was a flat cap of 2. The flat cap was a workaround; the underlying bug is
+what must stay fixed, and it is now fixed directly:
 
 `suggestSteps()` divides by effective batch and then clamps to the arch's `minSteps` floor.
-At effective batch 4 that quotient falls under the floor for any small/medium dataset, the
-floor raises it back up, and real per-image exposure (`steps × effectiveBatch ÷ items`)
-inflates 2-3x past the arch target — so the advisor recommends a step count its own
-`exposureGauge()` would band as fry-risk. Full numbers in PLAN.md's 2026-07-29 entry.
+On a small dataset that quotient falls under the floor, the floor raises it back up, and real
+per-image exposure (`steps × effectiveBatch ÷ items`) inflates 2-3x past the arch target — so
+the advisor recommends a step count its own `exposureGauge()` would band as fry-risk. Full
+numbers in PLAN.md's 2026-07-29 entry; the fix in its 2026-08-24 entry.
+
+**The mechanism that replaced the cap** (`ui/src/utils/stepSuggestion.ts`):
+- `bandForRatio()` is now the single source of truth for the band thresholds. `exposureGauge()`
+  and the new ceiling logic both read it, so they cannot drift apart — that drift *was* the bug.
+- `maxHealthyBatch(itemCount, arch)` returns the largest effective batch on
+  `EFFECTIVE_BATCH_LADDER` (1/2/4) whose floor-clamped suggestion stays out of the fry band.
+  Exposure is non-decreasing in effective batch, so the first fry result ends the search.
+- `minItemsForBatch(effectiveBatch, arch)` answers "how many files before batch 4 is safe":
+  SDXL/Illustrious 29, Anima 32, Klein 4B/9B 40, Krea2 45.
+- `suggestSteps()` returns `batchCeiling` and `overBatched`, and names both the ceiling and the
+  required file count in the explanation string.
 
 Consequences to preserve on any future edit:
-- The Anima recipe/presets deviate from the model author's published effective batch 4.
-  This is the one place the fork overrides its highest-confidence source. The deviation is
-  flagged in-place (recipe notes + all three Anima preset descriptions) with instructions
-  to restore 4 for author-exact reproduction — keep those flags if you touch the text.
-- LRs and preset `steps` were deliberately left alone; changing them alongside batch would
+- **The contract sweep in `ui/tests/stepSuggestion.test.mjs` is the regression guard.** It
+  walks 10,800 arch × itemCount × batch combinations asserting `overBatched` is true for every
+  fry-band result, except the irreducible case (≤9 files, ceiling already 1, no batch left to
+  lower). If you touch the bands, the floors, `roundTo50`, or the ladder, that test tells you
+  whether you reintroduced the 2026-07-29 bug. Don't weaken it to make an edit pass.
+- Anima's recipe matches the model author's published effective batch 4 on the `large` tier
+  only; below it the fork still suggests 2 and flags the deviation in-place. Keep both halves
+  of that note — the provenance is the point.
+- LRs and preset `steps` are still deliberately untouched; changing them alongside batch would
   make results unattributable. Don't "finish the job" by scaling them.
-- `suggestSteps()`'s explanation string appends a floor-was-hit warning when
-  `raw < minSteps`. That is load-bearing for datasets under ~20 images, where the cap alone
-  isn't enough — don't drop it when editing the explanation.
+- `suggestSteps()`'s floor-was-hit warning still fires independently of `overBatched` and is
+  still load-bearing under ~20 images, where no batch choice rescues the exposure — don't drop
+  it when editing the explanation.
+- Automagic-family optimizers cannot reach effective batch >1 via `gradient_accumulation` while
+  fused (see the guard below) — raise `batch_size` instead. The three `*_automagic*` presets
+  pin `gradient_accumulation: 1` for this reason.
 
 ## Duplication watch (re-check after each upstream merge)
 

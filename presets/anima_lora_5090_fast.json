@@ -36,14 +36,18 @@
             "folder_path": "/path/to/images/folder",
             "caption_ext": "txt",
             "caption_dropout_rate": 0,
-            "resolution": [512, 768, 1024],
+            "resolution": [
+              512,
+              768,
+              1024
+            ],
             "num_repeats": 1,
             "cache_latents": true,
             "cache_latents_to_disk": true
           }
         ],
         "train": {
-          "batch_size": 2,
+          "batch_size": 4,
           "steps": 2000,
           "gradient_accumulation": 1,
           "train_unet": true,
@@ -55,7 +59,7 @@
           "noise_scheduler": "flowmatch",
           "optimizer": "adamw",
           "timestep_type": "sigmoid",
-          "lr": 0.00002,
+          "lr": 2e-05,
           "dtype": "bf16"
         },
         "model": {
@@ -79,7 +83,7 @@
   },
   "meta": {
     "name": "[name]",
-    "version": "1.0",
-    "description": "Anima 2B LoRA, 5090 FAST profile: the performance preset plus every verified speed lever. gradient_checkpointing OFF (a 2B model on 32GB does not need the ~30-40% recompute tax), latents cached to disk AND served from RAM (cache_latents + cache_latents_to_disk — disk-only re-reads every step), text embeds cached (hard-unloads the text encoder), full bf16 no quantization, batch 2, samples/saves stretched to 500. Fork speed keys: loss_sync_every 4 (loss display/log updates every 4 steps instead of syncing the GPU every step), ui_db_poll_seconds 2 (UI stop/save/sample buttons take up to 2s to be noticed). Training math is identical to the performance preset — same effective batch 2, author's recipe (rank 32, AdamW 2e-5, LLM adapter frozen) apart from that batch, which this fork lowered from the author's 4 because effective batch 4 pushes the in-app step suggestion under its floor on small/medium datasets, where clamping inflates real per-image exposure into overfit range. If 1024 x batch 2 OOMs without checkpointing, drop batch_size to 1 before re-enabling gradient_checkpointing. Not for shared-GPU use — take the background preset for that."
+    "version": "2.0",
+    "description": "Anima 2B LoRA, 5090 FAST profile: the performance preset plus every verified speed lever. gradient_checkpointing OFF (a 2B model on 32GB does not need the ~30-40% recompute tax), latents cached to disk AND served from RAM (cache_latents + cache_latents_to_disk — disk-only re-reads every step), text embeds cached (hard-unloads the text encoder), full bf16 no quantization, batch 2, samples/saves stretched to 500. Fork speed keys: loss_sync_every 4 (loss display/log updates every 4 steps instead of syncing the GPU every step), ui_db_poll_seconds 2 (UI stop/save/sample buttons take up to 2s to be noticed). Training math is identical to the performance preset — same effective batch 2, author's recipe (rank 32, AdamW 2e-5, LLM adapter frozen) apart from that batch, which this fork lowered from the author's 4 because effective batch 4 pushes the in-app step suggestion under its floor on small/medium datasets, where clamping inflates real per-image exposure into overfit range. If 1024 x batch 2 OOMs without checkpointing, drop batch_size to 1 before re-enabling gradient_checkpointing. Not for shared-GPU use — take the background preset for that. Effective batch 4 (batch 4 x accum 1) matches the Anima author's published recipe. Needs >=32 training files; below that use anima_lora_background (effective batch 2)."
   }
 }

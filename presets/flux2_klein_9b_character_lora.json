@@ -1,0 +1,75 @@
+{
+  "job": "extension",
+  "config": {
+    "name": "preset",
+    "process": [
+      {
+        "type": "diffusion_trainer",
+        "training_folder": "output",
+        "device": "cuda",
+        "trigger_word": null,
+        "network": {
+          "type": "lora",
+          "linear": 16,
+          "linear_alpha": 16
+        },
+        "save": {
+          "dtype": "bf16",
+          "save_every": 250,
+          "max_step_saves_to_keep": 4,
+          "save_format": "safetensors",
+          "push_to_hub": false
+        },
+        "datasets": [
+          {
+            "folder_path": "/path/to/images/folder",
+            "caption_ext": "txt",
+            "caption_dropout_rate": 0.05,
+            "resolution": [
+              768,
+              1024
+            ],
+            "num_repeats": 1,
+            "cache_latents_to_disk": true
+          }
+        ],
+        "train": {
+          "batch_size": 1,
+          "steps": 2500,
+          "gradient_accumulation": 1,
+          "train_unet": true,
+          "train_text_encoder": false,
+          "gradient_checkpointing": true,
+          "noise_scheduler": "flowmatch",
+          "optimizer": "adamw8bit",
+          "timestep_type": "sigmoid",
+          "content_or_style": "balanced",
+          "lr": 0.0001,
+          "dtype": "bf16"
+        },
+        "model": {
+          "name_or_path": "black-forest-labs/FLUX.2-klein-base-9B",
+          "arch": "flux2_klein_9b",
+          "quantize": true,
+          "qtype": "qfloat8",
+          "quantize_te": true,
+          "qtype_te": "qfloat8",
+          "low_vram": true
+        },
+        "sample": {
+          "sampler": "flowmatch",
+          "sample_every": 250,
+          "width": 1024,
+          "height": 1024,
+          "guidance_scale": 4,
+          "sample_steps": 25
+        }
+      }
+    ]
+  },
+  "meta": {
+    "name": "[name]",
+    "version": "1.0",
+    "description": "Character LoRA on FLUX.2 Klein 9B (gated on HF - accept the licence). Needs ~32-48 GB VRAM; on less, use the 4B preset. Recipe is the 4B preset unchanged except arch and repo - UNVERIFIED, nothing Klein-specific is published and none of these numbers are 9B-measured. Effective batch 1: raise to 4 only at >=40 files (advisor names the ceiling for your set)."
+  }
+}

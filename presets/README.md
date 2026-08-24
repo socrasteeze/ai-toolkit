@@ -27,6 +27,8 @@ on the New Training Job page in the UI.
 | `zimage_character_lora.json` / `zimage_style_lora.json` / `zimage_concept_lora.json` | Z-Image, 32/32 char+style, 16/8 concept | Ported from LDS's researched built-ins |
 | `flux2_klein_character_lora.json` | FLUX.2 Klein 4B, 16/16 char, sigmoid | UNVERIFIED — LDS extrapolation, nothing Klein-specific published |
 | `flux2_klein_style_lora.json` | FLUX.2 Klein 4B style, 64/32 linear + 32/16 conv (4:2:2:1), weighted | Herbst 64-run sweep + BFL official Klein example (LDS ships 128/64/64/32; ATK folds to half scale — see docs/preset_alignment_2026_07.md 2026-07-21) |
+| `flux2_klein_9b_character_lora.json` / `flux2_klein_9b_style_lora.json` | Same as the 4B pair, arch/repo swapped to Klein 9B | UNVERIFIED — needs ~32-48 GB VRAM; added 2026-08-24 so the 9B stops being a hand-edit |
+| `*_automagic.json` (klein char, illustrious char, anima) | Parent recipe + `automagic3` with `min_lr`/`max_lr` rails, no scheduler, accum pinned to 1 | Rail pattern from `krea2_lora_16gb`; UNVERIFIED per arch (see PLAN.md 2026-07-19 + 2026-08-24) |
 | `*_laptop16gb.json` (anima, flux, sdxl char, illustrious char, krea2) | Same recipe as the parent preset — memory/IO profile only | Hardware tier for a 16 GB laptop GPU; see `docs/profiles.md` |
 
 **Hardware profiles vs. recipes.** Most files here are *recipes* (rank/LR/optimizer/steps).
@@ -34,5 +36,13 @@ A few are *hardware profiles* that inherit a recipe unchanged and only change ho
 a given card: `anima_lora_{performance,background,5090_fast}` (32 GB desktop),
 `krea2_lora_16gb`, and the `*_laptop16gb` set. Checkpoints are interchangeable across
 profiles of the same recipe — you can resume a run under a different profile.
+
+**Effective batch is gated on dataset size, not just VRAM** (2026-08-24). A preset's
+`batch_size × gradient_accumulation` has to fit the card *and* be large enough not to trip the
+advisor's step floor: below a per-arch file count the suggestion gets clamped up and real
+per-image exposure runs into the fry band. Batch 4 needs ≥29 files on SDXL/Illustrious, ≥32 on
+Anima, ≥40 on Klein, ≥45 on Krea 2. The two 32 GB Anima desktop profiles ship batch 4 for this
+reason; the laptop and background profiles stay at 2. The step-suggestion panel names the safe
+ceiling for your actual file count — trust it over the preset if they disagree.
 
 Cross-repo recipe comparison: `docs/preset_alignment_2026_07.md`.

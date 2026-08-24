@@ -88,11 +88,63 @@ export interface StepSuggestionResult {
   // from epoch-based trainers)
   epochsEquivalent: number;
   explanation: string;
+  // highest effective batch that keeps this dataset out of the fry band (1, 2 or 4)
+  batchCeiling: number;
+  // true when the requested effective batch is above that ceiling
+  overBatched: boolean;
 }
 
 const roundTo50 = (n: number) => Math.max(50, Math.round(n / 50) * 50);
 const formatBatchSize = (n: number) =>
   Number.isInteger(n) ? `${n}` : n.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+
+// The effective batch sizes this fork actually ships settings for. 4 was banned outright
+// until 2026-08-24; it is now allowed but only where the dataset is large enough that the
+// minSteps floor doesn't bind (see maxHealthyBatch and PLAN.md's 2026-08-24 entry).
+export const EFFECTIVE_BATCH_LADDER = [1, 2, 4] as const;
+
+// Single source of truth for where the exposure bands start. exposureGauge() and
+// maxHealthyBatch() both read it, so the gauge can never disagree with the batch ceiling
+// the suggestion just recommended — that disagreement was the original 2026-07-29 bug.
+const bandForRatio = (ratio: number): ExposureBand => {
+  if (ratio < 0.7) return 'cool';
+  if (ratio <= 1.3) return 'healthy';
+  if (ratio <= 1.7) return 'warm';
+  return 'fry';
+};
+
+// Real per-image exposure for a floor-clamped suggestion at this effective batch.
+const exposureRatioAt = (itemCount: number, heuristic: StepHeuristic, effectiveBatch: number): number => {
+  const raw = (itemCount * heuristic.stepsPerItem) / effectiveBatch;
+  const steps = roundTo50(Math.min(heuristic.maxSteps, Math.max(heuristic.minSteps, raw)));
+  return (steps * effectiveBatch) / itemCount / heuristic.stepsPerItem;
+};
+
+// Largest effective batch on the ladder whose suggestion still lands outside the fry band
+// at this dataset size. Exposure is non-decreasing in effective batch (steps fall until the
+// floor binds, then hold while the multiplier keeps growing), so the first fry result ends
+// the search. This is the number that makes "batch 4 on the big machine" safe to act on:
+// below the arch's floor-safe item count it returns 2 or 1 instead.
+export const maxHealthyBatch = (itemCount: number, arch: string | undefined | null): number => {
+  if (!itemCount || itemCount <= 0) return 1;
+  const heuristic = getHeuristic(arch, getSizeTier(itemCount));
+  let best: number = EFFECTIVE_BATCH_LADDER[0];
+  for (const candidate of EFFECTIVE_BATCH_LADDER) {
+    if (bandForRatio(exposureRatioAt(itemCount, heuristic, candidate)) === 'fry') break;
+    best = candidate;
+  }
+  return best;
+};
+
+// Fewest files at which `effectiveBatch` stays out of the fry band, or null if it never
+// does within a sane dataset size. Answers "how many images before I can use batch 4?".
+export const minItemsForBatch = (effectiveBatch: number, arch: string | undefined | null): number | null => {
+  if (effectiveBatch <= 1) return 1;
+  for (let n = 1; n <= 2000; n += 1) {
+    if (maxHealthyBatch(n, arch) >= effectiveBatch) return n;
+  }
+  return null;
+};
 
 export const suggestSteps = (input: StepSuggestionInput): StepSuggestionResult | null => {
   const { itemCount, arch } = input;
@@ -116,6 +168,15 @@ export const suggestSteps = (input: StepSuggestionInput): StepSuggestionResult |
   // in the exposure gauge's fry band. Say so instead, and point at the lever that fixes it.
   const flooredUp = raw < heuristic.minSteps;
   const effectiveBatchLabel = formatBatchSize(effectiveBatch);
+
+  // Fork addition (2026-08-24): the floor warning above says "lower the effective batch"
+  // but never said to what. Now that effective batch 4 is allowed on large enough sets,
+  // vague advice isn't enough — name the ceiling for THIS dataset, and the file count the
+  // requested batch would need. Same band thresholds as exposureGauge(), by construction.
+  const batchCeiling = maxHealthyBatch(itemCount, arch);
+  const overBatched = effectiveBatch > batchCeiling;
+  const filesNeeded = overBatched ? minItemsForBatch(effectiveBatch, arch) : null;
+
   const explanation =
     `${itemCount} files × ${heuristic.stepsPerItem} steps/file ÷ effective batch ${effectiveBatchLabel}` +
     ` = ${Math.round(raw)}, clamped to ${heuristic.minSteps}–${heuristic.maxSteps} for ${arch || 'this model'}.` +
@@ -124,9 +185,14 @@ export const suggestSteps = (input: StepSuggestionInput): StepSuggestionResult |
       ? ` Note: the ${heuristic.minSteps}-step floor raised this above the computed ${Math.round(raw)}, so exposure` +
         ` (≈${epochsEquivalent}×) runs above the ~${heuristic.stepsPerItem}× target for this arch — lower the effective` +
         ` batch (batch size × gradient accumulation, currently ${effectiveBatchLabel}) to bring the two back in line.`
+      : '') +
+    (overBatched
+      ? ` At ${itemCount} files the highest effective batch that stays out of the fry band is ${batchCeiling}` +
+        (filesNeeded ? `; effective batch ${effectiveBatchLabel} needs ≥${filesNeeded} files` : '') +
+        '.'
       : '');
 
-  return { suggested, low, high, epochsEquivalent, explanation };
+  return { suggested, low, high, epochsEquivalent, explanation, batchCeiling, overBatched };
 };
 
 // ==========================================================================
@@ -158,11 +224,7 @@ export const exposureGauge = (input: {
   const target = getHeuristic(arch, getSizeTier(itemCount)).stepsPerItem;
   const exposures = (steps * effectiveBatch) / itemCount;
   const ratio = exposures / target;
-  let band: ExposureBand;
-  if (ratio < 0.7) band = 'cool';
-  else if (ratio <= 1.3) band = 'healthy';
-  else if (ratio <= 1.7) band = 'warm';
-  else band = 'fry';
+  const band: ExposureBand = bandForRatio(ratio);
   const labels: Record<ExposureBand, string> = {
     cool: '❄️ Cool — likely undertrained',
     healthy: '✅ Healthy',
@@ -282,15 +344,16 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       lrSetting(tier === 'small' ? 0.00008 : 0.0001),
       rankSetting(tier === 'small' ? 16 : tier === 'medium' ? 32 : 64),
       alphaSetting(tier === 'small' ? 16 : tier === 'medium' ? 32 : 32),
-      batchSetting(2),
+      batchSetting(tier === 'large' ? 4 : 2),
       schedulerSetting('cosine'),
     ],
     notes:
-      'Vanilla SDXL: adamw8bit, cosine scheduler, batch 2 at 1024. ' +
-      'Batch 2 rather than the batch 4 many guides quote: those assume large sets, and on a small one the step ' +
-      'suggestion below divides by effective batch, drops under the step floor, and gets clamped back up — which ' +
-      'silently doubles or triples exposure per image. Batch 2 keeps the suggestion honest; raise it only if the ' +
-      'gauge still reads cool. ' +
+      `Vanilla SDXL: adamw8bit, cosine scheduler, batch ${tier === 'large' ? 4 : 2} at 1024. ` +
+      'Batch is tied to dataset size, not to the batch 4 many guides quote unconditionally: the step suggestion ' +
+      'below divides by effective batch, and on a small set that quotient drops under the step floor and gets ' +
+      'clamped back up — which silently doubles or triples exposure per image. Batch 4 is offered only on large ' +
+      '(150+) sets where the floor no longer binds; the suggestion names the safe ceiling for your actual file ' +
+      'count if you raise it further. ' +
       (tier === 'small'
         ? 'Small dataset (<30 images): lower rank (16) and LR (8e-5) to curb overfitting.'
         : tier === 'large'
@@ -428,16 +491,27 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       rankSetting(tier === 'small' ? 16 : 32),
       alphaSetting(tier === 'small' ? 16 : 32),
       batchSetting(1),
-      rec('grad accum 2', 'config.process[0].train.gradient_accumulation', 2),
+      rec(
+        `grad accum ${tier === 'large' ? 4 : 2}`,
+        'config.process[0].train.gradient_accumulation',
+        tier === 'large' ? 4 : 2,
+      ),
       schedulerSetting('constant'),
     ],
     notes:
       "Anima 2B: plain adamw (author's config), LR 2e-5 at rank 32 — the model author's own recipe, the most " +
-      'authoritative of any arch here. DELIBERATE FORK DEVIATION: the author pairs this with batch 1 + grad ' +
-      'accumulation 4 (effective batch 4); this fork suggests accumulation 2 instead, because at effective batch 4 ' +
-      'the step suggestion below drops under its floor on small sets and gets clamped up, inflating real exposure ' +
-      'per image 2-3x past target. Rank/alpha/LR/optimizer are untouched author values — set accumulation back to 4 ' +
-      "if you are reproducing the author's config exactly on a larger dataset. Never train the LLM adapter (default off): " +
+      'authoritative of any arch here. ' +
+      (tier === 'large'
+        ? "Effective batch 4 here matches the author's published recipe exactly (batch 1 + grad accumulation 4); " +
+          'at 150+ files the step floor no longer binds, so that batch no longer inflates exposure. '
+        : 'FORK DEVIATION ON THIS DATASET SIZE: the author pairs this with batch 1 + grad accumulation 4 ' +
+          '(effective batch 4); below 150 files this fork suggests accumulation 2 instead, because at effective ' +
+          'batch 4 the step suggestion drops under its floor and gets clamped up, inflating real exposure per ' +
+          'image 2-3x past target. The suggestion names the safe ceiling for your actual file count. ') +
+      'Rank/alpha/LR/optimizer are untouched author values. ' +
+      'NOTE: if you switch the optimizer to automagic3, grad accumulation must be 1 unless you also set ' +
+      'optimizer_params.fused=false — fused Automagic steps every micro-batch (config-parse error otherwise). ' +
+      'Never train the LLM adapter (default off): ' +
       'it shapes all text conditioning and degrades easily. Anima is a base model with no aesthetic tuning to overcome — ' +
       '"a light touch is all you need". Danbooru-style tag captions work well (anime-focused base).',
   }),
@@ -456,14 +530,15 @@ const illustriousOrPonyRecipe = (modelPath: string, tier: SizeTier): ArchRecipe 
         lrSetting(tier === 'small' ? 0.0002 : 0.0003),
         rankSetting(tier === 'small' ? 32 : 64),
         alphaSetting(tier === 'small' ? 16 : 32),
-        batchSetting(2),
+        batchSetting(tier === 'large' ? 4 : 2),
         schedulerSetting('constant'),
       ],
       notes:
         'Illustrious-XL detected from checkpoint name: adamw8bit + constant LR is the more-cited combo ' +
         '(one camp explicitly reports Prodigy working poorly on Illustrious; the other camp still prefers Prodigy+cosine — genuinely contested, adamw8bit+constant chosen as the safer default). ' +
-        'Batch 2, not the batch 4 the guides quote — at effective batch 4 the step suggestion below falls under ' +
-        'its floor on any small/medium set and gets clamped up, inflating real per-image exposure into fry range. ' +
+        `Batch ${tier === 'large' ? 4 : 2}: the batch 4 the guides quote is only safe once the set is large ` +
+        'enough that the step floor stops binding — below 150 files the suggestion falls under its floor at ' +
+        'effective batch 4 and gets clamped up, inflating real per-image exposure into fry range. ' +
         'Booru/danbooru-tag captions (WD14-tagger style), not natural language — Illustrious was trained on tagged data.',
     };
   }

@@ -152,16 +152,24 @@ top of `PLAN.md`'s Phase 3 section:
   `score_9` caption tag, all Flux2/Flux2-Klein numbers, which are FLUX.1 proxies). Do not
   quietly "resolve" these to a single confident number without new research backing it — the
   honesty about uncertainty is intentional, not a TODO to clean up.
-- **Effective batch (batch_size × gradient_accumulation) is capped at 2 across every recipe
-  and preset** (2026-07-29, operator decision backed by their own runs). This is deliberate
-  and must not be "corrected" back to the batch 4 most community guides quote. Reason:
-  `suggestSteps()` divides by effective batch and then clamps to the arch's `minSteps`
-  floor — at effective batch 4 that quotient falls under the floor for any small/medium
-  dataset, gets clamped back up, and silently inflates real per-image exposure 2–3× past
-  the arch target, so the advisor recommends a step count its own exposure gauge would
-  flag as fry-risk. It also overrides the Anima author's published effective batch 4;
-  that deviation is flagged in-place in the recipe notes and preset descriptions rather
-  than hidden. See PLAN.md's 2026-07-29 entry for the numbers.
+- **Effective batch (batch_size × gradient_accumulation) is allowed up to 4, but gated on
+  dataset size — never raise it unconditionally.** History: it was capped at a flat 2 on
+  2026-07-29, then raised to a size-dependent 4 on 2026-08-24 when the operator confirmed
+  they run batch 1/2/4 by machine VRAM. The flat cap was a workaround for a real bug, and
+  the bug is what must stay fixed: `suggestSteps()` divides by effective batch and then
+  clamps to the arch's `minSteps` floor, so on a small dataset the quotient falls under the
+  floor, gets clamped back up, and silently inflates real per-image exposure 2–3× past the
+  arch target — the advisor recommending a step count its own exposure gauge bands as
+  fry-risk. The fix is `maxHealthyBatch()` in `stepSuggestion.ts`: it returns the largest
+  effective batch (1/2/4) that keeps this file count out of the fry band, `suggestSteps()`
+  returns it as `batchCeiling`/`overBatched` and names it in the explanation, and the recipes
+  offer batch 4 only on the `large` tier. Measured thresholds for batch 4: SDXL/Illustrious
+  ≥29 files, Anima ≥32, Klein 4B/9B ≥40, Krea2 ≥45. Pinned by contract tests in
+  `ui/tests/stepSuggestion.test.mjs`, including a 10,800-combo sweep asserting the flag never
+  disagrees with the gauge — if you change the bands, the floors, or the ladder, that sweep is
+  what tells you whether you reintroduced the 2026-07-29 bug. Anima's `large`-tier recipe now
+  matches the model author's published effective batch 4 exactly; below that tier it still
+  deviates to 2 and says so in-place. See PLAN.md's 2026-07-29 and 2026-08-24 entries.
 - The LR scheduler (`lr_scheduler`) has no dedicated UI field anywhere else in this app; the
   advisor's Apply button is currently the only way a user sets it from the UI. If a proper
   scheduler dropdown is ever added to the main form, keep the advisor's suggestion in sync

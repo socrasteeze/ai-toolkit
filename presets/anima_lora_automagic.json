@@ -1,0 +1,92 @@
+{
+  "job": "extension",
+  "config": {
+    "name": "preset",
+    "process": [
+      {
+        "type": "diffusion_trainer",
+        "training_folder": "output",
+        "device": "cuda",
+        "trigger_word": null,
+        "network": {
+          "type": "lora",
+          "linear": 32,
+          "linear_alpha": 32,
+          "network_kwargs": {
+            "ignore_if_contains": [
+              "norm1.linear",
+              "norm2.linear",
+              "norm3.linear",
+              "norm_out.linear",
+              "patch_embed",
+              "time_embed",
+              "proj_out"
+            ]
+          }
+        },
+        "save": {
+          "dtype": "fp16",
+          "save_every": 250,
+          "max_step_saves_to_keep": 4,
+          "save_format": "safetensors",
+          "push_to_hub": false
+        },
+        "datasets": [
+          {
+            "folder_path": "/path/to/images/folder",
+            "caption_ext": "txt",
+            "caption_dropout_rate": 0,
+            "resolution": [
+              512,
+              768,
+              1024
+            ],
+            "num_repeats": 1,
+            "cache_latents_to_disk": true
+          }
+        ],
+        "train": {
+          "batch_size": 1,
+          "steps": 2000,
+          "gradient_accumulation": 1,
+          "train_unet": true,
+          "train_text_encoder": false,
+          "gradient_checkpointing": true,
+          "cache_text_embeddings": true,
+          "unload_text_encoder": false,
+          "noise_scheduler": "flowmatch",
+          "optimizer": "automagic3",
+          "timestep_type": "sigmoid",
+          "lr": 2e-05,
+          "dtype": "bf16",
+          "optimizer_params": {
+            "weight_decay": 0.0001,
+            "min_lr": 1e-06,
+            "max_lr": 2e-05
+          }
+        },
+        "model": {
+          "name_or_path": "circlestone-labs/Anima-Base-v1.0-Diffusers",
+          "arch": "anima",
+          "quantize": false,
+          "quantize_te": false,
+          "low_vram": true,
+          "model_kwargs": {}
+        },
+        "sample": {
+          "sampler": "flowmatch",
+          "sample_every": 250,
+          "width": 1024,
+          "height": 1024,
+          "guidance_scale": 7.5,
+          "sample_steps": 30
+        }
+      }
+    ]
+  },
+  "meta": {
+    "name": "[name]",
+    "version": "1.0",
+    "description": "Anima 2B LoRA, background profile (default): batch 1 + grad accumulation 2 (same effective batch as performance; the author's own config uses 4 — see the exposure note at the end), latent + text-embed caching on, low_vram so idle components park on CPU. Leaves VRAM headroom for concurrent desktop use; expect roughly 2-3x the wall-clock of the performance preset. Author's recipe (rank 32, AdamW 2e-5, LLM adapter frozen — upstream's default). The ignore_if_contains list mirrors sd-scripts' Block-only targeting (no LoRA on AdaLN modulation/embedders/final projection) in upstream's diffusers module names. Note: the author's sigmoid_scale 1.3 timestep widening is not supported by upstream's Anima implementation; plain sigmoid timestep sampling is the closest available. Effective batch is a deliberate fork deviation: the author's recipe is accumulation 4, this ships 2, because at effective batch 4 the in-app step suggestion falls under its step floor on a small/medium dataset and gets clamped up — silently inflating real per-image exposure 2-3x past target. Rank/alpha/LR/optimizer are untouched author values; set accumulation back to 4 to reproduce the author's config exactly on a large dataset. If you swap the optimizer to an Automagic variant, this batch-1-plus-accumulation pattern will not work as-is — Automagic fuses its step into the backward pass by default, so gradient_accumulation must go back to 1 and the effective batch reached by raising batch size instead. automagic3 variant: the LR above is a launch point, not a target - the optimizer adapts one LR per param group from gradient sign consensus, so no scheduler is needed. min_lr/max_lr rail it (max_lr = this preset's own LR, so it can only adapt downward). Gradient accumulation MUST stay 1 unless you also set optimizer_params.fused=false: fused automagic steps every micro-batch and the trainer hard-errors at config parse otherwise. UNVERIFIED for this arch - automagic3 has no published per-arch data; Krea 2 is the only arch in this fork with a real measured run."
+  }
+}

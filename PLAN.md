@@ -1614,3 +1614,87 @@ dataset behind images from another.
 The existing recipe cap remains a recommendation on train-level settings, not a prohibition on
 upstream's manual dataset override. Scope and batch stay orthogonal: the fork first counts the
 selected loose/child files with repeats, then applies that dataset row's batch size.
+
+## Effective batch: flat cap of 2 replaced by a size-gated ceiling of 4 (2026-08-24)
+
+Operator correction to the 2026-07-29 decision: they run **batch 1, 2 or 4 depending on the
+VRAM of the machine they are on**, and asked that the advisor's numbers be correct at all
+three rather than that batch 4 be forbidden. Their working dataset range is 20-150 images.
+
+**Why the flat cap was the wrong shape.** The 2026-07-29 diagnosis was right and is unchanged:
+`suggestSteps()` computes `raw = itemCount x stepsPerItem / effectiveBatch`, clamps to
+`[minSteps, maxSteps]`, and once the floor is doing the work, real exposure
+(`steps x effectiveBatch / items`) scales *with* effective batch instead of being held constant
+by it. Capping at 2 avoided the bug on most datasets but did not fix it — it also banned batch 4
+on the large datasets where it is not merely safe but correct, and it silently overrode the Anima
+author's published recipe everywhere rather than only where the floor actually binds.
+
+**The fix is a computed ceiling, not a constant.** In `ui/src/utils/stepSuggestion.ts`:
+
+- `bandForRatio()` extracted as the single source of truth for the exposure bands.
+  `exposureGauge()` now calls it instead of carrying its own copy of the thresholds. The
+  2026-07-29 bug was in essence the suggestion and the gauge disagreeing; they can no longer
+  hold different opinions about where the fry band starts.
+- `EFFECTIVE_BATCH_LADDER = [1, 2, 4]` — the batches this fork actually ships settings for.
+- `maxHealthyBatch(itemCount, arch)` — largest ladder entry whose floor-clamped suggestion stays
+  out of the fry band. Exposure is non-decreasing in effective batch (steps fall until the floor
+  binds, then hold while the multiplier keeps growing), so the first fry result ends the search.
+- `minItemsForBatch(effectiveBatch, arch)` — the inverse: how many files before a given batch is
+  safe. Bounded scan to 2000, returns null if never.
+- `suggestSteps()` returns `batchCeiling` and `overBatched`, and the explanation string now names
+  the ceiling for the actual file count and the files the requested batch would need. The old
+  floor warning still fires independently — it covers the case no batch choice can fix.
+
+**Measured thresholds for effective batch 4** (from the real functions, not estimated):
+
+| arch | batch 2 safe from | batch 4 safe from |
+|---|---|---|
+| SDXL / Illustrious-XL | 15 files | 29 files |
+| Anima 2B | 16 files | 32 files |
+| FLUX.2 Klein 4B / 9B | 20 files | 40 files |
+| Krea 2 | 16 files | 45 files |
+
+Across the operator's stated 20-150 range this means: at 20-30 files batch 4 is fry on every one
+of their archs and the advisor now says so with the number; from ~45 files up it is healthy
+everywhere; and at 100-150 files batch 1 has gone *cool* (ceiling-bound and undertrained) on
+Klein and Anima, so the ceiling is also the answer to "why is my big dataset not learning".
+
+**Recipes are now tier-aware** rather than pinned at 2: `sdxl`, the Illustrious branch of
+`illustriousOrPonyRecipe`, and `anima` offer batch 4 on the `large` tier (150+) and 2 below it.
+Anima's `large`-tier suggestion therefore reproduces the model author's published effective
+batch 4 exactly; below that tier the deviation and its reason are still stated in the notes.
+Pony, flux, krea2, zimage and klein recipes were already batch 1-2 and are unchanged.
+
+**Presets.** `anima_lora_performance` (v3.0) and `anima_lora_5090_fast` (v2.0) — the two 32 GB
+desktop profiles, i.e. exactly the high-VRAM tier this change exists for — move to batch 4 /
+accum 1, with the >=32 file requirement and the fallback preset named in their descriptions.
+The laptop and background profiles stay at effective batch 2 deliberately: they are the
+low-VRAM tier, and batch 4 would not fit regardless of dataset size.
+
+**Also delivered in this pass** (same session, separate concerns):
+- `presets/flux2_klein_9b_{character,style}_lora.json` — the 9B tier existed only as two
+  hand-edit instructions buried in the 4B preset's description. Now real presets.
+- `presets/{flux2_klein_character_lora,illustriousxl_character_lora,anima_lora}_automagic.json`
+  — automagic3 variants carrying the `min_lr`/`max_lr` rail pattern proven on
+  `krea2_lora_16gb` (`max_lr` = the preset's own launch LR, so the controller only adapts
+  downward). All three pin `gradient_accumulation: 1`: fused Automagic steps every micro-batch
+  and `TrainConfig` hard-errors on the combination. Flagged UNVERIFIED per arch — the
+  2026-07-19 finding still holds, Krea 2 remains the only arch with a measured automagic3 run,
+  and a re-check of the web this session found no new community data (and no change to
+  `automagic3.py` upstream since `cfdc903`, 2026-07-17).
+
+**Test harness.** The contract suites could previously only import leaf modules with no relative
+imports, because bare Node's ESM resolver requires file extensions and the app source uses
+Next-style extensionless specifiers — `stepSuggestion.ts` was untestable for that reason alone.
+Added `ui/tests/tsResolve.mjs` + `ui/tests/register.mjs` (a resolve hook, no npm dependency) and
+wired them into the `test` script. Seven new cases, including a 10,800-combination sweep across
+arch x itemCount x batch asserting `overBatched` is true for every fry-band result, except the
+irreducible case (<=9 files, ceiling already 1, nothing left to lower). That sweep is the
+regression guard for the original bug — it is what will catch a future edit to the bands, the
+floors, `roundTo50`, or the ladder reintroducing it.
+
+**Verified:** 39 Node contract tests pass (32 baseline + 7 new). All 27 presets parse and are
+accepted by the Automagic/accumulation guard block executed verbatim out of
+`toolkit/config_modules.py`. No preset exceeds effective batch 4. Not covered here: `tsc`,
+`next build` and the Python suites need dependencies absent from this container — run them on
+the Windows box before relying on the UI build.

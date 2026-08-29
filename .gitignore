@@ -194,6 +194,7 @@ aitk_db.db-shm
 original_repo
 /hf-cache
 .next
+testing/.model_test_outputs
 
 # Never commit key material
 *.key

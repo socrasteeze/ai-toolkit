@@ -62,9 +62,12 @@ decisions in §9).
 ## Fork hygiene rules (apply to any future change)
 
 1. New functionality goes in new files. Upstream files should only ever get small,
-   easy-to-reapply insertions. As of 2026-08-23 that is **58 files** (it jumped from 26 to 57 on
-   2026-08-13: a Next 15 route/page `params` type fix — see FORK_NOTES.md — touched 16 App
-   Router route handlers plus `ui/src/app/jobs/[jobID]/page.tsx`) — get the current
+   easy-to-reapply insertions. As of 2026-08-29 that is **57 files**. It jumped from 26 to 57 on
+   2026-08-13 (a Next 15 route/page `params` type fix — see FORK_NOTES.md — touched 16 App
+   Router route handlers plus `ui/src/app/jobs/[jobID]/page.tsx`), reached 58, and came back down
+   to 57 on 2026-08-29 when upstream independently adopted the fork's `r"""` fix to
+   `extensions_built_in/captioner/prompts/ideogram4_prompt.py` — that file is byte-identical to
+   upstream again and is no longer a touchpoint. Get the current
    list with `git diff upstream/main --name-status | grep -v '^A'`, and the per-file
    change + conflict-resolution notes from `FORK_NOTES.md`'s "Upstream files modified"
    table (the authoritative record; this count goes stale, that table does not).

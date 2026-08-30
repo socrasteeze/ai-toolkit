@@ -16,15 +16,18 @@ export interface StepHeuristic {
 const DEFAULT_HEURISTIC: StepHeuristic = { stepsPerItem: 75, minSteps: 1000, maxSteps: 3000 };
 
 // Keyed by model.arch. Prefix matching handles variants (e.g. wan22_14b_i2v matches 'wan').
-// 'sdxl' covers SDXL-family checkpoints like IllustriousXL and Pony.
+// 'sdxl' covers SDXL-family checkpoints like IllustriousXL and Pony. A `:variant` suffix
+// (zimage:turbo, krea2:turbo) is the same model with an adapter and resolves to its base
+// key as an exact match, not a prefix match.
 //
 // An entry may be a flat StepHeuristic (the default — one exposure target for the arch) or a
 // function of dataset-size tier, for archs where the right steps/item genuinely moves with
 // dataset size. Only krea2 is tiered today; see its comment for why.
+//
+// (An `sd3` entry was removed 2026-08-29: the trainer has no SD3 arch, it matched nothing.)
 const ARCH_HEURISTICS: Record<string, StepHeuristic | ((tier: SizeTier) => StepHeuristic)> = {
   sdxl: { stepsPerItem: 100, minSteps: 1200, maxSteps: 4000 },
   sd15: { stepsPerItem: 100, minSteps: 1000, maxSteps: 3000 },
-  sd3: { stepsPerItem: 80, minSteps: 1000, maxSteps: 3000 },
   flux: { stepsPerItem: 60, minSteps: 1000, maxSteps: 3000 },
   flex: { stepsPerItem: 60, minSteps: 1000, maxSteps: 3000 },
   chroma: { stepsPerItem: 60, minSteps: 1000, maxSteps: 3000 },
@@ -63,14 +66,41 @@ const ARCH_HEURISTICS: Record<string, StepHeuristic | ((tier: SizeTier) => StepH
 const resolveHeuristic = (entry: StepHeuristic | ((tier: SizeTier) => StepHeuristic), tier: SizeTier): StepHeuristic =>
   typeof entry === 'function' ? entry(tier) : entry;
 
-export const getHeuristic = (arch: string | undefined | null, tier: SizeTier = 'medium'): StepHeuristic => {
-  if (!arch) return DEFAULT_HEURISTIC;
-  if (arch in ARCH_HEURISTICS) return resolveHeuristic(ARCH_HEURISTICS[arch], tier);
-  for (const key of Object.keys(ARCH_HEURISTICS)) {
-    if (arch.startsWith(key)) return resolveHeuristic(ARCH_HEURISTICS[key], tier);
+// How an arch found its entry in a keyed table: its own key (or its `:variant` base),
+// a family prefix (wan22_14b_i2v -> wan, flux_kontext -> flux), or nothing at all.
+export type LookupSource = 'arch' | 'prefix' | 'default';
+
+export interface KeyedLookup<T> {
+  value: T;
+  source: LookupSource;
+  // the table key that answered, when one did
+  key?: string;
+}
+
+// Strip a `:variant` suffix — the trainer does the same (toolkit/config_modules.py).
+export const baseArch = (arch: string): string => arch.split(':')[0];
+
+const lookupByArch = <T>(table: Record<string, T>, arch: string | undefined | null, fallback: T): KeyedLookup<T> => {
+  if (!arch) return { value: fallback, source: 'default' };
+  if (arch in table) return { value: table[arch], source: 'arch', key: arch };
+  const base = baseArch(arch);
+  if (base in table) return { value: table[base], source: 'arch', key: base };
+  for (const key of Object.keys(table)) {
+    if (base.startsWith(key)) return { value: table[key], source: 'prefix', key };
   }
-  return DEFAULT_HEURISTIC;
+  return { value: fallback, source: 'default' };
 };
+
+export const getHeuristicLookup = (
+  arch: string | undefined | null,
+  tier: SizeTier = 'medium',
+): KeyedLookup<StepHeuristic> => {
+  const found = lookupByArch(ARCH_HEURISTICS, arch, DEFAULT_HEURISTIC);
+  return { ...found, value: resolveHeuristic(found.value, tier) };
+};
+
+export const getHeuristic = (arch: string | undefined | null, tier: SizeTier = 'medium'): StepHeuristic =>
+  getHeuristicLookup(arch, tier).value;
 
 export interface StepSuggestionInput {
   // total training files across selected datasets, with each dataset's num_repeats applied
@@ -92,6 +122,8 @@ export interface StepSuggestionResult {
   batchCeiling: number;
   // true when the requested effective batch is above that ceiling
   overBatched: boolean;
+  // where the exposure target came from: this arch, a family prefix, or the generic default
+  heuristicSource: LookupSource;
 }
 
 const roundTo50 = (n: number) => Math.max(50, Math.round(n / 50) * 50);
@@ -152,7 +184,8 @@ export const suggestSteps = (input: StepSuggestionInput): StepSuggestionResult |
   const batchSize = Math.max(1, input.batchSize || 1);
   const gradAccum = Math.max(1, input.gradientAccumulation || 1);
   const effectiveBatch = batchSize * gradAccum;
-  const heuristic = getHeuristic(arch, getSizeTier(itemCount));
+  const lookup = getHeuristicLookup(arch, getSizeTier(itemCount));
+  const heuristic = lookup.value;
 
   const clamp = (n: number) => Math.min(heuristic.maxSteps, Math.max(heuristic.minSteps, n));
   const raw = (itemCount * heuristic.stepsPerItem) / effectiveBatch;
@@ -177,9 +210,18 @@ export const suggestSteps = (input: StepSuggestionInput): StepSuggestionResult |
   const overBatched = effectiveBatch > batchCeiling;
   const filesNeeded = overBatched ? minItemsForBatch(effectiveBatch, arch) : null;
 
+  // Say where the target came from when it is not this arch's own number — a generic
+  // 75/file for an arch nobody has researched must not read like a researched value.
+  const provenance =
+    lookup.source === 'default'
+      ? ` (generic default — no ${arch || 'arch'}-specific exposure data)`
+      : lookup.source === 'prefix'
+        ? ` (target inherited from '${lookup.key}' — nothing ${arch}-specific researched)`
+        : '';
+
   const explanation =
     `${itemCount} files × ${heuristic.stepsPerItem} steps/file ÷ effective batch ${effectiveBatchLabel}` +
-    ` = ${Math.round(raw)}, clamped to ${heuristic.minSteps}–${heuristic.maxSteps} for ${arch || 'this model'}.` +
+    ` = ${Math.round(raw)}, clamped to ${heuristic.minSteps}–${heuristic.maxSteps} for ${arch || 'this model'}${provenance}.` +
     ` Each file is seen ≈${epochsEquivalent}× at the suggested count.` +
     (flooredUp
       ? ` Note: the ${heuristic.minSteps}-step floor raised this above the computed ${Math.round(raw)}, so exposure` +
@@ -192,7 +234,16 @@ export const suggestSteps = (input: StepSuggestionInput): StepSuggestionResult |
         '.'
       : '');
 
-  return { suggested, low, high, epochsEquivalent, explanation, batchCeiling, overBatched };
+  return {
+    suggested,
+    low,
+    high,
+    epochsEquivalent,
+    explanation,
+    batchCeiling,
+    overBatched,
+    heuristicSource: lookup.source,
+  };
 };
 
 // ==========================================================================
@@ -207,10 +258,22 @@ export interface ExposureGauge {
   exposures: number; // steps × effective batch ÷ items — passes over each image
   band: ExposureBand;
   label: string;
+  // true when the reading is 'cool' only because the arch's maxSteps ceiling binds at
+  // this dataset size — i.e. the advisor's own suggestion cannot reach the target either
+  ceilingBound: boolean;
 }
 
 // Bands are relative to the arch's stepsPerItem heuristic: healthy ≈ 0.7–1.3× of it,
 // warm to 1.7×, fry-risk beyond (the Anima-TrainFlow bands, made arch-relative).
+//
+// Fork note (2026-08-29): the per-image target is a flat number per arch (only krea2 is
+// tiered — see ARCH_HEURISTICS), so on a large dataset the maxSteps ceiling binds before
+// the target is reached and the gauge read "cool — likely undertrained" against the very
+// step count the advisor had just recommended. Large sets usually converge at fewer passes
+// (that is why the ceiling exists), so that reading over-warned. The band is still 'cool'
+// — the exposure really is below the flat target — but `ceilingBound` is set and the label
+// says why, instead of asserting undertraining nobody measured. A per-arch tiered target
+// would be the real fix; it needs a measured run per arch (PLAN.md, AIO.10).
 export const exposureGauge = (input: {
   itemCount: number;
   arch: string | undefined | null;
@@ -221,12 +284,17 @@ export const exposureGauge = (input: {
   const { itemCount, arch, steps } = input;
   if (!itemCount || itemCount <= 0 || !steps || steps <= 0) return null;
   const effectiveBatch = Math.max(1, input.batchSize || 1) * Math.max(1, input.gradientAccumulation || 1);
-  const target = getHeuristic(arch, getSizeTier(itemCount)).stepsPerItem;
+  const heuristic = getHeuristic(arch, getSizeTier(itemCount));
+  const target = heuristic.stepsPerItem;
   const exposures = (steps * effectiveBatch) / itemCount;
   const ratio = exposures / target;
   const band: ExposureBand = bandForRatio(ratio);
+  const rawSteps = (itemCount * target) / effectiveBatch;
+  const ceilingBound = band === 'cool' && rawSteps > heuristic.maxSteps && steps >= heuristic.maxSteps;
   const labels: Record<ExposureBand, string> = {
-    cool: '❄️ Cool — likely undertrained',
+    cool: ceilingBound
+      ? `❄️ Below the per-image target only because the ${heuristic.maxSteps}-step ceiling binds at this dataset size — large sets usually converge at fewer passes; trust sample grids over this gauge`
+      : '❄️ Cool — likely undertrained',
     healthy: '✅ Healthy',
     warm: '🔥 Warm — watch for overfit',
     fry: '💀 Fry-risk — likely overtrained',
@@ -235,6 +303,7 @@ export const exposureGauge = (input: {
     exposures: Math.round(exposures * 10) / 10,
     band,
     label: labels[band],
+    ceilingBound,
   };
 };
 
@@ -305,6 +374,10 @@ export interface ArchRecipe {
   // dot-path (under config.process[0]) → recommended value, applied via setJobConfig
   settings: { label: string; path: string; value: any }[];
   notes: string;
+  // set when the recipe was found by family prefix (flux2 -> flux, qwen_image_edit ->
+  // qwen_image, zimage_l2p -> zimage) rather than researched for this arch. The notes
+  // already say so in-line; this is for callers that want to style it.
+  inheritedFrom?: string;
 }
 
 // Dataset-size tiers used to scale rank/LR: small sets overfit fast at high rank/LR,
@@ -574,9 +647,20 @@ export const getArchRecipe = (
     if (special) return special;
   }
 
-  if (arch in ARCH_RECIPES) return ARCH_RECIPES[arch](tier);
-  for (const key of Object.keys(ARCH_RECIPES)) {
-    if (arch.startsWith(key)) return ARCH_RECIPES[key](tier);
-  }
-  return null;
+  const found = lookupByArch<RecipeByTier | null>(ARCH_RECIPES, arch, null);
+  if (!found.value) return null;
+  const recipe = found.value(tier);
+  if (found.source !== 'prefix') return recipe;
+
+  // Fork note (2026-08-29): a prefix hit used to return the base family's recipe and
+  // notes verbatim, so FLUX.2 dev showed FLUX.1 numbers with no caveat while its Klein
+  // siblings (exact keys) were flagged UNVERIFIED. Same honesty rule for both.
+  return {
+    ...recipe,
+    inheritedFrom: found.key,
+    notes:
+      `INHERITED FROM '${found.key}': nothing ${arch}-specific was researched — every number below is the ` +
+      `${found.key} recipe applied to a different model and is unverified for it. ` +
+      recipe.notes,
+  };
 };

@@ -6,6 +6,8 @@ Usage:
 
 Tags every image in <dataset_dir> with SmilingWolf's wd-eva02-large-tagger-v3
 (ONNX) and writes a comma-separated tag list to the image's .txt sidecar.
+Walks the dataset the way the trainer does (recursively, dot-folders and
+`_controls` pruned — see scripts/qol_common.py), so subfolders are tagged too.
 Existing captions are skipped unless --overwrite. Model weights (~3 GB) are
 pulled from HuggingFace on first run and cached in the standard HF cache.
 
@@ -23,18 +25,7 @@ from pathlib import Path
 
 import numpy as np
 
-def add_torch_cuda_dlls():
-    """Let onnxruntime's CUDA provider find the CUDA/cuDNN DLLs bundled with
-    the torch wheel (they aren't on PATH on Windows)."""
-    import os
-    try:
-        import torch
-        lib = Path(torch.__file__).parent / "lib"
-        if lib.is_dir() and hasattr(os, "add_dll_directory"):
-            os.add_dll_directory(str(lib))
-    except ImportError:
-        pass
-
+from qol_common import add_torch_cuda_dlls, list_images, rel_label
 
 HF_REPO = "SmilingWolf/wd-eva02-large-tagger-v3"
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
@@ -122,6 +113,14 @@ class WDTagger:
         return ", ".join(parts)
 
 
+def collect_images(folder: Path, overwrite: bool):
+    """(all trainable images, the subset still needing a caption)."""
+    all_images = list_images(folder, IMAGE_EXTS)
+    todo = [f for f in all_images
+            if overwrite or not f.with_suffix(".txt").exists()]
+    return all_images, todo
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("dataset_dir")
@@ -140,10 +139,7 @@ def main():
     if not folder.is_dir():
         sys.exit(f"dataset folder not found: {folder}")
 
-    all_images = [f for f in sorted(folder.iterdir())
-                  if f.is_file() and f.suffix.lower() in IMAGE_EXTS]
-    todo = [f for f in all_images
-            if args.overwrite or not f.with_suffix(".txt").exists()]
+    all_images, todo = collect_images(folder, args.overwrite)
     skipped = len(all_images) - len(todo)
 
     if not all_images:
@@ -176,7 +172,7 @@ def main():
                     print(f"  {done}/{len(todo)}")
             return None
         except Exception as e:
-            return f"{img_path.name}: {e}"
+            return f"{rel_label(img_path, folder)}: {e}"
 
     with ThreadPoolExecutor(max_workers=args.threads) as ex:
         for fut in as_completed([ex.submit(work, f) for f in todo]):

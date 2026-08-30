@@ -49,7 +49,8 @@
         },
         "model": {
           "name_or_path": "Tongyi-MAI/Z-Image-Turbo",
-          "arch": "zimage",
+          "arch": "zimage:turbo",
+          "assistant_lora_path": "ostris/zimage_turbo_training_adapter/zimage_turbo_training_adapter_v2.safetensors",
           "quantize": true,
           "qtype": "qfloat8",
           "quantize_te": true,
@@ -69,7 +70,7 @@
   },
   "meta": {
     "name": "[name]",
-    "version": "1.0",
-    "description": "Concept (object/action) LoRA on Z-Image. Ported from LDS's researched built-in: rank 16, alpha = rank/2 (concept research: simple concepts 4-8, complex 16-32, half-alpha), weighted timesteps. Captions describe everything EXCEPT the concept so it binds to the trigger. Steps: LDS computes 475*sqrt(images) clamped [2000,12000] — 3000 suits ~30-40 images."
+    "version": "1.1",
+    "description": "Concept (object/action) LoRA on Z-Image Turbo. Ported from LDS's researched built-in: rank 16, alpha = rank/2 (concept research: simple concepts 4-8, complex 16-32, half-alpha), weighted timesteps. Captions describe everything EXCEPT the concept so it binds to the trigger. Steps: LDS computes 475*sqrt(images) clamped [2000,12000] — 3000 suits ~30-40 images. v1.1 (2026-08-29): arch is zimage:turbo with Ostris' training adapter (assistant_lora_path) — v1.0 paired the Turbo weights with the base zimage arch and no adapter. For base Z-Image instead, set arch zimage, name_or_path Tongyi-MAI/Z-Image and drop assistant_lora_path."
   }
 }

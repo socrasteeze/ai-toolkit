@@ -1,7 +1,9 @@
 # Training profiles: `performance` vs `background` vs `laptop16gb`
 
-Every architecture preset in `presets/` ships in two profiles (spec
-`ANIMA_INTEGRATION_SPEC.md` Workstream C), plus a third tier added 2026-07-28 for
+The Anima presets in `presets/` ship in two desktop profiles (spec
+`ANIMA_INTEGRATION_SPEC.md` Workstream C — Anima is the only arch with a
+`performance`/`background` pair; the other archs ship a single recipe plus, where
+one exists, a `_laptop16gb` memory profile), plus a third tier added 2026-07-28 for
 a 16 GB laptop GPU. Hardware tuning lives only in these preset files — never in
 model classes.
 

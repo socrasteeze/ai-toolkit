@@ -16,9 +16,13 @@ For each image, picks the aspect-ratio-closest bucket from
   the detected subject ("head-first") and horizontally on its center of mass,
   then resizes to the bucket.
 
-Copies caption .txt sidecars alongside outputs (always .png). U2Net weights
-(~170 MB) download on first run to ~/.cache/ai-toolkit/u2net.onnx (the rembg
-release build). GPU when onnxruntime's CUDA provider initializes, else CPU.
+Walks <in_dir> the way the trainer does (recursively, dot-folders and
+`_controls` pruned — see scripts/qol_common.py) and mirrors the subfolder
+layout under <out_dir>, so a dataset organised into child folders keeps its
+folder scope. Copies caption .txt sidecars alongside outputs (always .png).
+U2Net weights (~170 MB) download on first run to ~/.cache/ai-toolkit/u2net.onnx
+(the rembg release build). GPU when onnxruntime's CUDA provider initializes,
+else CPU.
 """
 
 import argparse
@@ -30,6 +34,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
+
+from qol_common import add_torch_cuda_dlls, list_images, rel_label, split_buckets_arg
 
 U2NET_URL = "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx"
 DEFAULT_MODEL_PATH = Path.home() / ".cache" / "ai-toolkit" / "u2net.onnx"
@@ -69,14 +75,7 @@ class SmartCropper:
         self.session = None
 
     def load_model(self) -> str:
-        import os
-        try:
-            import torch
-            lib = Path(torch.__file__).parent / "lib"
-            if lib.is_dir() and hasattr(os, "add_dll_directory"):
-                os.add_dll_directory(str(lib))
-        except ImportError:
-            pass
+        add_torch_cuda_dlls()
         import onnxruntime as rt
         providers = [("CUDAExecutionProvider", {"device_id": 0}),
                      "CPUExecutionProvider"]
@@ -125,6 +124,42 @@ class SmartCropper:
                           interpolation=cv2.INTER_AREA)
 
 
+def output_path(img: Path, in_dir: Path, out_dir: Path) -> Path:
+    """Where ``img`` lands under ``out_dir``: same relative folder, .png."""
+    return (out_dir / img.relative_to(in_dir)).with_suffix(".png")
+
+
+def plan_tasks(in_dir: Path, out_dir: Path, buckets):
+    """Decide what to do for every trainable image under ``in_dir``.
+
+    Returns ``(tasks, skipped, bucket_counts)``: ``tasks`` are
+    ``(src, dst, bucket_w, bucket_h)`` tuples still to process; ``skipped`` counts
+    outputs already present at their bucket size (resume); ``bucket_counts`` is
+    pre-seeded with the skipped ones so the final histogram is complete.
+    """
+    from PIL import Image
+
+    images = list_images(in_dir, IMAGE_EXTS)
+    tasks, bucket_counts, skipped = [], {}, 0
+    for img in images:
+        try:
+            with Image.open(img) as im:
+                w, h = im.size
+        except Exception as e:
+            print(f"WARN unreadable, skipped: {rel_label(img, in_dir)} ({e})")
+            continue
+        tw, th = get_best_bucket(w, h, buckets)
+        out_p = output_path(img, in_dir, out_dir)
+        if out_p.exists():
+            with Image.open(out_p) as check:
+                if check.size == (tw, th):
+                    skipped += 1
+                    bucket_counts[(tw, th)] = bucket_counts.get((tw, th), 0) + 1
+                    continue
+        tasks.append((img, out_p, tw, th))
+    return images, tasks, skipped, bucket_counts
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("in_dir")
@@ -137,14 +172,11 @@ def main():
     args = p.parse_args()
 
     try:
-        side_min, side_max = (int(x) for x in args.buckets.lower().split("x"))
-    except ValueError:
-        p.error("--buckets must look like 512x768")
-    if side_min % 64 or side_max % 64 or side_min > side_max:
-        p.error("--buckets sides must be multiples of 64 with MIN <= MAX")
+        side_min, side_max = split_buckets_arg(args.buckets)
+    except ValueError as e:
+        p.error(str(e))
 
     import cv2
-    from PIL import Image
 
     in_dir, out_dir = Path(args.in_dir), Path(args.out_dir)
     if not in_dir.is_dir():
@@ -156,30 +188,9 @@ def main():
     buckets = get_valid_buckets(side_min, side_max)
     print(f"buckets ({len(buckets)}): {buckets}")
 
-    images = [f for f in sorted(in_dir.iterdir())
-              if f.is_file() and f.suffix.lower() in IMAGE_EXTS]
+    images, tasks, skipped, bucket_counts = plan_tasks(in_dir, out_dir, buckets)
     if not images:
         sys.exit("no images found")
-
-    tasks = []
-    bucket_counts = {}
-    skipped = 0
-    for img in images:
-        try:
-            with Image.open(img) as im:
-                w, h = im.size
-        except Exception as e:
-            print(f"WARN unreadable, skipped: {img.name} ({e})")
-            continue
-        tw, th = get_best_bucket(w, h, buckets)
-        out_p = out_dir / f"{img.stem}.png"
-        if out_p.exists():
-            with Image.open(out_p) as check:
-                if check.size == (tw, th):
-                    skipped += 1
-                    bucket_counts[(tw, th)] = bucket_counts.get((tw, th), 0) + 1
-                    continue
-        tasks.append((img, out_p, tw, th))
 
     if not tasks:
         print(f"all {skipped} images already bucketed in {out_dir}")
@@ -200,8 +211,9 @@ def main():
         try:
             img = cv2.imread(str(in_p))
             if img is None:
-                return f"{in_p.name}: cv2 could not read"
+                return f"{rel_label(in_p, in_dir)}: cv2 could not read"
             res = cropper.process_image(img, tw, th)
+            out_p.parent.mkdir(parents=True, exist_ok=True)
             cv2.imwrite(str(out_p), res, [cv2.IMWRITE_PNG_COMPRESSION, 4])
             cap = in_p.with_suffix(".txt")
             if cap.exists():
@@ -213,7 +225,7 @@ def main():
                     print(f"  {done}/{len(tasks)}")
             return None
         except Exception as e:
-            return f"{in_p.name}: {e}"
+            return f"{rel_label(in_p, in_dir)}: {e}"
 
     with ThreadPoolExecutor(max_workers=args.threads) as ex:
         for fut in as_completed([ex.submit(work, t) for t in tasks]):

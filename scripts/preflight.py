@@ -6,7 +6,9 @@ Usage:
 
 Validates dataset folders (and, with --config, the job's model paths) before a
 training run. Architecture-agnostic: works for SDXL / FLUX.2 Klein / Krea 2 /
-Anima datasets alike.
+Anima datasets alike. Walks the dataset the way the trainer does (recursively,
+dot-folders and `_controls` pruned — see scripts/qol_common.py), so a dataset
+organised into subfolders is checked in full.
 
 Checks (E = error → exit 1, W = warning → exit 0):
   E dataset folder missing / contains no images
@@ -29,10 +31,11 @@ import json
 import sys
 from pathlib import Path
 
+from qol_common import list_images, rel_label, walk_dataset_files
+
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 # non-image files that are expected/harmless in a dataset folder
 IGNORED_EXTS = {".txt", ".npz", ".json", ".csv"}
-IGNORED_NAMES = {"_latent_cache", "_text_embedding_cache", ".aitk_size.json"}
 
 
 class Report:
@@ -60,6 +63,10 @@ class Report:
         sys.exit(0)
 
 
+def _listing(names, limit=5):
+    return ", ".join(names[:limit]) + ("…" if len(names) > limit else "")
+
+
 def check_dataset(folder: Path, caption_ext: str, max_side: int,
                   allow_missing_captions: bool, report: Report):
     from PIL import Image
@@ -69,44 +76,43 @@ def check_dataset(folder: Path, caption_ext: str, max_side: int,
         report.error(f"[{label}] dataset folder not found")
         return
 
-    images, strangers = [], []
-    for f in sorted(folder.iterdir()):
-        if f.is_dir() or f.name in IGNORED_NAMES:
-            continue
-        ext = f.suffix.lower()
-        if ext in IMAGE_EXTS:
-            images.append(f)
-        elif ext not in IGNORED_EXTS and f".{caption_ext.lstrip('.')}" != ext:
-            strangers.append(f.name)
+    cap_suffix = "." + caption_ext.lstrip(".")
+    images = list_images(folder, IMAGE_EXTS)
+    strangers = [
+        rel_label(f, folder)
+        for f in walk_dataset_files(folder)
+        if f.suffix.lower() not in IMAGE_EXTS
+        and f.suffix.lower() not in IGNORED_EXTS
+        and f.suffix.lower() != cap_suffix
+    ]
 
     if not images:
         report.error(f"[{label}] no images found "
                      f"(supported: {', '.join(sorted(IMAGE_EXTS))})")
         return
 
-    cap_suffix = "." + caption_ext.lstrip(".")
     missing_caps, empty_caps, corrupt, oversized = [], [], [], []
     for img in images:
+        name = rel_label(img, folder)
         cap = img.with_suffix(cap_suffix)
         if not cap.exists():
-            missing_caps.append(img.name)
+            missing_caps.append(name)
         elif not cap.read_text(encoding="utf-8", errors="replace").strip():
-            empty_caps.append(cap.name)
+            empty_caps.append(rel_label(cap, folder))
         try:
             with Image.open(img) as im:
                 w, h = im.size
             if w >= max_side or h >= max_side:
-                oversized.append(f"{img.name} ({w}x{h})")
+                oversized.append(f"{name} ({w}x{h})")
         except Exception as e:
-            corrupt.append(f"{img.name} ({type(e).__name__})")
+            corrupt.append(f"{name} ({type(e).__name__})")
 
     print(f"[{label}] {len(images)} images")
     if corrupt:
-        report.error(f"[{label}] {len(corrupt)} unreadable image(s): "
-                     + ", ".join(corrupt[:5]) + ("…" if len(corrupt) > 5 else ""))
+        report.error(f"[{label}] {len(corrupt)} unreadable image(s): {_listing(corrupt)}")
     if missing_caps:
         msg = (f"[{label}] {len(missing_caps)} image(s) missing {cap_suffix} captions: "
-               + ", ".join(missing_caps[:5]) + ("…" if len(missing_caps) > 5 else ""))
+               + _listing(missing_caps))
         if allow_missing_captions:
             report.warn(msg)
         else:
@@ -116,12 +122,10 @@ def check_dataset(folder: Path, caption_ext: str, max_side: int,
     if oversized:
         report.warn(f"[{label}] {len(oversized)} image(s) >= {max_side}px — "
                     f"training works (bucketed + downscaled) but caching is slower; "
-                    f"consider pre-resizing: "
-                    + ", ".join(oversized[:5]) + ("…" if len(oversized) > 5 else ""))
+                    f"consider pre-resizing: " + _listing(oversized))
     if strangers:
         report.warn(f"[{label}] {len(strangers)} unexpected file(s) ignored by the "
-                    f"trainer: " + ", ".join(strangers[:5])
-                    + ("…" if len(strangers) > 5 else ""))
+                    f"trainer: " + _listing(strangers))
 
 
 def load_config(path: Path):

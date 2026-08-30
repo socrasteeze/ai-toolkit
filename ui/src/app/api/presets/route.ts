@@ -33,10 +33,19 @@ export async function GET() {
   }
 }
 
+// POST { name, config, overwrite? }. Writing over an existing preset requires
+// `overwrite: true` — the Presets dialog's explicit Overwrite button sends it, "Save as
+// new" does not, so a typo that matches an existing name (or a shipped, provenance-tracked
+// built-in) gets a 409 instead of a silent replacement. The guard used to be client-only.
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { name, config } = body;
+    let body: any;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: 'Request body must be JSON' }, { status: 400 });
+    }
+    const { name, config, overwrite } = body ?? {};
     if (!name || !config) {
       return NextResponse.json({ error: 'name and config are required' }, { status: 400 });
     }
@@ -46,6 +55,19 @@ export async function POST(request: Request) {
     }
     const presetsRoot = await getPresetsRoot();
     const filePath = path.join(presetsRoot, `${safeName}.json`);
+    if (overwrite !== true) {
+      const exists = await fs.promises.access(filePath).then(
+        () => true,
+        () => false,
+      );
+      if (exists) {
+        const what = isBuiltinPreset(safeName) ? 'a built-in preset shipped with the fork' : 'an existing preset';
+        return NextResponse.json(
+          { error: `'${safeName}' is ${what} — use Overwrite to replace it, or pick another name` },
+          { status: 409 },
+        );
+      }
+    }
     await fs.promises.writeFile(filePath, JSON.stringify(config, null, 2));
     return NextResponse.json({ success: true, name: safeName });
   } catch (error) {

@@ -197,7 +197,9 @@ synced into the advisor notes. LDS concept 16/8-weighted synced as a preset.
 - `stepSuggestion.ts`: timestep-guidance sentences appended to the zimage,
   krea2 and flux2_klein notes (numbers untouched).
 - Base models in the new presets match what LDS launches:
-  `Tongyi-MAI/Z-Image-Turbo`, `krea/Krea-2-Raw`,
+  `Tongyi-MAI/Z-Image-Turbo` (2026-08-29: now under arch `zimage:turbo` with
+  Ostris' training adapter — the v1.0 presets had paired the Turbo weights with
+  the base `zimage` arch and no adapter), `krea/Krea-2-Raw`,
   `black-forest-labs/FLUX.2-klein-base-4B` (9B: swap arch to `flux2_klein_9b`
   and the path to `...-9B`), `stabilityai/stable-diffusion-xl-base-1.0`.
 - Steps in the new presets are fixed midpoints of LDS's adaptive policies

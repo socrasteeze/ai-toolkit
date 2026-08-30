@@ -49,7 +49,8 @@
         },
         "model": {
           "name_or_path": "Tongyi-MAI/Z-Image-Turbo",
-          "arch": "zimage",
+          "arch": "zimage:turbo",
+          "assistant_lora_path": "ostris/zimage_turbo_training_adapter/zimage_turbo_training_adapter_v2.safetensors",
           "quantize": true,
           "qtype": "qfloat8",
           "quantize_te": true,
@@ -69,7 +70,7 @@
   },
   "meta": {
     "name": "[name]",
-    "version": "1.0",
-    "description": "Style LoRA on Z-Image. Ported from LDS's researched built-in (32/32 confirmed 'worked for everything, style included'; weighted timesteps = the arch default for non-subject training). Content-only captions, no trigger word. Steps: LDS computes 50/image clamped to the family envelope; 2500 is a safe midpoint."
+    "version": "1.1",
+    "description": "Style LoRA on Z-Image Turbo. Ported from LDS's researched built-in (32/32 confirmed 'worked for everything, style included'; weighted timesteps = the arch default for non-subject training). Content-only captions, no trigger word. Steps: LDS computes 50/image clamped to the family envelope; 2500 is a safe midpoint. v1.1 (2026-08-29): arch is zimage:turbo with Ostris' training adapter (assistant_lora_path) — v1.0 paired the Turbo weights with the base zimage arch and no adapter. For base Z-Image instead, set arch zimage, name_or_path Tongyi-MAI/Z-Image and drop assistant_lora_path."
   }
 }

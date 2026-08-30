@@ -24,7 +24,7 @@ on the New Training Job page in the UI.
 | `sdxl_concept_lora.json` | SDXL concept, 16/8 | Ported from LoRA Dataset Studio's researched built-in |
 | `krea2_lora_16gb.json` / `krea2_lora_low_vram.json` | Krea 2, 32/32 | Community (low-confidence — model is young) |
 | `krea2_concept_lora.json` | Krea 2 concept, 32/16, linear | Extrapolated (no published recipe; LDS flags this too) |
-| `zimage_character_lora.json` / `zimage_style_lora.json` / `zimage_concept_lora.json` | Z-Image, 32/32 char+style, 16/8 concept | Ported from LDS's researched built-ins |
+| `zimage_character_lora.json` / `zimage_style_lora.json` / `zimage_concept_lora.json` | Z-Image Turbo (`zimage:turbo` + training adapter), 32/32 char+style, 16/8 concept | Ported from LDS's researched built-ins. v1.1 (2026-08-29) fixes the arch: v1.0 trained the distilled Turbo weights under the base `zimage` arch without the adapter |
 | `flux2_klein_character_lora.json` | FLUX.2 Klein 4B, 16/16 char, sigmoid | UNVERIFIED — LDS extrapolation, nothing Klein-specific published |
 | `flux2_klein_style_lora.json` | FLUX.2 Klein 4B style, 64/32 linear + 32/16 conv (4:2:2:1), weighted | Herbst 64-run sweep + BFL official Klein example (LDS ships 128/64/64/32; ATK folds to half scale — see docs/preset_alignment_2026_07.md 2026-07-21) |
 | `flux2_klein_9b_character_lora.json` / `flux2_klein_9b_style_lora.json` | Same as the 4B pair, arch/repo swapped to Klein 9B | UNVERIFIED — needs ~32-48 GB VRAM; added 2026-08-24 so the 9B stops being a hand-edit |

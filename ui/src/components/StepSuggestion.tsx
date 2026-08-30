@@ -12,6 +12,7 @@ import { JobConfig } from '@/types';
 import { suggestSteps, exposureGauge, analyzeBuckets, resolutionAdvice, getArchRecipe } from '@/utils/stepSuggestion';
 import { weightedBatchSize } from '@/utils/advisorBatch';
 import { defaultDatasetConfig } from '@/app/jobs/new/jobConfig';
+import { modelArchs } from '@/app/jobs/new/options';
 import useSettings from '@/hooks/useSettings';
 
 type Props = {
@@ -41,14 +42,37 @@ const datasetSelectionKey = (
   return `${pathKey}::scope=${includeLooseFiles ? 'loose' : 'no-loose'}:${foldersKey}`;
 };
 
-// Counts are cached per selected path and folder scope for the lifetime of the page.
-const countCache = new Map<string, number>();
+// Counts and analyses are cached per selected path and folder scope across mounts, but
+// only for a short while: before 2026-08-29 they lived for the page lifetime, so adding
+// images to a dataset and coming back to the form sized the run against the old count
+// until a full reload. The ↻ control next to the file count drops the entry on demand.
+const CACHE_TTL_MS = 60_000;
+
+interface Cached<T> {
+  value: T;
+  at: number;
+}
+
+const cacheGet = <T,>(cache: Map<string, Cached<T>>, key: string): T | undefined => {
+  const hit = cache.get(key);
+  if (!hit) return undefined;
+  if (Date.now() - hit.at > CACHE_TTL_MS) {
+    cache.delete(key);
+    return undefined;
+  }
+  return hit.value;
+};
+
+const countCache = new Map<string, Cached<number>>();
 const inFlight = new Map<string, Promise<number>>();
 
+// Resolves to the count, or -1 when the request failed. The failure is kept (not cached)
+// so the panel can say so instead of silently treating the dataset as empty.
 const fetchCount = (selection: DatasetSelection): Promise<number> => {
   const { key, datasetName, subPath, includeLooseFiles, includeSubfolders } = selection;
-  if (countCache.has(key)) {
-    return Promise.resolve(countCache.get(key) as number);
+  const cached = cacheGet(countCache, key);
+  if (cached !== undefined) {
+    return Promise.resolve(cached);
   }
   if (inFlight.has(key)) {
     return inFlight.get(key) as Promise<number>;
@@ -57,7 +81,7 @@ const fetchCount = (selection: DatasetSelection): Promise<number> => {
     .post('/api/datasets/count', { datasetName, subPath, includeLooseFiles, includeSubfolders })
     .then(res => {
       const total = res.data?.totalCount ?? 0;
-      countCache.set(key, total);
+      countCache.set(key, { value: total, at: Date.now() });
       return total;
     })
     .catch(() => -1)
@@ -75,12 +99,14 @@ interface DatasetAnalysis {
   unreadable: number;
 }
 
-// Analysis results are cached per selected path and folder scope for the page lifetime.
-const analysisCache = new Map<string, DatasetAnalysis>();
+const analysisCache = new Map<string, Cached<DatasetAnalysis>>();
 
-const fetchAnalysis = async (selection: DatasetSelection): Promise<DatasetAnalysis | null> => {
+const fetchAnalysis = async (selection: DatasetSelection, force = false): Promise<DatasetAnalysis | null> => {
   const { key, datasetName, subPath, includeLooseFiles, includeSubfolders } = selection;
-  if (analysisCache.has(key)) return analysisCache.get(key) as DatasetAnalysis;
+  if (!force) {
+    const cached = cacheGet(analysisCache, key);
+    if (cached) return cached;
+  }
   try {
     const res = await apiClient.post('/api/datasets/analyze', {
       datasetName,
@@ -89,7 +115,7 @@ const fetchAnalysis = async (selection: DatasetSelection): Promise<DatasetAnalys
       includeSubfolders,
     });
     const analysis = res.data as DatasetAnalysis;
-    analysisCache.set(key, analysis);
+    analysisCache.set(key, { value: analysis, at: Date.now() });
     return analysis;
   } catch {
     return null;
@@ -149,6 +175,8 @@ const bandColor: Record<string, string> = {
   fry: 'text-red-400',
 };
 
+const datasetLabel = (d: DatasetSelection) => (d.subPath ? `${d.datasetName}/${d.subPath}` : d.datasetName);
+
 export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
   const { settings } = useSettings();
   const process = jobConfig.config.process[0];
@@ -157,6 +185,11 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
   const defaultBatchSize = process.train.batch_size;
   const gradAccum = process.train.gradient_accumulation;
   const currentSteps = process.train.steps;
+
+  // Everything below is per-IMAGE math (steps per file, exposures per image, bucket
+  // grids). For a video or audio arch it is the wrong unit and used to render anyway.
+  const archGroup = useMemo(() => modelArchs.find(a => a.name === arch)?.group, [arch]);
+  const unsupportedModality = archGroup === 'video' || archGroup === 'audio';
 
   const datasetInputs = useMemo(() => {
     return datasets
@@ -182,6 +215,7 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
 
   const datasetsKey = datasetInputs.map(d => d.key).join('|');
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const [countTick, setCountTick] = useState(0);
   const [analyses, setAnalyses] = useState<Record<string, DatasetAnalysis>>({});
   const [analyzing, setAnalyzing] = useState(false);
   const [showAnalysis, setShowAnalysis] = useState(false);
@@ -203,7 +237,17 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [datasetsKey]);
+  }, [datasetsKey, countTick]);
+
+  const refreshCounts = () => {
+    for (const d of datasetInputs) {
+      countCache.delete(d.key);
+      analysisCache.delete(d.key);
+    }
+    setCountTick(t => t + 1);
+  };
+
+  const failedCounts = useMemo(() => datasetInputs.filter(d => counts[d.key] === -1), [datasetInputs, counts]);
 
   const itemCount = useMemo(() => {
     let total = 0;
@@ -231,12 +275,12 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
     return suggestSteps({ itemCount, arch, batchSize: advisorBatchSize, gradientAccumulation: gradAccum });
   }, [itemCount, arch, advisorBatchSize, gradAccum]);
 
-  const runAnalysis = async () => {
+  const runAnalysis = async (force = false) => {
     setAnalyzing(true);
     setShowAnalysis(true);
     const results: Record<string, DatasetAnalysis> = {};
     for (const d of datasetInputs) {
-      const analysis = await fetchAnalysis(d);
+      const analysis = await fetchAnalysis(d, force);
       if (analysis) results[d.key] = analysis;
     }
     setAnalyses(results);
@@ -298,7 +342,7 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
           return analyzeBuckets(weightedDimensions, resolution, dataset.batchSize).thin.map(bucket => ({
             resolution,
             datasetIndex: dataset.rowIndex,
-            datasetLabel: dataset.subPath ? `${dataset.datasetName}/${dataset.subPath}` : dataset.datasetName,
+            datasetLabel: datasetLabel(dataset),
             batchSize: dataset.batchSize,
             bucket,
           }));
@@ -315,14 +359,65 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
   const modelPath = process.model.name_or_path || '';
   const recipe = useMemo(() => getArchRecipe(arch, itemCount, modelPath), [arch, itemCount, modelPath]);
   const hasAnalysis = Object.keys(analyses).length > 0;
+  // analyses that came back missing (fetch failed) for a dataset we did count
+  const failedAnalyses = useMemo(
+    () => (showAnalysis && !analyzing ? datasetInputs.filter(d => !analyses[d.key] && counts[d.key] >= 0) : []),
+    [showAnalysis, analyzing, datasetInputs, analyses, counts],
+  );
 
-  if (!suggestion) return null;
+  if (unsupportedModality) {
+    return (
+      <div className="text-xs text-gray-500 pt-1">
+        Step advisor: no {archGroup} data for {arch} — its per-image exposure targets, bucket grid and recipes
+        apply to image models only.
+      </div>
+    );
+  }
+
+  if (!suggestion) {
+    // Before 2026-08-29 a failed count fell straight through here and the whole panel
+    // vanished — the same symptom as the 2026-07-19 nested-selection bug, from a new
+    // cause. Say what failed and offer a retry instead.
+    if (failedCounts.length > 0) {
+      return (
+        <div className="text-xs text-orange-400 pt-1">
+          ⚠️ Step advisor: could not count {failedCounts.map(datasetLabel).join(', ')} (is the dataset folder
+          reachable?).{' '}
+          <button type="button" className="text-blue-400 hover:text-blue-300 underline" onClick={refreshCounts}>
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return null;
+  }
 
   return (
     <div className="text-xs text-gray-400 pt-1">
       <div title={suggestion.explanation}>
-        {itemCount} training files → suggested ~{suggestion.suggested} steps ({suggestion.low}–{suggestion.high}) · ≈
+        {itemCount} training files
+        <button
+          type="button"
+          className="ml-1 text-gray-500 hover:text-gray-300"
+          title="Re-count the selected datasets (counts are cached for a minute)"
+          onClick={refreshCounts}
+        >
+          ↻
+        </button>{' '}
+        → suggested ~{suggestion.suggested} steps ({suggestion.low}–{suggestion.high}) · ≈
         {suggestion.epochsEquivalent} passes over the data
+        {suggestion.heuristicSource !== 'arch' && (
+          <span
+            className="ml-1 text-gray-500"
+            title={
+              suggestion.heuristicSource === 'default'
+                ? `No ${arch}-specific exposure data — this is the generic default.`
+                : `Exposure target inherited from the model family — nothing ${arch}-specific researched.`
+            }
+          >
+            ({suggestion.heuristicSource === 'default' ? 'generic default' : 'inherited target'})
+          </span>
+        )}
         {currentSteps !== suggestion.suggested ? (
           <button
             type="button"
@@ -344,6 +439,15 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
         </button>
       </div>
 
+      {failedCounts.length > 0 && (
+        <div className="text-orange-400 pt-1">
+          ⚠️ Not counted (excluded from the numbers above): {failedCounts.map(datasetLabel).join(', ')}.{' '}
+          <button type="button" className="text-blue-400 hover:text-blue-300 underline" onClick={refreshCounts}>
+            Retry
+          </button>
+        </div>
+      )}
+
       {gauge && (
         <div className="pt-1">
           <span className={bandColor[gauge.band]}>
@@ -354,7 +458,7 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
         </div>
       )}
 
-      {showAnalysis && hasAnalysis && (
+      {showAnalysis && (hasAnalysis || failedAnalyses.length > 0) && (
         <div className="mt-2 p-2 rounded border border-gray-700 bg-gray-900/50 space-y-2">
           <div>
             {merged.imageCount} images scanned
@@ -362,7 +466,23 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
               <span className="text-orange-400"> · ⚠️ {merged.missingCaptions} missing captions</span>
             )}
             {merged.unreadable > 0 && <span> · {merged.unreadable} unreadable</span>}
+            <button
+              type="button"
+              className="ml-2 text-blue-400 hover:text-blue-300 underline"
+              title="Scan the folders again, ignoring the cached analysis"
+              onClick={() => runAnalysis(true)}
+              disabled={analyzing}
+            >
+              Re-analyze
+            </button>
           </div>
+
+          {failedAnalyses.length > 0 && (
+            <div className="text-orange-400">
+              ⚠️ Analysis failed for {failedAnalyses.map(datasetLabel).join(', ')} — bucket and caption checks
+              below exclude {failedAnalyses.length === 1 ? 'it' : 'them'}.
+            </div>
+          )}
 
           {resAdvice && <div className="text-orange-400">⚠️ {resAdvice}</div>}
 
@@ -403,7 +523,14 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
 
           {recipe && (
             <div className="border-t border-gray-700 pt-2">
-              <div className="text-gray-300">Suggested settings for {arch}:</div>
+              <div className="text-gray-300">
+                Suggested settings for {arch}:
+                {recipe.inheritedFrom && (
+                  <span className="ml-1 text-orange-400" title={`No ${arch}-specific recipe — showing '${recipe.inheritedFrom}'`}>
+                    (inherited from {recipe.inheritedFrom}, unverified)
+                  </span>
+                )}
+              </div>
               <div className="text-gray-500">{recipe.notes}</div>
               <div className="pt-1">
                 {recipe.settings.map(s => {

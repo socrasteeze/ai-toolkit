@@ -6,10 +6,18 @@
 //
 // No imports. That is the point.
 
+export type RegisteredRunStatus = 'running' | 'done' | 'failed' | 'cancelled';
+
 export interface RegisteredRun {
   runId: string;
   datasetName: string;
-  status: 'running' | 'done' | 'failed';
+  // Every OTHER dataset this run writes to (smart-prep's output folder). A run owns
+  // its source dataset and each of these for as long as it is running, so a second
+  // tool started against the output folder is refused the same way one started
+  // against the source is. Before 2026-08-29 only the source was locked, and a prep
+  // run into `foo_prepped` could race a caption run started on `foo_prepped`.
+  locks?: string[];
+  status: RegisteredRunStatus;
 }
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -26,6 +34,8 @@ export interface ToolRunRegistryOptions {
   retentionMs?: number;
   setTimer?: Timer;
 }
+
+const ownedNames = (run: RegisteredRun): string[] => [run.datasetName, ...(run.locks ?? [])];
 
 export function createToolRunRegistry<T extends RegisteredRun>(options: ToolRunRegistryOptions = {}) {
   const retentionMs = options.retentionMs ?? HOUR_MS;
@@ -53,9 +63,23 @@ export function createToolRunRegistry<T extends RegisteredRun>(options: ToolRunR
       return runId ? runs.get(runId) : undefined;
     },
 
+    /**
+     * The running run, if any, that owns ANY of these dataset names — the guard a
+     * caller must pass before starting a new run that reads or writes them.
+     */
+    findRunningWriter(datasetNames: string[]): T | undefined {
+      for (const name of datasetNames) {
+        const run = this.getActive(name);
+        if (run && run.status === 'running') return run;
+      }
+      return undefined;
+    },
+
     register(run: T): void {
       runs.set(run.runId, run);
-      activeByDataset.set(run.datasetName, run.runId);
+      for (const name of ownedNames(run)) {
+        activeByDataset.set(name, run.runId);
+      }
     },
 
     /**
@@ -72,10 +96,17 @@ export function createToolRunRegistry<T extends RegisteredRun>(options: ToolRunR
         if (runs.get(run.runId) === run) {
           runs.delete(run.runId);
         }
-        if (activeByDataset.get(run.datasetName) === run.runId) {
-          activeByDataset.delete(run.datasetName);
+        for (const name of ownedNames(run)) {
+          if (activeByDataset.get(name) === run.runId) {
+            activeByDataset.delete(name);
+          }
         }
       }, retentionMs);
+    },
+
+    /** Every run currently in the running state (for shutdown cleanup). */
+    running(): T[] {
+      return [...runs.values()].filter(run => run.status === 'running');
     },
   };
 }

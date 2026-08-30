@@ -1698,3 +1698,103 @@ accepted by the Automagic/accumulation guard block executed verbatim out of
 `toolkit/config_modules.py`. No preset exceeds effective batch 4. Not covered here: `tsc`,
 `next build` and the Python suites need dependencies absent from this container — run them on
 the Windows box before relying on the UI build.
+
+## Bug sweep from the tracker audit (2026-08-29)
+
+A full read of PLAN.md, FORK_NOTES.md and every fork-only file produced 13 bugs (tracker
+AIO.1–13). All are fixed here except AIO.13, which turned out not to be one. Every change is
+in fork-only files; the upstream merge surface is still 57 files.
+
+**AIO.1 — Z-Image presets trained the distilled Turbo weights without the adapter.** All
+three `presets/zimage_*_lora.json` set `name_or_path: Tongyi-MAI/Z-Image-Turbo` with
+`arch: zimage`. In `options.tsx` the base `zimage` arch defaults to `Tongyi-MAI/Z-Image`;
+`zimage:turbo` is the arch that pairs the Turbo weights with
+`model.assistant_lora_path` = Ostris' training adapter. The presets' own descriptions
+("Sample settings assume the distilled Turbo, CFG 1, 8 steps") show the Turbo intent, so the
+fix is the arch + adapter, not the weights: v1.1 sets `arch: zimage:turbo` and the adapter
+path, and says how to get base Z-Image instead. The trainer strips the `:variant`
+(`toolkit/config_modules.py`), so the arch string is valid trainer-side. `presets/README.md`
+and `docs/preset_alignment_2026_07.md` updated.
+
+**AIO.2 — the QoL CLIs scanned a flat folder while the trainer walks subfolders.**
+`preflight.py`, `auto_caption.py`, `smart_prep.py` all used `folder.iterdir()` and skipped
+directories; `toolkit/dataset_selection.py` (what the trainer enumerates) walks recursively.
+On a dataset organised into child folders — which `DatasetFolderPickerModal` encourages —
+pre-flight hard-errored "no images found" and the other two silently did nothing. New
+`scripts/qol_common.py` delegates discovery to `list_dataset_media_files` itself (not a
+fourth copy of the walk), reports files by relative path, and absorbs the duplicated
+torch-CUDA-DLL shim. `smart_prep` mirrors the source's subfolder layout under `out_dir`.
+`testing/test_qol_scripts.py` (15 cases) pins nested discovery, pruning, report semantics,
+`looks_like_local_path`, caption selection and prep planning/resume.
+
+**AIO.3 — `BUILTIN_PRESET_NAMES` was five presets behind.** Moved to a dependency-free
+`ui/src/server/builtinPresets.ts`; `ui/tests/builtinPresets.test.mjs` asserts it equals the
+files in `presets/`, so the list can no longer drift silently. The presets POST route now
+refuses to overwrite any existing preset without `overwrite: true`; only the dialog's
+confirmed Overwrite button sends it (the built-in guard was client-only before, and
+"Save as new" over an existing name silently replaced it).
+
+**AIO.4 — preset read route truncated lines at `//`, including inside `https://` strings.**
+`ui/src/utils/jsonc.ts` is a string-aware stripper (tested); applied to `.json` and `.jsonc`.
+
+**AIO.5 / AIO.6 — Dataset Tools API + run lifecycle.** Malformed JSON is a 400 (was an
+unhandled 500 shown as "Failed to start"); GET with no parameters is a 400 (was
+`200 {run:null}`); `buckets` is validated for multiples-of-64 / MIN≤MAX server-side (was an
+argparse trace in the log pane); an existing prep output folder is a 409 unless
+`options.resume` — a typo naming another dataset used to merge into it silently, and the
+modal now has an "Allow existing output" checkbox for the legitimate resume case. A prep
+run now locks its output dataset as well as its source (`RegisteredRun.locks`,
+`findRunningWriter`), there is a DELETE cancel endpoint + Cancel button (status
+`cancelled` once the child exits), and running children are killed on a clean process
+exit. The POST returns the sanitized `outputName` and the modal shows it. **Not done, by
+decision:** persisting the run registry across restarts — fork rule 2 rules out a table,
+and a file-backed registry is more machinery than a one-hour log retention justifies. The
+limit (a hard `taskkill /F` skips the exit hook) is documented in FORK_NOTES.md.
+
+**AIO.7 — advisor panel vanished on a failed count.** A `-1` count is now reported with a
+Retry instead of falling through to `suggestSteps() → null`; a failed analysis is listed
+inside the panel. The count/analysis caches expire after 60 s and have ↻ / Re-analyze
+controls (they used to live for the page lifetime).
+
+**AIO.8 — prefix-inherited recipes showed FLUX.1 numbers for FLUX.2 dev with no caveat.**
+`getArchRecipe` now marks a prefix hit (`inheritedFrom`) and prefixes the notes with
+"INHERITED FROM '<base>' … unverified"; the component renders the flag. Exact keys, the
+`flex`/`chroma` aliases, and `:variant` archs (`zimage:turbo`, `krea2:turbo` — resolved to
+their base as exact matches, as the trainer does) are not flagged.
+
+**AIO.9 — per-image math rendered for video/audio archs; dead `sd3` heuristic.** The
+component reads the arch `group` from `options.tsx` and shows a one-line "image models
+only" note for `video`/`audio`. `sd3` removed. `suggestSteps` reports `heuristicSource`
+(`arch`/`prefix`/`default`) and the explanation says "generic default" or "inherited from
+'<key>'" so a 75/file guess no longer reads like a researched number.
+
+**AIO.10 — flat exposure target over-warned on large sets.** The self-contradiction was
+the actual bug: the advisor suggests the `maxSteps` ceiling for a large set and its own
+gauge banded that number "cool — likely undertrained". `exposureGauge` now sets
+`ceilingBound` when a cool reading exists only because the ceiling binds at this size, and
+the label says so ("large sets usually converge at fewer passes; trust sample grids") rather
+than asserting undertraining nobody measured. The band stays `cool` — exposure really is
+below the flat target — and the 10,800-combo sweep is untouched. **Deliberately not done:**
+a per-arch tiered target like krea2's. That needs a measured run per arch (the honesty
+rule); tracker AIO.10 stays open for that half, re-scoped.
+
+**AIO.11 — docs drift.** `docs/profiles.md` no longer claims every arch ships two profiles
+(only Anima does). The batch-4 thresholds `presets/README.md` quotes are now pinned by a
+test against `minItemsForBatch`, so they fail `npm test` instead of drifting.
+
+**AIO.12 — `.claude/launch.json` started the UI on port 3000**, which `stop.bat` cannot
+stop (it matches `--port 8675`). Now passes `--port 8675`. Stale PID-pinned permission
+rules pruned from `.claude/settings.local.json` (gitignored).
+
+**AIO.13 — `useJobsList` "double poll": not a bug.** The paired requests come from two
+legitimate consumers of the same query on the dashboard — Sidebar's `ActiveJobWidget`
+(`onlyActive`) and `dashboard/page.tsx`'s `<JobsTable onlyActive />` — each polling every
+5 s via `usePollLoop`, whose cleanup is correct under StrictMode. Deduplicating them would
+touch four upstream files for one SQLite query per 5 s. Closed won't-do.
+
+**Verified:** `npm test` 55/55 (39 → 55: +7 registry/provenance/gauge/README cases, +5
+JSONC, +2 built-in presets, +2 tool-run locks), `tsc --noEmit` clean, `next build` exit 0,
+Python 31/31 (`test_qol_scripts` 15 new + the four existing suites), `py_compile` on every
+touched script. `git diff upstream/main --name-status | grep -v '^A'` = 57, unchanged. Not
+covered: the tools run end-to-end (needs the WD14/U2Net downloads) and the advisor panel
+visually — both are runtime-only.

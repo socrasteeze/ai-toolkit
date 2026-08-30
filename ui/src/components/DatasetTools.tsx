@@ -18,10 +18,25 @@ type ToolName = 'preflight' | 'caption' | 'prep';
 interface ToolRun {
   runId: string;
   tool: ToolName;
-  status: 'running' | 'done' | 'failed';
+  status: 'running' | 'done' | 'failed' | 'cancelled';
   exitCode: number | null;
   log: string;
+  // prep only: the (sanitized) dataset the output is being written to
+  outputName?: string;
 }
+
+const STATUS_LABEL: Record<ToolRun['status'], string> = {
+  running: 'running…',
+  done: 'finished',
+  failed: 'failed',
+  cancelled: 'cancelled',
+};
+const STATUS_CLASS: Record<ToolRun['status'], string> = {
+  running: 'text-yellow-400',
+  done: 'text-green-400',
+  failed: 'text-red-400',
+  cancelled: 'text-gray-400',
+};
 
 type Props = {
   datasetName: string;
@@ -49,6 +64,9 @@ export default function DatasetTools({ datasetName, onDatasetChanged }: Props) {
   // prep options
   const [buckets, setBuckets] = useState('512x768');
   const [outName, setOutName] = useState('');
+  // let smart_prep resume into an output dataset that already exists (the route
+  // refuses otherwise, so a typo naming another dataset can't merge into it)
+  const [resume, setResume] = useState(false);
 
   const logRef = useRef<HTMLPreElement | null>(null);
   const pollAbortRef = useRef<AbortController | null>(null);
@@ -69,7 +87,8 @@ export default function DatasetTools({ datasetName, onDatasetChanged }: Props) {
         return;
       }
 
-      setRun({ ...nextRun });
+      // keep the output name the POST reported — the poll payload doesn't carry it
+      setRun(prev => ({ ...nextRun, outputName: prev?.runId === nextRun.runId ? prev.outputName : undefined }));
       // A poll that got through clears whatever the last failed one reported, so
       // a blip that recovers on its own does not leave a stale error on screen.
       setError(null);
@@ -143,15 +162,31 @@ export default function DatasetTools({ datasetName, onDatasetChanged }: Props) {
       tool === 'caption'
         ? { generalThresh, charThresh, triggerWord, overwrite }
         : tool === 'prep'
-          ? { buckets, outName: outName.trim() || undefined }
+          ? { buckets, outName: outName.trim() || undefined, resume }
           : {};
     apiClient
       .post('/api/datasets/tools', { datasetName, tool, options })
       .then(res => {
-        setRun({ runId: res.data.runId, tool, status: 'running', exitCode: null, log: '' });
+        setRun({
+          runId: res.data.runId,
+          tool,
+          status: 'running',
+          exitCode: null,
+          log: '',
+          outputName: res.data.outputName,
+        });
         setPollRunId(res.data.runId);
       })
       .catch(err => setError(err?.response?.data?.error ?? 'Failed to start'));
+  };
+
+  const cancel = () => {
+    if (!run || run.status !== 'running') return;
+    setError(null);
+    apiClient
+      .delete(`/api/datasets/tools?runId=${encodeURIComponent(run.runId)}`)
+      // the poller picks up the 'cancelled' status once the child has exited
+      .catch(err => setError(err?.response?.data?.error ?? 'Failed to cancel'));
   };
 
   const busy = run?.status === 'running';
@@ -248,6 +283,16 @@ export default function DatasetTools({ datasetName, onDatasetChanged }: Props) {
             <div className="grid grid-cols-2 gap-2">
               <TextInput label="Buckets (MINxMAX, multiples of 64)" value={buckets} onChange={setBuckets} />
               <TextInput label={`Output dataset (default ${datasetName}_prepped)`} value={outName} onChange={setOutName} />
+              <div className="col-span-2 text-xs text-gray-500">
+                Names are lower-cased and non-alphanumerics become “_”; the log header shows the exact folder used.
+              </div>
+              <div className="col-span-2">
+                <Checkbox
+                  label="Allow existing output (resume a previous prep into it)"
+                  checked={resume}
+                  onChange={setResume}
+                />
+              </div>
             </div>
           </div>
 
@@ -257,19 +302,15 @@ export default function DatasetTools({ datasetName, onDatasetChanged }: Props) {
             <div className="rounded-lg border border-gray-700 p-3">
               <div className="flex items-center justify-between mb-2">
                 <div className="font-medium">
-                  {TOOL_LABELS[run.tool]}{' '}
-                  <span
-                    className={
-                      run.status === 'running'
-                        ? 'text-yellow-400'
-                        : run.status === 'done'
-                          ? 'text-green-400'
-                          : 'text-red-400'
-                    }
-                  >
-                    — {run.status === 'running' ? 'running…' : run.status === 'done' ? 'finished' : 'failed'}
-                  </span>
+                  {TOOL_LABELS[run.tool]}
+                  {run.outputName && <span className="text-gray-400"> → {run.outputName}</span>}{' '}
+                  <span className={STATUS_CLASS[run.status]}>— {STATUS_LABEL[run.status]}</span>
                 </div>
+                {run.status === 'running' && (
+                  <Button className="text-white bg-red-700 px-3 py-1 rounded-md text-xs" onClick={cancel}>
+                    Cancel
+                  </Button>
+                )}
               </div>
               <pre
                 ref={logRef}

@@ -35,7 +35,11 @@ import {
   exposureGauge,
   maxHealthyBatch,
   minItemsForBatch,
+  getArchRecipe,
+  getHeuristicLookup,
 } from '../src/utils/stepSuggestion.ts';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 
 const CEILING_ARCHS = ['flux2_klein_4b', 'flux2_klein_9b', 'krea2', 'sdxl', 'anima'];
 
@@ -112,4 +116,91 @@ test('gradient accumulation counts toward the ceiling the same as batch size', (
   const viaAccum = suggestSteps({ itemCount: 25, arch: 'anima', batchSize: 1, gradientAccumulation: 4 });
   assert.equal(viaBatch.suggested, viaAccum.suggested);
   assert.equal(viaBatch.overBatched, viaAccum.overBatched);
+});
+
+// --- provenance flags (2026-08-29) ------------------------------------------------------
+
+test('a recipe reached by family prefix is flagged as inherited and unverified', () => {
+  for (const [arch, base] of [
+    ['flux2', 'flux'],
+    ['flux_kontext', 'flux'],
+    ['qwen_image_edit', 'qwen_image'],
+    ['zimage_l2p', 'zimage'],
+  ]) {
+    const recipe = getArchRecipe(arch, 50);
+    assert.equal(recipe.inheritedFrom, base, `${arch} should inherit from ${base}`);
+    assert.match(recipe.notes, new RegExp(`^INHERITED FROM '${base}'`));
+  }
+});
+
+test('an exact recipe key, an alias, or a :variant of one is NOT flagged', () => {
+  for (const arch of ['flux', 'flex', 'chroma', 'flux2_klein_4b', 'zimage', 'zimage:turbo', 'krea2:turbo', 'anima']) {
+    const recipe = getArchRecipe(arch, 50);
+    assert.ok(recipe, `${arch} should have a recipe`);
+    assert.equal(recipe.inheritedFrom, undefined, `${arch} must not be flagged`);
+  }
+});
+
+test('the step heuristic reports whether it is arch-specific, inherited, or the generic default', () => {
+  assert.equal(getHeuristicLookup('sdxl').source, 'arch');
+  assert.equal(getHeuristicLookup('krea2:turbo').source, 'arch');
+  assert.equal(getHeuristicLookup('wan22_14b_i2v').source, 'prefix');
+  assert.equal(getHeuristicLookup('ideogram4').source, 'default');
+  assert.equal(getHeuristicLookup('sd3').source, 'default'); // dead entry removed
+  assert.match(suggestSteps({ itemCount: 40, arch: 'ideogram4', batchSize: 1, gradientAccumulation: 1 }).explanation, /generic default/);
+  assert.match(suggestSteps({ itemCount: 40, arch: 'flux_kontext', batchSize: 1, gradientAccumulation: 1 }).explanation, /inherited from 'flux'/);
+});
+
+// --- ceiling-bound gauge (2026-08-29) ---------------------------------------------------
+
+test('a large set at the arch ceiling reads cool but is marked ceiling-bound, not undertrained', () => {
+  // 400 SDXL images × 100 steps/file = 40,000 raw; the 4000 ceiling binds and the advisor
+  // suggests 4000. The gauge used to call that very number "likely undertrained".
+  const result = suggestSteps({ itemCount: 400, arch: 'sdxl', batchSize: 1, gradientAccumulation: 1 });
+  assert.equal(result.suggested, 4000);
+  const gauge = exposureGauge({ itemCount: 400, arch: 'sdxl', steps: 4000, batchSize: 1, gradientAccumulation: 1 });
+  assert.equal(gauge.band, 'cool');
+  assert.equal(gauge.ceilingBound, true);
+  assert.match(gauge.label, /ceiling binds/);
+  assert.doesNotMatch(gauge.label, /undertrained/);
+});
+
+test('cool readings below the ceiling, or on sets the ceiling does not bind, stay plain cool', () => {
+  // same set, user typed 2000 — genuinely below what the advisor would give
+  const below = exposureGauge({ itemCount: 400, arch: 'sdxl', steps: 2000, batchSize: 1, gradientAccumulation: 1 });
+  assert.equal(below.band, 'cool');
+  assert.equal(below.ceilingBound, false);
+  // small set, 4000 steps is way past target — not cool at all
+  const small = exposureGauge({ itemCount: 20, arch: 'sdxl', steps: 500, batchSize: 1, gradientAccumulation: 1 });
+  assert.equal(small.band, 'cool');
+  assert.equal(small.ceilingBound, false);
+  assert.match(small.label, /undertrained/);
+});
+
+test('ceilingBound never fires outside the cool band', () => {
+  for (const arch of [...CEILING_ARCHS, 'flux', undefined]) {
+    for (let itemCount = 1; itemCount <= 400; itemCount += 7) {
+      for (const steps of [500, 1000, 2000, 3000, 4000, 6000]) {
+        const gauge = exposureGauge({ itemCount, arch, steps, batchSize: 1, gradientAccumulation: 1 });
+        if (gauge.ceilingBound) assert.equal(gauge.band, 'cool', `arch=${arch} items=${itemCount} steps=${steps}`);
+      }
+    }
+  }
+});
+
+// --- docs stay in step with the code ----------------------------------------------------
+
+test('presets/README.md quotes the batch-4 file thresholds the code actually computes', () => {
+  const readme = readFileSync(path.resolve(import.meta.dirname, '..', '..', 'presets', 'README.md'), 'utf-8');
+  // \s+ because the README hard-wraps mid-sentence
+  const quoted = {
+    sdxl: /≥(\d+)\s+files\s+on\s+SDXL\/Illustrious/.exec(readme)?.[1],
+    anima: /≥(\d+)\s+on\s+Anima/.exec(readme)?.[1],
+    flux2_klein_4b: /≥(\d+)\s+on\s+Klein/.exec(readme)?.[1],
+    krea2: /≥(\d+)\s+on\s+Krea\s+2/.exec(readme)?.[1],
+  };
+  for (const [arch, value] of Object.entries(quoted)) {
+    assert.ok(value, `README no longer quotes a threshold for ${arch}`);
+    assert.equal(Number(value), minItemsForBatch(4, arch), `README threshold for ${arch} drifted from the code`);
+  }
 });

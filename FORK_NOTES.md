@@ -106,13 +106,15 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
 - `scripts/bench_speed.py` — speed-benchmark harness: runs a config for a fixed step count (sampling disabled, saves out of range), measures end-to-end steps/s from `performance_log_every` timer markers, polls nvidia-smi for peak VRAM, appends a markdown row to `docs/speed_benchmarks.md` (created on first run, also fork-only)
 - `docs/anima_a4_parity.md` — A4 gate artifact: matched-run loss-curve/sample comparison vs TrainFlow + Prodigy behavior check (PASS, with documented benign optimizer-construction differences)
 - `docs/profiles.md` — performance/background profile explainer + Workstream C gate artifact (measured Anima background-preset VRAM: 30–33% steady, 43% peak of 32GB — PASS)
-- `scripts/preflight.py` — B1 dataset pre-flight validator (bare folder or `--config job.yaml`; exit 1 on missing captions/corrupt images/bad paths, warnings for oversized/stray files, `--warn-only` override)
-- `scripts/auto_caption.py` — B2 WD14 auto-captioner (wd-eva02-large-tagger-v3 via onnxruntime, HF auto-download, `--general-thresh/--char-thresh/--trigger-word/--overwrite`, multi-threaded, GPU w/ torch-bundled CUDA DLLs)
-- `scripts/smart_prep.py` — B3 U2Net subject-aware bucket resize/crop (optional prep tool, non-destructive in→out, `--buckets MINxMAX`, u2net.onnx auto-download to `~/.cache/ai-toolkit/`)
+- `scripts/qol_common.py` — shared helper for the three QoL CLIs below (2026-08-29): dataset discovery that delegates to `toolkit/dataset_selection.py` (so the scripts see exactly the recursive, dot-folder/`_controls`-pruned file set the trainer trains on — before this they used a flat `iterdir()` and a dataset organised into subfolders made pre-flight fail "no images found" while the tagger/prep tool silently did nothing), `walk_dataset_files` for stray-file reporting, `rel_label` (messages name `sub/x.png`, not just `x.png`), the Windows torch-CUDA-DLL shim that was copy-pasted in two scripts, and `split_buckets_arg`. Puts the repo root on `sys.path` itself, so the scripts run from anywhere
+- `testing/test_qol_scripts.py` — CPU-only regressions for the above and the three CLIs' pure/plan functions (nested-dataset discovery, pre-flight report semantics + exit codes, `looks_like_local_path`, caption skip/overwrite selection, smart-prep task planning with subfolder-preserving output and resume)
+- `scripts/preflight.py` — B1 dataset pre-flight validator (bare folder or `--config job.yaml`; exit 1 on missing captions/corrupt images/bad paths, warnings for oversized/stray files, `--warn-only` override). Recursive since 2026-08-29 via `qol_common`
+- `scripts/auto_caption.py` — B2 WD14 auto-captioner (wd-eva02-large-tagger-v3 via onnxruntime, HF auto-download, `--general-thresh/--char-thresh/--trigger-word/--overwrite`, multi-threaded, GPU w/ torch-bundled CUDA DLLs). Recursive since 2026-08-29; `collect_images()` is the testable selection step
+- `scripts/smart_prep.py` — B3 U2Net subject-aware bucket resize/crop (optional prep tool, non-destructive in→out, `--buckets MINxMAX`, u2net.onnx auto-download to `~/.cache/ai-toolkit/`). Recursive since 2026-08-29 and mirrors the source's subfolder layout under `out_dir` (`output_path()`), so a scoped dataset keeps its scope; `plan_tasks()` is the testable planning step
 - `scripts/requirements-qol.txt` — extra deps for B2/B3 (`onnxruntime-gpu`); deliberately NOT added to upstream `requirements.txt`
-- `ui/src/server/datasetTools.ts` — B5: spawns the QoL CLIs as child processes (uses upstream's `ui/cron/pythonPath.ts` resolver), buffers logs in-memory for polling; deliberately NOT a Prisma job. Finalization is idempotent
+- `ui/src/server/datasetTools.ts` — B5: spawns the QoL CLIs as child processes (uses upstream's `ui/cron/pythonPath.ts` resolver), buffers logs in-memory for polling; deliberately NOT a Prisma job. Finalization is idempotent. 2026-08-29: `cancelToolRun(runId)` kills the child (status becomes `cancelled` when it actually exits), a prep run also locks its output dataset (`locks`), and running children are killed on a clean process exit. **Known limit, documented not fixed:** the registry is process memory — a UI restart forgets finished logs, and a hard `taskkill /F` (what `stop.bat` does) skips the exit hook so a child finishes on its own
 - `ui/src/server/toolRunRegistry.ts` — the bookkeeping half of the above, split out so it can be tested without spawning Python or loading Prisma (`datasetTools.ts` reaches both through `cron/paths`). Owns run registration, per-dataset ownership and the one-hour retention timer, which starts only after the child exits so a long tool cannot be evicted mid-run. **A finished run stays discoverable until retention expires** — `getActive` is what backs `GET /api/datasets/tools?datasetName=`, so retiring it at exit made reopening the modal show an empty panel instead of the completed log. Exclusivity does not depend on retiring it: the caller's guard is `status === 'running'`. Retirement is identity-checked on both maps so a stale run's timer cannot evict its replacement
-- `ui/src/app/api/datasets/tools/route.ts` — B5: POST starts a preflight/caption/prep run, GET polls by runId or datasetName; source and prep-output paths use the same canonical validator as destructive dataset routes
+- `ui/src/app/api/datasets/tools/route.ts` — B5: POST starts a preflight/caption/prep run (returns `outputName` for prep), GET polls by runId or datasetName (400 with neither), DELETE `?runId=` cancels; source and prep-output paths use the same canonical validator as destructive dataset routes. 2026-08-29: malformed JSON is a 400 not an unhandled 500; `buckets` is checked for multiples-of-64 / MIN<=MAX here (was an argparse trace in the log pane); an existing prep output folder is a 409 unless `options.resume` is true (a typo naming another dataset used to merge into it silently)
 - `ui/src/components/DatasetTools.tsx` — B5: "Dataset Tools" TopBar button + modal on the dataset page (WD14 tagger options, smart-prep buckets/output, advisory pre-flight, live log). Polling uses the single-flight `usePollLoop`, a 10s Axios timeout, and abort-on-close/run-change, so slow requests cannot overlap and hung/transient requests cannot permanently stop updates. Pre-flight remains advisory only
 - `ui/src/hooks/useHelpMode.ts` — session toggle state (`helpModeState`) for revealing extra field-help icons on New Training Job
 - `ui/src/components/HelpModeButton.tsx` — TopBar "Help" button; pressed style when help mode is on
@@ -129,11 +131,11 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
 - `stop.bat` — killswitch companion to `start.bat`: stops the UI (port 8675) + cron worker even when the launching terminal is gone/frozen, matched by command-line signature so it never touches unrelated node/python. Leaves detached training alone by default; `stop.bat all` also stops a running `run.py` training
 - `start-rebuild.bat` — update-and-launch variant of `start.bat` (2026-08-02): fetches and **fast-forwards from `origin` only** on the current branch, then stops any running server (a rebuild against a live server dies with `EPERM` on the locked prisma/sqlite native files), then `npm ci` + `update_db` + `build` + `start`. Refuses to run on a dirty tree and never merges/rebases/forces — upstream merges stay a manual job. Warns (does not act) when the update touched `requirements*.txt`, since it only rebuilds the UI
 - `create_shortcut.bat` — one-time setup script that creates a desktop `.lnk` targeting `start.bat`, using the UI's favicon as its icon (instead of a bare `.bat` file on the desktop). Run once; the resulting shortcut is the day-to-day launcher (2026-07-20)
-- `presets/` — preset config files (drop-in JSON/YAML). 2026-07-19: seven LDS-ported presets added (zimage char/style/concept, flux2_klein char/style, krea2 concept, sdxl concept) + `flux_lora_24gb.json` v1.1 EMA fidelity fix; provenance table in `presets/README.md`, comparison in `docs/preset_alignment_2026_07.md` (fork-only). 2026-07-21: `flux2_klein_style_lora.json` re-tuned to 64/32 linear + 32/16 conv (a half-scale fold of LDS's researched 128/64/64/32; see the doc's 2026-07-21 update)
-- `ui/src/server/presetsPath.ts` — presets-folder resolver + name sanitizer; reuses the shared server Prisma singleton (never construct a second query engine here); also
-  `BUILTIN_PRESET_NAMES`/`isBuiltinPreset` (the shipped-preset set the GET route flags so
-  the Presets dialog warns before overwriting a provenance-tracked recipe — keep in sync
-  with the files that ship in `presets/`)
+- `presets/` — preset config files (drop-in JSON/YAML). 2026-07-19: seven LDS-ported presets added (zimage char/style/concept, flux2_klein char/style, krea2 concept, sdxl concept) + `flux_lora_24gb.json` v1.1 EMA fidelity fix; provenance table in `presets/README.md`, comparison in `docs/preset_alignment_2026_07.md` (fork-only). 2026-07-21: `flux2_klein_style_lora.json` re-tuned to 64/32 linear + 32/16 conv (a half-scale fold of LDS's researched 128/64/64/32; see the doc's 2026-07-21 update). 2026-08-29: the three `zimage_*` presets (v1.1) moved from `arch: zimage` to `arch: zimage:turbo` + `assistant_lora_path` — v1.0 had paired the Turbo weights with the base arch and no adapter, i.e. trained the distilled model directly (the trainer strips the `:variant`, `toolkit/config_modules.py`)
+- `ui/src/server/presetsPath.ts` — presets-folder resolver + name sanitizer; reuses the shared server Prisma singleton (never construct a second query engine here); re-exports
+  `BUILTIN_PRESET_NAMES`/`isBuiltinPreset` from:
+- `ui/src/server/builtinPresets.ts` — the shipped-preset set (2026-08-29, split out with no imports). `ui/tests/builtinPresets.test.mjs` asserts it equals the files in `presets/`, so adding a preset without listing it fails `npm test` — the list had silently fallen five presets behind. The presets GET route flags built-ins in the dialog; the POST route now refuses to write over ANY existing preset (built-in or not) unless the body carries `overwrite: true`, which only the dialog's confirmed Overwrite button sends (the guard used to be client-only)
+- `ui/src/utils/jsonc.ts` — string-aware JSONC comment stripper for the preset read route (2026-08-29). The old regex cut every line at the first `//`, including the one inside an `https://` URL in a description string, on plain `.json` too. `ui/tests/jsonc.test.mjs`
 - `ui/src/server/datasetPath.ts` — pure top-level dataset-name validator + resolved containment check, plus case-insensitive destination-collision detection, shared by read, write and destructive routes
 - `ui/src/server/datasetFiles.ts` — dataset scans/subfolder resolution; count/analyze walks delegate scope selection to `datasetScope.ts`; stably re-exports the top-level helpers from `datasetPath.ts` so existing route imports do not churn
 - `ui/src/server/datasetScope.ts` — pure loose-file/selected-child traversal and request-scope validator shared by count/analyze routes; each selected immediate child is recursive
@@ -186,7 +188,18 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
   `DATASETS_FOLDER` (fetched with `useSettings()`) to split `folder_path` correctly for
   nested selections. Per-dataset batch overrides feed the mixed-batch step/exposure math,
   and thin-bucket warnings are evaluated per dataset at that dataset's actual batch — see
-  the Duplication watch entries below
+  the Duplication watch entries below. 2026-08-29: a failed count/analysis is shown with a
+  Retry (the panel used to vanish, the same symptom as the 2026-07-19 bug); the count and
+  analysis caches expire after 60 s and have a ↻ / Re-analyze control (they used to live for
+  the page lifetime, so images added to a dataset were not seen until a reload); video and
+  audio archs get a one-line "image models only" note instead of per-image math; recipes
+  and step targets reached by family prefix (`flux2` → `flux`, `qwen_image_edit` →
+  `qwen_image`, `zimage_l2p` → `zimage`) are labelled inherited/unverified, and archs with
+  no data are labelled "generic default" (`stepSuggestion.ts`: `getHeuristicLookup`,
+  `ArchRecipe.inheritedFrom`, `StepSuggestionResult.heuristicSource`); a cool gauge reading
+  caused only by the arch's `maxSteps` ceiling on a large set says so (`ExposureGauge.ceilingBound`)
+  instead of "likely undertrained". A `:variant` arch (`zimage:turbo`, `krea2:turbo`)
+  resolves to its base key as an exact match, as the trainer does
 - `ui/cron/gpuIds.ts` + `ui/src/utils/gpuIds.ts` — the `"<peerId>:<localIndex>"` encoding
   for `Job.gpu_ids`. **Two copies on purpose**: the worker build
   (`tsconfig.worker.json`) includes only `cron/**` and cannot import from `src/`. The same
@@ -223,10 +236,13 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
 - `ui/src/components/PeerSettings.tsx` — add/remove machines, mounted on the settings page
 - `ui/tests/datasetPath.test.mjs`, `ui/tests/apiCache.test.mjs`,
   `ui/tests/remoteIntegrity.test.mjs`, `ui/tests/toolRunRegistry.test.mjs`,
-  `ui/tests/stepSuggestion.test.mjs` — CPU-only Node regression coverage for containment,
+  `ui/tests/stepSuggestion.test.mjs`, `ui/tests/jsonc.test.mjs`,
+  `ui/tests/builtinPresets.test.mjs` — CPU-only Node regression coverage for containment,
   upload aliases, bounded in-flight caching, remote reset/stop/artifact lifecycle integrity,
-  tool-run retention, mixed per-dataset batch math, and (2026-08-24) the effective-batch
-  ceiling sweep. Run them with `npm test`
+  tool-run retention + output-folder locks, mixed per-dataset batch math, (2026-08-24) the
+  effective-batch ceiling sweep, (2026-08-29) recipe/target provenance flags, the
+  ceiling-bound gauge, the README threshold table, JSONC stripping and the built-in preset
+  set. Run them with `npm test`
   in `ui/`. Keep them dependency-free: no Prisma, no network, no child processes — that
   constraint is why `toolRunRegistry.ts` and `remoteIntegrity.ts` exist as separate modules
   at all
@@ -473,7 +489,14 @@ Consequences to preserve on any future edit:
   (request payload + cache key). `include_subfolders: null` means every immediate child;
   a list means only those named immediate children, recursively; `[]` means none. Any
   contract change must land in all three or the advisor will measure a different dataset
-  than the trainer uses.
+  than the trainer uses. The QoL CLIs (`scripts/qol_common.py`, 2026-08-29) are NOT a
+  fourth copy — they import `list_dataset_media_files` from the Python side directly, so
+  they follow it automatically; only `walk_dataset_files` (stray-file scan) mirrors its
+  dot-folder/`_controls` pruning by hand.
+- `StepSuggestion.tsx` reads `modelArchs` from upstream's `ui/src/app/jobs/new/options.tsx`
+  for the arch `group` (`image`/`video`/`audio`) to suppress per-image math on video and
+  audio models. If upstream renames the field or the group values, the advisor will simply
+  render for everything again (no crash) — re-check after a merge that touches `options.tsx`.
 - Dataset batch has three synchronized consumers: upstream `toolkit/data_loader.py` (the
   actual pre-batched dataset), upstream `SimpleJob.tsx`/`ui/src/types.ts` (configuration),
   and fork `StepSuggestion.tsx` + `advisorBatch.ts` (advice). Mixed batches combine as

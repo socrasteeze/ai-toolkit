@@ -80,7 +80,8 @@ export default function PresetManager({ jobConfig, setJobConfig }: Props) {
       })
       .catch(err => {
         console.error('Error saving preset:', err);
-        setError('Failed to save preset.');
+        // 409 = a preset with that name already exists; the route names it and points at Overwrite
+        setError(err?.response?.data?.error ?? 'Failed to save preset.');
       });
   };
 
@@ -88,7 +89,8 @@ export default function PresetManager({ jobConfig, setJobConfig }: Props) {
   // route writes by name, so this reuses the same save path as "Save as new" — the
   // only difference is the target name is an existing preset, plus a confirmation.
   // Built-in (shipped, provenance-tracked) presets get a stronger warning, but the
-  // write is never blocked — the user asked for it explicitly.
+  // write is never blocked — the user asked for it explicitly. `overwrite: true` is what
+  // tells the route this came through that confirmation (it refuses otherwise).
   const overwritePreset = (preset: PresetInfo) => {
     const warning = preset.builtIn
       ? `'${preset.name}' is a BUILT-IN recipe shipped with the fork (tracked in git and the ` +
@@ -98,7 +100,7 @@ export default function PresetManager({ jobConfig, setJobConfig }: Props) {
     if (!confirm(warning)) return;
     setError(null);
     apiClient
-      .post('/api/presets', { name: preset.name, config: configToPreset(jobConfig) })
+      .post('/api/presets', { name: preset.name, config: configToPreset(jobConfig), overwrite: true })
       .then(res => {
         setStatus(`Overwrote preset '${res.data.name}'.`);
         refreshPresets();

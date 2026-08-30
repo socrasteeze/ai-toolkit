@@ -59,6 +59,37 @@ test('retention forgets a run from both lookups at once', () => {
   assert.equal(registry.getActive('portraits'), undefined);
 });
 
+test('a prep run owns its output dataset too, and frees it with the source', () => {
+  // The bug: the writer lock was keyed on the source only, so a prep writing
+  // `portraits_prepped` did not stop a caption run from starting on `portraits_prepped`.
+  const { registry, fireRetention } = registryWithManualTimers();
+  const prep = { ...makeRun('prep-1', 'portraits'), locks: ['portraits_prepped'] };
+  registry.register(prep);
+
+  assert.equal(registry.findRunningWriter(['portraits_prepped']), prep);
+  assert.equal(registry.findRunningWriter(['portraits']), prep);
+  assert.equal(registry.findRunningWriter(['unrelated']), undefined);
+
+  prep.status = 'done';
+  assert.equal(registry.findRunningWriter(['portraits_prepped']), undefined);
+  // still discoverable by either name until retention
+  assert.equal(registry.getActive('portraits_prepped'), prep);
+
+  registry.scheduleRetirement(prep);
+  fireRetention();
+  assert.equal(registry.getActive('portraits_prepped'), undefined);
+  assert.equal(registry.getActive('portraits'), undefined);
+});
+
+test('running() lists only runs still in flight', () => {
+  const { registry } = registryWithManualTimers();
+  const a = makeRun('caption-1', 'a');
+  const b = makeRun('caption-2', 'b', 'cancelled');
+  registry.register(a);
+  registry.register(b);
+  assert.deepEqual(registry.running(), [a]);
+});
+
 test('a stale run retiring never evicts the run that replaced it', () => {
   const { registry, fireRetention } = registryWithManualTimers();
   const old = makeRun('caption-1', 'portraits', 'done');

@@ -1844,6 +1844,66 @@ measured (AIO.46). The bench configs are two lines on top of the fast preset:
 `model.compile: true`, `model.block_compile: true`; keep `compile_dynamic` at its default
 `true` for a bucketed resolution list.
 
+## Sync automation + test coverage (2026-08-29)
+
+The rest of the tracker's actionable non-GPU work (AIO.16, 18–21, 25). Every sync log entry
+in FORK_NOTES had been re-deriving the same checks by hand; they are now scripts, and the
+two "one-off manual audit" claims in this file are now tests.
+
+**`scripts/verify_fork.py` (AIO.18)** — the post-merge tripwire. Five checks: 34 insertion
+anchors across the upstream files the fork modifies (plus the Modal `backdrop-blur` removal,
+matched with comments stripped so the comment explaining that removal doesn't read as a
+relapse); the modified-upstream-file count against `EXPECTED_TOUCHPOINTS` (57), **skipped
+rather than failed while the fork is behind upstream** because the count is meaningless
+mid-sync (CLAUDE.md's warning); every App Router `params` still the Next 15 `Promise<...>`
+shape (upstream keeps shipping the Next 14 one — it recurred on 2026-08-23); the `comm -12`
+doc-key overlap that bit on 2026-08-11; and `BUILTIN_PRESET_NAMES` against `presets/`.
+Verified by negative control: removing the `forkDocs` reference from `docs.tsx` fails the
+insertions check with the right message.
+
+**`scripts/run_fork_tests.ps1` (AIO.20)** — one command for the whole checklist: the
+tripwire, six Python suites (with `PYTHONPATH` and the repo `.venv` — they are bare
+`unittest` scripts because the venv has no pytest), `py_compile` on the fork scripts, then
+`npm test` / `tsc --noEmit` / worker `tsc` / `next build`. A missing `.venv`, missing torch
+or missing `node_modules` is reported as **SKIP with a reason, never as a pass**, and the
+summary prints what was not covered — which is what a sync report needs to state honestly.
+All 12 gates pass on this box.
+
+**`testing/test_presets.py` (AIO.21)** — PLAN recorded "all N presets parse through
+`TrainConfig`" and "accepted by the Automagic guard" as manual audits at 17, 21 and 27
+presets; nothing re-ran them. Now a test: every preset constructs through
+`TrainConfig`/`DatasetConfig`/`ModelConfig`/`NetworkConfig`, effective batch ≤ 4, every arch
+exists in `options.tsx`, and no preset uses weights that are *another* arch's registry
+default. That last check is the AIO.1 shape, and it was validated by reverting the Z-Image
+preset to the broken pair and watching it fail. It deliberately allows an arch pointed at a
+non-registry checkpoint — that is exactly how the Illustrious/Pony presets work on `sdxl`,
+and a first draft that required an exact registry match flagged all four of them as false
+positives.
+
+**`.gitattributes` + `scripts/restore_ui_pkg.ps1` (AIO.19)** — `.gitignore merge=union`
+turns the conflict that happened on nearly every sync into an automatic keep-both (verified
+on a synthetic tail conflict in a scratch repo). A removal from `.gitignore` still needs its
+own commit; union merge cannot express a deletion. The package restore script takes
+upstream's `package.json`/lockfile, re-applies the fork's single `test` line, and verifies
+the lockfile hash — it refuses and asks if upstream ever defines its own `test` script.
+
+**`start-rebuild.bat` (AIO.16)** — when an update touches `requirements*.txt` it now offers
+(`choice`, 30s timeout, **defaulting to No** so an unattended rebuild never touches the
+venv) to run `pip install -r requirements.txt`. It previously only printed a reminder, and
+the venv could silently drift from the pinned diffusers commit.
+
+**Housekeeping (AIO.25)** — the Node 22 `--experimental-strip-types` flag is dropped from
+`ui/package.json`'s test script (the box runs Node 25; native type stripping since 23). The
+stale `.codex/lds-upstream-sync-temp` tree from 2026-08-17 has ACLs git cannot stat, so
+every `git status` printed permission warnings and `rm -rf` could not remove it; `.codex` is
+now in `.gitignore`, which stops git descending into it — warnings gone. The DLL-shim
+duplication was already fixed by `scripts/qol_common.py` in the earlier sweep. QuickEdit
+Mode stays the operator's own registry setting (PLAN 2026-07-17); the offer stands.
+
+**Verified:** `scripts/run_fork_tests.ps1` — 12/12 gates PASS (verify_fork, 6 Python suites,
+py_compile, npm test 55/55, `tsc`, worker `tsc`, `next build`). Not covered, as always: the
+cron worker's runtime paths, a real training run, and the Dataset Tools CLIs end-to-end.
+
 **Filed, not done:** the remaining config-only levers each need one measured run before a
 preset ships them (AIO.47: fused AdamW on the non-quantized anima presets via
 `optimizer_params`, `gradient_checkpointing: false` on `anima_lora_performance`,

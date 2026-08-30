@@ -1,0 +1,14 @@
+# Fork addition (see FORK_NOTES.md "Sync procedure").
+#
+# .gitignore conflicts on almost every upstream merge because both sides append to
+# the tail — upstream adds its new build/tool entries, the fork keeps `.claude`,
+# `/hf-cache`, `/anima_sample_training` and the key-material block. The resolution
+# has always been "keep both lists, never take one side wholesale", which is exactly
+# what git's built-in `union` merge driver does: it keeps every line from both sides
+# instead of raising a conflict.
+#
+# Duplicate ignore lines are harmless (git ignores an entry twice happily), so the
+# only manual step left after a merge is collapsing an accidental duplicate for
+# tidiness — not resolving a conflict. If a sync ever needs a REMOVAL from .gitignore
+# to win, do it as a separate commit; union merge cannot express a deletion.
+.gitignore merge=union

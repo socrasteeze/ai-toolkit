@@ -77,13 +77,34 @@ if "%BEFORE%"=="%AFTER%" (
     echo.
     git diff --name-only %BEFORE% %AFTER% > "%TEMP%\aitk_changed.txt"
     findstr /i "requirements" "%TEMP%\aitk_changed.txt" >nul
-    if not errorlevel 1 (
-        echo NOTE: python requirements changed in this update. This script only
-        echo       rebuilds the UI - reinstall the training deps yourself:
-        echo           .venv\Scripts\activate ^&^& pip install -r requirements.txt
-        echo.
-    )
+    if not errorlevel 1 set "REQS_CHANGED=1"
     del "%TEMP%\aitk_changed.txt" >nul 2>nul
+)
+
+rem --- 2b. python deps changed? offer to reinstall them (2026-08-29) ---------
+rem Before this the script only printed a reminder and the venv silently drifted
+rem from requirements*.txt (the post-Anima-sunset diffusers pin nearly did).
+rem Default is NO after 30s so an unattended rebuild never touches the venv.
+if defined REQS_CHANGED (
+    echo NOTE: python requirements changed in this update.
+    if exist ".venv\Scripts\python.exe" (
+        choice /C YN /T 30 /D N /M "Reinstall training deps into .venv now (pip install -r requirements.txt)"
+        if errorlevel 2 (
+            echo       Skipped. Run it yourself before the next training run:
+            echo           .venv\Scripts\activate ^&^& pip install -r requirements.txt
+        ) else (
+            echo Installing python requirements...
+            call ".venv\Scripts\python.exe" -m pip install -r requirements.txt
+            if errorlevel 1 (
+                echo       pip install failed - fix it before the next training run.
+                pause
+            )
+        )
+    ) else (
+        echo       No .venv found next to this script - reinstall the training deps
+        echo       in whatever environment you train from.
+    )
+    echo.
 )
 
 rem --- 3. stop a running server (same matcher as stop.bat) -----------------

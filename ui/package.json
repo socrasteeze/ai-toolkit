@@ -10,7 +10,7 @@
     "db_build_start": "npm run update_db && npm run build && npm run start",
     "build_and_start": "npm run install_deps && npm run db_build_start",
     "lint": "next lint",
-    "test": "node --experimental-strip-types --import ./tests/register.mjs --test \"tests/*.test.mjs\"",
+    "test": "node --import ./tests/register.mjs --test \"tests/*.test.mjs\"",
     "update_db": "npx prisma generate && npx prisma db push",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,css,scss}\""
   },

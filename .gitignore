@@ -190,6 +190,9 @@ aitk_db.db-shm
 /notes.md
 /data
 .claude
+# agent scratch dirs; sync-temp trees under here can end up with ACLs git
+# cannot even stat, which makes `git status` print permission warnings
+.codex
 /anima_sample_training
 original_repo
 /hf-cache

@@ -36,7 +36,10 @@ import {
   maxHealthyBatch,
   minItemsForBatch,
   getArchRecipe,
+  getHeuristic,
   getHeuristicLookup,
+  sizeTargetScale,
+  SIZE_TARGET_ANCHOR_ITEMS,
 } from '../src/utils/stepSuggestion.ts';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -186,6 +189,85 @@ test('ceilingBound never fires outside the cool band', () => {
       }
     }
   }
+});
+
+// --- dataset-size-aware exposure target (2026-08-29) ------------------------------------
+// The flat per-arch target over-warned on large sets. The fix scales it down with dataset
+// size using the one curve the repo has evidence for — krea2's measured/published triple.
+
+test('the size scale only ever damps, and never below the anchor', () => {
+  for (const n of [0, 1, 10, 30, 64, SIZE_TARGET_ANCHOR_ITEMS]) {
+    assert.equal(sizeTargetScale(n), 1, `${n} items must not be scaled`);
+  }
+  // (65/130)^(1/3) = 0.5^(1/3); (65/520)^(1/3) = 0.125^(1/3) = 0.5
+  assert.ok(Math.abs(sizeTargetScale(130) - 0.5 ** (1 / 3)) < 1e-12);
+  assert.ok(Math.abs(sizeTargetScale(520) - 0.5) < 1e-12);
+});
+
+test('the size scale is monotonically decreasing and stays positive', () => {
+  let previous = 1;
+  for (let n = 1; n <= 4000; n += 7) {
+    const scale = sizeTargetScale(n);
+    assert.ok(scale > 0 && scale <= 1, `scale out of range at ${n}`);
+    assert.ok(scale <= previous + 1e-12, `scale rose at ${n}`);
+    previous = scale;
+  }
+});
+
+test('the curve reproduces krea2’s own published large-set target (the corroboration)', () => {
+  // krea2 medium = 32 steps/item, MEASURED on a documented 36-image run. Its large tier is
+  // 20, from published 100-500 image recipes. Applying this curve to the measured anchor
+  // must land on that published number — that is the whole evidence base for the shape.
+  const predicted = 32 * sizeTargetScale(250);
+  assert.ok(
+    Math.abs(predicted - 20) < 1,
+    `curve predicts ${predicted.toFixed(2)} steps/item at 250 images, krea2 publishes 20`,
+  );
+});
+
+test('an arch with its own measured tiers is not scaled on top of them', () => {
+  // krea2 defines a tier function; compounding would double-count the size effect.
+  assert.equal(getHeuristic('krea2', 250).stepsPerItem, 20);
+  assert.equal(getHeuristic('krea2', 1000).stepsPerItem, 20);
+  assert.equal(getHeuristic('krea2:turbo', 250).stepsPerItem, 20);
+});
+
+test('no small or medium dataset advice moved', () => {
+  // Everything at or below the anchor must be byte-identical to the pre-2026-08-29 numbers.
+  for (const [arch, target] of [['sdxl', 100], ['flux', 60], ['anima', 75], ['qwen_image', 60]]) {
+    for (const n of [1, 12, 29, 30, 64, 65]) {
+      assert.equal(getHeuristic(arch, n).stepsPerItem, target, `${arch} at ${n} items moved`);
+    }
+  }
+  assert.equal(getHeuristic('sdxl').stepsPerItem, 100); // no dataset yet
+  // and the suggestion itself is unchanged on a small set
+  assert.equal(suggestSteps({ itemCount: 20, arch: 'sdxl', batchSize: 1, gradientAccumulation: 1 }).suggested, 2000);
+});
+
+test('a large dataset gets a damped target, so the gauge stops over-warning', () => {
+  const flat = getHeuristic('sdxl', 65).stepsPerItem;
+  const scaled = getHeuristic('sdxl', 520).stepsPerItem;
+  assert.equal(scaled, flat * 0.5);
+  // same run, same steps: the reading moves toward healthy rather than staying deep-cool
+  const before = 3000 / 250 / flat; // what the flat target would have banded
+  const after = exposureGauge({
+    itemCount: 250,
+    arch: 'sdxl',
+    steps: 3000,
+    batchSize: 1,
+    gradientAccumulation: 1,
+  });
+  assert.ok(after.exposures / getHeuristic('sdxl', 250).stepsPerItem > before);
+});
+
+test('the batch-4 file thresholds are unaffected (all below the anchor)', () => {
+  // If the scale ever applied below the anchor these would drift, and presets/README.md
+  // plus the ladder tests quote them.
+  assert.equal(minItemsForBatch(4, 'sdxl'), 29);
+  assert.equal(minItemsForBatch(4, 'anima'), 32);
+  assert.equal(minItemsForBatch(4, 'flux2_klein_4b'), 40);
+  assert.equal(minItemsForBatch(4, 'krea2'), 45);
+  for (const n of [29, 32, 40, 45]) assert.equal(sizeTargetScale(n), 1);
 });
 
 // --- docs stay in step with the code ----------------------------------------------------

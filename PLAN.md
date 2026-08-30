@@ -1844,6 +1844,45 @@ measured (AIO.46). The bench configs are two lines on top of the fast preset:
 `model.compile: true`, `model.block_compile: true`; keep `compile_dynamic` at its default
 `true` for a bucketed resolution list.
 
+## Dataset-size-aware exposure target (2026-08-29) — closes the 2026-07-29 deferral
+
+The other half of AIO.10. The 2026-07-29 entry above documented that every fixed steps/item
+target over-warns on large datasets and named the fix — "make the exposure target
+dataset-size-aware ... a larger change to shared gauge logic deferred for now". Implemented
+now, as the *shared* mechanism that entry described rather than as invented per-arch numbers.
+
+**The curve, and why it is not a guess.** `sizeTargetScale(n)` damps a flat target by
+`(65/n)^(1/3)`, clamped to at most 1. The exponent is not chosen for looks: krea2 is the one
+arch in this repo with a measured + published triple (45 steps/item at ~20 images, 32 at ~60
+— MEASURED on a documented 36-image run, 20 at ~250 from published 100-500 image recipes),
+and those three points fit a power law with exponent -0.32. Applying the resulting curve to
+krea2's own *measured* anchor predicts 20.4 steps/item at 250 images against its *published*
+20 — that agreement is the entire evidence base, and it is pinned by a test so a future edit
+to the exponent or anchor has to keep reproducing it. The anchor (65) is the geometric middle
+of the `medium` band (30-149), which is the dataset size the community guides these flat
+numbers came from are actually written for.
+
+**Two limits keep it honest.**
+1. **It only ever damps.** Below 65 images the scale is exactly 1, so every existing
+   recommendation for a small or medium set is byte-identical to before — this change cannot
+   raise a suggestion into overfit range, only lower an inflated target on a big set. It also
+   means the batch-4 file thresholds (29 SDXL / 32 Anima / 40 Klein / 45 Krea 2 — all under
+   the anchor) cannot drift, which `presets/README.md` and the ladder tests both quote.
+2. **Measured beats derived.** krea2 keeps its own tier function and is exempt from the
+   curve; compounding the two would double-count the size effect.
+
+**What this does not claim.** A 250-image SDXL set now measures against 64 steps/item instead
+of 100 — better sourced than the flat number, but still not a measurement for *that* arch at
+*that* size. And past a certain size it is the `maxSteps` ceiling, not the target, that binds;
+raising it needs its own evidence and is still deliberately not guessed. `ceilingBound` (added
+earlier the same day) is what keeps the gauge from calling the advisor's own recommendation
+"undertrained" in that region. Per-arch measured tiers remain the ideal and remain untaken.
+
+**Verified:** 62 Node tests (55 + 7 new), including the krea2 corroboration, monotonicity of
+the scale over 1-4000 items, "no small/medium advice moved", the unchanged batch thresholds,
+and the pre-existing 10,800-combination sweep asserting the `overBatched` flag never disagrees
+with the gauge — the regression guard for the original 2026-07-29 bug — still green.
+
 ## Sync automation + test coverage (2026-08-29)
 
 The rest of the tracker's actionable non-GPU work (AIO.16, 18–21, 25). Every sync log entry

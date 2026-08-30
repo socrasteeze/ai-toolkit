@@ -22,7 +22,9 @@ const DEFAULT_HEURISTIC: StepHeuristic = { stepsPerItem: 75, minSteps: 1000, max
 //
 // An entry may be a flat StepHeuristic (the default — one exposure target for the arch) or a
 // function of dataset-size tier, for archs where the right steps/item genuinely moves with
-// dataset size. Only krea2 is tiered today; see its comment for why.
+// dataset size. Only krea2 defines its own tiers (see its comment for why); every flat entry
+// below is damped on large datasets by the shared size curve further down, so "flat" now
+// means "flat up to ~65 images", not "flat forever".
 //
 // (An `sd3` entry was removed 2026-08-29: the trainer has no SD3 arch, it matched nothing.)
 const ARCH_HEURISTICS: Record<string, StepHeuristic | ((tier: SizeTier) => StepHeuristic)> = {
@@ -49,6 +51,8 @@ const ARCH_HEURISTICS: Record<string, StepHeuristic | ((tier: SizeTier) => StepH
   //     "cool" at 3000+ steps when it was usually already fine.
   //   small (45/img) — EXTRAPOLATION, not measurement: smaller sets need more passes each,
   //     so it sits above medium, but no run anchors it. Treat as the softest of the three.
+  // These three points are also what the generic size curve below was derived from and is
+  // validated against, so krea2 is exempt from it — it already expresses the size effect.
   // Note the maxSteps ceiling (4000), not steps/item, is what still under-reports very large
   // sets — at 400 images the ceiling binds first. Trust sample grids over the gauge there.
   krea2: tier => ({
@@ -58,13 +62,51 @@ const ARCH_HEURISTICS: Record<string, StepHeuristic | ((tier: SizeTier) => StepH
   }),
 };
 
-// `tier` only affects archs whose entry is tier-aware (currently just krea2). It defaults to
-// 'medium' so the exported signature stays usable without a dataset size — callers that know
-// the item count should pass getSizeTier(itemCount) so the suggestion and the exposure gauge
-// resolve the SAME target. If those two ever diverge the gauge will contradict the number the
-// advisor just recommended, which is exactly the failure the floor-warning below exists for.
+// `tier` only affects archs whose entry is tier-aware (currently just krea2). Callers pass an
+// item count and the tier is derived here, so the suggestion and the exposure gauge resolve the
+// SAME target. If those two ever diverge the gauge will contradict the number the advisor just
+// recommended, which is exactly the failure the floor-warning below exists for.
 const resolveHeuristic = (entry: StepHeuristic | ((tier: SizeTier) => StepHeuristic), tier: SizeTier): StepHeuristic =>
   typeof entry === 'function' ? entry(tier) : entry;
+
+// --- dataset-size-aware exposure target (2026-08-29) ---------------------------------------
+//
+// Every flat `stepsPerItem` above over-warns on a large dataset: required exposures per image
+// fall as the set grows, so a fixed target bands a 250+ image run "cool" when it is fine. That
+// limitation was documented in 2026-07-29 and the fix — "make the exposure target dataset-size-
+// aware in the shared gauge" — deferred (PLAN.md). This is that fix.
+//
+// The curve is NOT invented per arch. It is the one shape the repo has evidence for, taken from
+// the only arch with a measured + published triple, krea2: 45 steps/item at ~20 images, 32 at
+// ~60 (MEASURED — a documented 36-image run), 20 at ~250 (published 100-500 image recipes).
+// Those three points fit a power law with exponent ~ -0.32; -1/3 is used, and the corroboration
+// is pinned by a test: applied to krea2's own measured medium anchor, this curve predicts 20.4
+// steps/item at 250 images against its published 20.
+//
+// Two deliberate limits keep it honest:
+//   * It only ever DAMPS (scale is clamped to <= 1). Below the anchor every number is byte-
+//     identical to what this file recommended before, so no small/medium dataset advice moves
+//     and the batch-4 file thresholds (29-45 files, all under the anchor) cannot drift.
+//   * An arch that defines its own tier function (krea2) keeps it. Measured beats derived.
+//
+// The anchor is the geometric middle of the 'medium' band (30-149 -> ~65): the community guides
+// these flat numbers come from quote them for ordinary character/style sets, which is that band.
+export const SIZE_TARGET_ANCHOR_ITEMS = 65;
+export const SIZE_TARGET_EXPONENT = 1 / 3;
+
+/** Scale factor applied to a flat steps/item target at this dataset size. Never above 1. */
+export const sizeTargetScale = (itemCount: number): number => {
+  if (!itemCount || itemCount <= SIZE_TARGET_ANCHOR_ITEMS) return 1;
+  return (SIZE_TARGET_ANCHOR_ITEMS / itemCount) ** SIZE_TARGET_EXPONENT;
+};
+
+const applySizeScale = (heuristic: StepHeuristic, itemCount: number, archDefinesTiers: boolean): StepHeuristic => {
+  // An arch with its own measured tiers already expresses size-dependence; do not compound it.
+  if (archDefinesTiers) return heuristic;
+  const scale = sizeTargetScale(itemCount);
+  if (scale === 1) return heuristic;
+  return { ...heuristic, stepsPerItem: heuristic.stepsPerItem * scale };
+};
 
 // How an arch found its entry in a keyed table: its own key (or its `:variant` base),
 // a family prefix (wan22_14b_i2v -> wan, flux_kontext -> flux), or nothing at all.
@@ -91,16 +133,24 @@ const lookupByArch = <T>(table: Record<string, T>, arch: string | undefined | nu
   return { value: fallback, source: 'default' };
 };
 
+/**
+ * The exposure heuristic for this arch at this dataset size, plus where it came from.
+ *
+ * `itemCount` 0 (the default) means "no dataset yet": the 'medium' tier, unscaled — the same
+ * answer this function gave before it took a size at all.
+ */
 export const getHeuristicLookup = (
   arch: string | undefined | null,
-  tier: SizeTier = 'medium',
+  itemCount: number = 0,
 ): KeyedLookup<StepHeuristic> => {
   const found = lookupByArch(ARCH_HEURISTICS, arch, DEFAULT_HEURISTIC);
-  return { ...found, value: resolveHeuristic(found.value, tier) };
+  const tier = itemCount > 0 ? getSizeTier(itemCount) : 'medium';
+  const archDefinesTiers = typeof found.value === 'function';
+  return { ...found, value: applySizeScale(resolveHeuristic(found.value, tier), itemCount, archDefinesTiers) };
 };
 
-export const getHeuristic = (arch: string | undefined | null, tier: SizeTier = 'medium'): StepHeuristic =>
-  getHeuristicLookup(arch, tier).value;
+export const getHeuristic = (arch: string | undefined | null, itemCount: number = 0): StepHeuristic =>
+  getHeuristicLookup(arch, itemCount).value;
 
 export interface StepSuggestionInput {
   // total training files across selected datasets, with each dataset's num_repeats applied
@@ -159,7 +209,7 @@ const exposureRatioAt = (itemCount: number, heuristic: StepHeuristic, effectiveB
 // below the arch's floor-safe item count it returns 2 or 1 instead.
 export const maxHealthyBatch = (itemCount: number, arch: string | undefined | null): number => {
   if (!itemCount || itemCount <= 0) return 1;
-  const heuristic = getHeuristic(arch, getSizeTier(itemCount));
+  const heuristic = getHeuristic(arch, itemCount);
   let best: number = EFFECTIVE_BATCH_LADDER[0];
   for (const candidate of EFFECTIVE_BATCH_LADDER) {
     if (bandForRatio(exposureRatioAt(itemCount, heuristic, candidate)) === 'fry') break;
@@ -184,7 +234,7 @@ export const suggestSteps = (input: StepSuggestionInput): StepSuggestionResult |
   const batchSize = Math.max(1, input.batchSize || 1);
   const gradAccum = Math.max(1, input.gradientAccumulation || 1);
   const effectiveBatch = batchSize * gradAccum;
-  const lookup = getHeuristicLookup(arch, getSizeTier(itemCount));
+  const lookup = getHeuristicLookup(arch, itemCount);
   const heuristic = lookup.value;
 
   const clamp = (n: number) => Math.min(heuristic.maxSteps, Math.max(heuristic.minSteps, n));
@@ -266,14 +316,15 @@ export interface ExposureGauge {
 // Bands are relative to the arch's stepsPerItem heuristic: healthy ≈ 0.7–1.3× of it,
 // warm to 1.7×, fry-risk beyond (the Anima-TrainFlow bands, made arch-relative).
 //
-// Fork note (2026-08-29): the per-image target is a flat number per arch (only krea2 is
-// tiered — see ARCH_HEURISTICS), so on a large dataset the maxSteps ceiling binds before
-// the target is reached and the gauge read "cool — likely undertrained" against the very
-// step count the advisor had just recommended. Large sets usually converge at fewer passes
-// (that is why the ceiling exists), so that reading over-warned. The band is still 'cool'
-// — the exposure really is below the flat target — but `ceilingBound` is set and the label
-// says why, instead of asserting undertraining nobody measured. A per-arch tiered target
-// would be the real fix; it needs a measured run per arch (PLAN.md, AIO.10).
+// The target itself is dataset-size-aware (see sizeTargetScale above), so a large set is no
+// longer measured against a target sourced for a small one.
+//
+// `ceilingBound` handles what remains after that: past a certain size the arch's maxSteps
+// ceiling — not the target — is what the suggestion runs into, so the gauge would read
+// "cool — likely undertrained" about the very step count the advisor had just recommended.
+// The band stays 'cool' (the exposure really is below target) but the label says the ceiling
+// is why, instead of asserting undertraining nobody measured. Raising maxSteps is the actual
+// remedy there and it needs its own evidence — deliberately not guessed (PLAN.md).
 export const exposureGauge = (input: {
   itemCount: number;
   arch: string | undefined | null;
@@ -284,7 +335,7 @@ export const exposureGauge = (input: {
   const { itemCount, arch, steps } = input;
   if (!itemCount || itemCount <= 0 || !steps || steps <= 0) return null;
   const effectiveBatch = Math.max(1, input.batchSize || 1) * Math.max(1, input.gradientAccumulation || 1);
-  const heuristic = getHeuristic(arch, getSizeTier(itemCount));
+  const heuristic = getHeuristic(arch, itemCount);
   const target = heuristic.stepsPerItem;
   const exposures = (steps * effectiveBatch) / itemCount;
   const ratio = exposures / target;

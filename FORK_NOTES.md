@@ -435,6 +435,20 @@ Three pieces, all fork-only additions to existing fork/upstream files (no new fi
    gained the same caveat, since combining that note with the accumulation pattern is
    exactly the config the guard rejects.
 
+## Exposure target scales with dataset size (2026-08-29)
+
+`stepSuggestion.ts`'s per-arch `stepsPerItem` is damped on large datasets by
+`sizeTargetScale(n) = min(1, (65/n)^(1/3))`, so a big set is no longer graded against a
+target sourced for a small one. The exponent comes from krea2's measured+published triple
+(45/32/20 at ~20/~60/~250 images) and is validated by a test: applied to krea2's measured
+anchor it predicts 20.4 steps/item at 250 images vs its published 20. **It only ever damps**
+— at or below 65 images the scale is exactly 1, so no small/medium advice moved and the
+batch-4 thresholds (29/32/40/45 files) cannot drift — and **krea2 is exempt**, because its
+own tier function already expresses the size effect and compounding would double-count it.
+Changing the anchor or exponent must keep the krea2 corroboration test green. The remaining
+large-set distortion is the `maxSteps` ceiling, not the target; raising it needs its own
+evidence and is deliberately still unguessed (`ExposureGauge.ceilingBound` labels it).
+
 ## Effective batch: size-gated ceiling of 4 (2026-08-24, supersedes the flat cap of 2)
 
 **Effective batch (`batch_size × gradient_accumulation`) may go up to 4, but only where the

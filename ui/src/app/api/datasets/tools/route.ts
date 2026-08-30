@@ -1,20 +1,31 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import { getDatasetsRoot } from '@/server/settings';
-import { startToolRun, getRun, getActiveRun, cancelToolRun, ToolName } from '@/server/datasetTools';
+import { startToolRun, getRun, getActiveRun, cancelToolRun, readLog, ToolName, ToolRun } from '@/server/datasetTools';
 import { resolveDatasetPath, sanitizeDatasetName } from '@/server/datasetFiles';
 
 // Fork-only route (see FORK_NOTES.md). Start/poll/cancel the QoL dataset tool CLIs.
 // POST   { datasetName, tool: 'preflight'|'caption'|'prep', options? } -> { runId, outputName? }
-// GET    ?runId=...          -> run status + log
-// GET    ?datasetName=...    -> active run for that dataset (if any)
+// GET    ?runId=...&offset=N -> run status + the log appended since N (offset contract as
+//                              api/jobs/[jobID]/log: omit offset for the full retained tail)
+// GET    ?datasetName=...    -> active run for that dataset (if any), full retained log
 // DELETE ?runId=...          -> cancel a running tool
+
+// The run with its log replaced by the requested slice — the poller used to receive
+// the whole (up to 200 KB) buffer every second.
+const runWithSlice = (run: ToolRun, offset?: number) => {
+  const slice = readLog(run, offset);
+  const { logOffset: _dropped, ...rest } = run;
+  return { ...rest, log: slice.log, offset: slice.offset, reset: slice.reset };
+};
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const runId = url.searchParams.get('runId');
   const datasetName = url.searchParams.get('datasetName');
-  let run;
+  const offsetParam = url.searchParams.get('offset');
+  const offset = offsetParam === null ? undefined : Number(offsetParam);
+  let run: ToolRun | undefined;
   if (runId) {
     run = getRun(runId);
   } else if (datasetName) {
@@ -30,7 +41,7 @@ export async function GET(request: Request) {
   if (!run) {
     return NextResponse.json({ run: null });
   }
-  return NextResponse.json({ run });
+  return NextResponse.json({ run: runWithSlice(run, offset) });
 }
 
 export async function DELETE(request: Request) {
@@ -43,7 +54,7 @@ export async function DELETE(request: Request) {
   if (!run) {
     return NextResponse.json({ error: 'No such run' }, { status: 404 });
   }
-  return NextResponse.json({ run });
+  return NextResponse.json({ run: runWithSlice(run) });
 }
 
 // smart_prep's own rule (scripts/smart_prep.py): MINxMAX, both multiples of 64, MIN <= MAX.

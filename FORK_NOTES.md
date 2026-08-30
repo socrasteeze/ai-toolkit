@@ -72,7 +72,7 @@ Then `npm ci` (not `npm install`) in `ui/` so the lockfile stays untouched.
 | `ui/src/components/JobOverview.tsx` | +1 import; `gpuIds` memo calls fork-only `parseLocalGpuIndices` instead of `gpu_ids.split(',').map(parseInt)`; +1 `remoteMachine` memo; the "Assigned GPUs" line names the machine for a remote job | Upstream's expression yields `[NaN]` for a `"peer:0"` value, which silently matches no GPU and renders an empty widget. Re-apply the helper swap; the display line is cosmetic and can be dropped if it conflicts |
 | `ui/src/components/CaptionMonitor.tsx` | +1 import; same `parseLocalGpuIndices` swap in its `gpuIds` memo | Same reason and same fix as `JobOverview.tsx` |
 | `ui/src/components/JobsTable.tsx` | +1 import; +1 early branch in the `jobsDict` memo giving a remote job its own group keyed by the raw `gpu_ids` | Without it, `gpu?.index \|\| '0'` filed every remote job under THIS machine's GPU 0 — reporting the local card busy when it is idle. The group key must remain the raw `gpu_ids` string: the group header looks the queue up with `queues.find(q => q.gpu_ids === gpuKey)` to drive its START/STOP button |
-| `ui/cron/worker.ts` | +2 top-level `process.on('unhandledRejection'/'uncaughtException', ...)` handlers that log and keep the process alive, added right after the import | Re-add near the top of the file if upstream restructures it; this is a safety net for the same crash-loop class of bug, not a substitute for fixing the specific cause |
+| `ui/cron/worker.ts` | +2 top-level `process.on('unhandledRejection'/'uncaughtException', ...)` handlers that log and keep the process alive, added right after the import; `ensureJournalMode()` (WAL); and (2026-08-29) the queue-scan interval is `queuePollMs` (default 2000, env `AI_TOOLKIT_QUEUE_POLL_MS`) instead of upstream's literal `1000` — at 1 s the scan was 5–9 Prisma round-trips/s against the sqlite file the trainer writes every step | Re-add near the top of the file if upstream restructures it; this is a safety net for the same crash-loop class of bug, not a substitute for fixing the specific cause. Keep `this.interval = queuePollMs` if upstream changes the constructor |
 | `ui/src/server/apiCache.ts` | Cache entries carry a `pending` flag; callers share in-flight work past the result TTL, freshness starts when the fetch resolves, failed promises are evicted, and a never-settling fetch becomes replaceable after 30s. Prevents a slow 6s peer probe behind a 5s TTL from duplicating while avoiding a permanently poisoned key | Preserve the separate resolved TTL and pending deadline. A superseded old promise may finish, but identity checks prevent it from replacing the newer entry |
 | `ui/src/app/api/gpu/route.ts` | Adds a 10s timeout to the `nvidia-smi -L`/`which` availability subprocess and the full stats query | Keep every external GPU subprocess bounded; this pairs with `apiCache`'s pending deadline so a hung driver command cannot accumulate forever or poison GPU polling |
 | `ui/src/server/monitor.ts` | Adds the same 10s timeout to upstream's one-shot `nvidia-smi` fallback for the always-on SSE device monitor | Keep the resident loop's watchdog and the fallback timeout. A driver command that hangs must not hold the monitor tick forever |
@@ -114,7 +114,7 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
 - `scripts/requirements-qol.txt` — extra deps for B2/B3 (`onnxruntime-gpu`); deliberately NOT added to upstream `requirements.txt`
 - `ui/src/server/datasetTools.ts` — B5: spawns the QoL CLIs as child processes (uses upstream's `ui/cron/pythonPath.ts` resolver), buffers logs in-memory for polling; deliberately NOT a Prisma job. Finalization is idempotent. 2026-08-29: `cancelToolRun(runId)` kills the child (status becomes `cancelled` when it actually exits), a prep run also locks its output dataset (`locks`), and running children are killed on a clean process exit. **Known limit, documented not fixed:** the registry is process memory — a UI restart forgets finished logs, and a hard `taskkill /F` (what `stop.bat` does) skips the exit hook so a child finishes on its own
 - `ui/src/server/toolRunRegistry.ts` — the bookkeeping half of the above, split out so it can be tested without spawning Python or loading Prisma (`datasetTools.ts` reaches both through `cron/paths`). Owns run registration, per-dataset ownership and the one-hour retention timer, which starts only after the child exits so a long tool cannot be evicted mid-run. **A finished run stays discoverable until retention expires** — `getActive` is what backs `GET /api/datasets/tools?datasetName=`, so retiring it at exit made reopening the modal show an empty panel instead of the completed log. Exclusivity does not depend on retiring it: the caller's guard is `status === 'running'`. Retirement is identity-checked on both maps so a stale run's timer cannot evict its replacement
-- `ui/src/app/api/datasets/tools/route.ts` — B5: POST starts a preflight/caption/prep run (returns `outputName` for prep), GET polls by runId or datasetName (400 with neither), DELETE `?runId=` cancels; source and prep-output paths use the same canonical validator as destructive dataset routes. 2026-08-29: malformed JSON is a 400 not an unhandled 500; `buckets` is checked for multiples-of-64 / MIN<=MAX here (was an argparse trace in the log pane); an existing prep output folder is a 409 unless `options.resume` is true (a typo naming another dataset used to merge into it silently)
+- `ui/src/app/api/datasets/tools/route.ts` — B5: POST starts a preflight/caption/prep run (returns `outputName` for prep), GET polls by runId or datasetName (400 with neither) and takes `?offset=` so it returns only the log appended since (same contract as `api/jobs/[jobID]/log`; the whole ≤200 KB buffer used to ship every second — `datasetTools.ts` keeps a chunked `LogBuffer` and `readLog()` slices it), DELETE `?runId=` cancels; source and prep-output paths use the same canonical validator as destructive dataset routes. 2026-08-29: malformed JSON is a 400 not an unhandled 500; `buckets` is checked for multiples-of-64 / MIN<=MAX here (was an argparse trace in the log pane); an existing prep output folder is a 409 unless `options.resume` is true (a typo naming another dataset used to merge into it silently)
 - `ui/src/components/DatasetTools.tsx` — B5: "Dataset Tools" TopBar button + modal on the dataset page (WD14 tagger options, smart-prep buckets/output, advisory pre-flight, live log). Polling uses the single-flight `usePollLoop`, a 10s Axios timeout, and abort-on-close/run-change, so slow requests cannot overlap and hung/transient requests cannot permanently stop updates. Pre-flight remains advisory only
 - `ui/src/hooks/useHelpMode.ts` — session toggle state (`helpModeState`) for revealing extra field-help icons on New Training Job
 - `ui/src/components/HelpModeButton.tsx` — TopBar "Help" button; pressed style when help mode is on
@@ -227,7 +227,7 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
 - `ui/cron/actions/startRemoteJob.ts` — the remote lifecycle (stage, rewrite, dispatch,
   exact-mirror repair, retry stop until acknowledged, freshly replace checkpoints on rerun,
   fail honestly). See "Remote execution" below
-- `ui/src/app/api/machines/route.ts` — GET probes every peer's `/api/gpu` in parallel and
+- `ui/src/app/api/machines/route.ts` — (2026-08-29: probe result cached 30 s, was 5 s; `useMachines` polls no faster than 30 s regardless of the GPU list's cadence — a probe can cost a full 6 s timeout per offline peer, and POST still invalidates) GET probes every peer's `/api/gpu` in parallel and
   reports each as online-with-GPUs or offline-with-a-reason; POST saves the registry and
   invalidates the probe cache so its immediate refresh cannot return the old machine list
 - `ui/src/hooks/useMachines.ts` — wraps `useGPUInfo` and merges peer GPUs into one option
@@ -363,16 +363,33 @@ and quantization; still apply both cache keys + `loss_sync_every` — those cost
 no VRAM. Quality gate before trusting any code-path change: two 500-step runs
 (same seed) pre/post, loss curves overlaid + fixed 4-prompt grids compared.
 
-**Audited and deliberately NOT changed:** Windows `num_workers` hardcoded to 0
-in `toolkit/data_loader.py` (dataset objects hold live model refs — Windows
-spawn workers would need to pickle them; use WSL if the loader ever becomes the
-measured bottleneck); `pin_memory` (no-op with the custom DTO collate); EMA
-(already off by default); attention (already SDPA for Anima); the extra
+**Audited and deliberately NOT changed:** `pin_memory` (no-op with the custom DTO
+collate); EMA (already off by default); attention (already SDPA for Anima); the extra
 per-step sync in `get_avg_learning_rate()` (automagic-family only — not in the
-Anima recipe); legacy `UITrainer.py`. **Deferred (Phase 3 stretch, needs
-operator input):** fused backward + stochastic rounding for AdamW (automagic3
-already has a fused path built in), `torch.compile` (Windows/Triton viability
-question), dataloader prefetch rework.
+Anima recipe, but it IS in the four `*_automagic` / `krea2_lora_16gb` presets); legacy
+`UITrainer.py`. **Corrected 2026-08-29 (two earlier claims here were stale):**
+(a) `num_workers` is no longer hardcoded to 0 on Windows — upstream reads
+`dataset.num_workers` (default 2) / `prefetch_factor` and sets `persistent_workers`
+(`toolkit/data_loader.py` ~730-738), so a per-preset value is a config-only lever;
+(b) `torch.compile` is upstream-native (`ModelConfig.compile`, `block_compile`,
+`compile_mode`, `compile_fullgraph`, `compile_dynamic` in `toolkit/config_modules.py`;
+implementation with per-block compile and rollback-on-failure in
+`jobs/process/BaseSDTrainProcess.py`) and `triton_windows` is installed in the repo
+`.venv` on torch 2.9.1+cu128, so the "Windows/Triton viability" question is answered —
+no fork code is needed, only a preset and a measured run (see PLAN.md 2026-08-29
+performance pass). **Still deferred (needs a measured run):** fused AdamW
+(`optimizer_params: {fused: true}` already passes through `toolkit/optimizer.py` for the
+non-quantized, non-offloaded anima presets), `gradient_checkpointing: false` on
+`anima_lora_performance`, `layer_offloading_transformer_percent` < 1 on the krea2
+offload presets, `cache_text_embeddings` on the non-anima presets.
+
+**Preset levers (2026-08-29):** every shipped preset now carries `cache_latents: true`
+alongside `cache_latents_to_disk: true` (disk-only caching re-read + deep-copied every
+latent from disk every step — `toolkit/dataloader_mixins.py` `cleanup_latent`/`get_latent`;
+only the fast and laptop profiles had both before), `loss_sync_every: 4` and
+`ui_db_poll_seconds: 2`. All three are config-only, cost no VRAM, and leave the training
+math unchanged. The config defaults stay at upstream's (`loss_sync_every` 1,
+`ui_db_poll_seconds` 0) so hand-written configs behave exactly as upstream.
 
 ## Automagic + gradient accumulation guard (2026-07-29)
 

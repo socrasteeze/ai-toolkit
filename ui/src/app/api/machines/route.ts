@@ -60,7 +60,9 @@ async function collect(): Promise<MachineReport[]> {
 
 export async function GET() {
   try {
-    const machines = await cached('peer-machines', collect, 5000);
+    // 30 s: peers don't come and go on the GPU list's 5 s cadence, and a probe can cost a
+    // full timeout per offline peer. POST invalidates this, so edits still show at once.
+    const machines = await cached('peer-machines', collect, 30_000);
     return NextResponse.json({ machines });
   } catch (error) {
     console.error('Error listing machines:', error);

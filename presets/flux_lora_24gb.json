@@ -31,7 +31,8 @@
               1024
             ],
             "num_repeats": 1,
-            "cache_latents_to_disk": true
+            "cache_latents_to_disk": true,
+            "cache_latents": true
           }
         ],
         "train": {
@@ -50,7 +51,9 @@
           "ema_config": {
             "use_ema": true,
             "ema_decay": 0.99
-          }
+          },
+          "loss_sync_every": 4,
+          "ui_db_poll_seconds": 2
         },
         "model": {
           "name_or_path": "black-forest-labs/FLUX.1-dev",
@@ -73,7 +76,7 @@
   },
   "meta": {
     "name": "[name]",
-    "version": "1.1",
-    "description": "FLUX.1-dev LoRA sized for ~24GB VRAM (fp8 quantized model + text encoder), mirroring config/examples/train_lora_flux_24gb.yaml. v1.1: restored ema_config 0.99 from the canonical yaml this preset mirrors (Ostris: 'recommended to leave on')."
+    "version": "1.2",
+    "description": "FLUX.1-dev LoRA sized for ~24GB VRAM (fp8 quantized model + text encoder), mirroring config/examples/train_lora_flux_24gb.yaml. v1.1: restored ema_config 0.99 from the canonical yaml this preset mirrors (Ostris: 'recommended to leave on'). Speed (2026-08-29): latents are served from RAM after the first pass (cache_latents + cache_latents_to_disk — disk-only caching re-read every latent every step), loss_sync_every 4, ui_db_poll_seconds 2. Training math unchanged."
   }
 }

@@ -27,9 +27,12 @@
             "folder_path": "/path/to/images/folder",
             "caption_ext": "txt",
             "caption_dropout_rate": 0.05,
-            "resolution": [1024],
+            "resolution": [
+              1024
+            ],
             "num_repeats": 1,
-            "cache_latents_to_disk": true
+            "cache_latents_to_disk": true,
+            "cache_latents": true
           }
         ],
         "train": {
@@ -43,7 +46,9 @@
           "optimizer": "adamw8bit",
           "content_or_style": "balanced",
           "lr": 0.0001,
-          "dtype": "bf16"
+          "dtype": "bf16",
+          "loss_sync_every": 4,
+          "ui_db_poll_seconds": 2
         },
         "model": {
           "name_or_path": "stabilityai/stable-diffusion-xl-base-1.0",
@@ -64,7 +69,7 @@
   },
   "meta": {
     "name": "[name]",
-    "version": "1.0",
-    "description": "Character LoRA on base SDXL. Use a unique trigger word in captions. Point model.name_or_path at any SDXL-family checkpoint (RealVis, Juggernaut, etc.) to train on it instead."
+    "version": "1.1",
+    "description": "Character LoRA on base SDXL. Use a unique trigger word in captions. Point model.name_or_path at any SDXL-family checkpoint (RealVis, Juggernaut, etc.) to train on it instead. Speed (2026-08-29): latents are served from RAM after the first pass (cache_latents + cache_latents_to_disk — disk-only caching re-read every latent every step), loss_sync_every 4, ui_db_poll_seconds 2. Training math unchanged."
   }
 }

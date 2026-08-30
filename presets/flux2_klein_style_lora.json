@@ -32,7 +32,8 @@
               1024
             ],
             "num_repeats": 1,
-            "cache_latents_to_disk": true
+            "cache_latents_to_disk": true,
+            "cache_latents": true
           }
         ],
         "train": {
@@ -47,7 +48,9 @@
           "timestep_type": "weighted",
           "content_or_style": "style",
           "lr": 0.0001,
-          "dtype": "bf16"
+          "dtype": "bf16",
+          "loss_sync_every": 4,
+          "ui_db_poll_seconds": 2
         },
         "model": {
           "name_or_path": "black-forest-labs/FLUX.2-klein-base-4B",
@@ -71,7 +74,7 @@
   },
   "meta": {
     "name": "[name]",
-    "version": "1.0",
-    "description": "Style LoRA on FLUX.2 Klein 4B (gated on HF). Network 64/32 linear + 32/16 Conv2d (ratio 4:2:2:1) — a HALF-scale fold of LDS's researched 128/64/64/32 style recipe (Calvin Herbst 64-run sweep + BFL's official Klein training example, both linear+Conv2d). 128 was judged too heavy for a 4B model; 64 keeps the sweep's Conv2d insight at saner dims. Alpha = rank/2 (same as LDS). Weighted timesteps = Klein arch canonical. Content-only captions, no trigger. Steps: LDS computes 50/image clamped [1200,3000]. For the 9B: arch flux2_klein_9b + the -9B path. If you want to reproduce LDS exactly, set linear 128 / alpha 64 / conv 64 / conv_alpha 32."
+    "version": "1.1",
+    "description": "Style LoRA on FLUX.2 Klein 4B (gated on HF). Network 64/32 linear + 32/16 Conv2d (ratio 4:2:2:1) — a HALF-scale fold of LDS's researched 128/64/64/32 style recipe (Calvin Herbst 64-run sweep + BFL's official Klein training example, both linear+Conv2d). 128 was judged too heavy for a 4B model; 64 keeps the sweep's Conv2d insight at saner dims. Alpha = rank/2 (same as LDS). Weighted timesteps = Klein arch canonical. Content-only captions, no trigger. Steps: LDS computes 50/image clamped [1200,3000]. For the 9B: arch flux2_klein_9b + the -9B path. If you want to reproduce LDS exactly, set linear 128 / alpha 64 / conv 64 / conv_alpha 32. Speed (2026-08-29): latents are served from RAM after the first pass (cache_latents + cache_latents_to_disk — disk-only caching re-read every latent every step), loss_sync_every 4, ui_db_poll_seconds 2. Training math unchanged."
   }
 }

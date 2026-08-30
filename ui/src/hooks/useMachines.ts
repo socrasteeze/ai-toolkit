@@ -44,6 +44,8 @@ export interface GpuOption {
   machineId: string | null;
 }
 
+const MACHINES_POLL_MS = 30_000;
+
 export default function useMachines(reloadInterval: null | number = null) {
   const { gpuList, isGPUInfoLoaded } = useGPUInfo(null, reloadInterval);
   const [machines, setMachines] = useState<MachineReport[]>([]);
@@ -63,7 +65,12 @@ export default function useMachines(reloadInterval: null | number = null) {
     }
   };
 
-  usePollLoop(fetchMachines, reloadInterval, []);
+  // Peers do not come and go on the local GPU list's cadence (typically 5 s), and
+  // each probe can cost a full timeout per offline peer. Poll them no faster than
+  // every 30 s; POST /api/machines invalidates the server cache so an edit still
+  // shows up immediately via refreshMachines.
+  const machinesInterval = reloadInterval === null ? null : Math.max(reloadInterval, MACHINES_POLL_MS);
+  usePollLoop(fetchMachines, machinesInterval, []);
 
   const options: GpuOption[] = useMemo(() => {
     const local: GpuOption[] = gpuList.map(gpu => ({

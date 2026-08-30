@@ -25,6 +25,10 @@ interface ToolRun {
   outputName?: string;
 }
 
+// What GET returns: the run plus the log slice since the offset we sent
+// (`reset` = the slice replaces what we have rather than extending it).
+type ToolRunSlice = ToolRun & { offset: number; reset: boolean };
+
 const STATUS_LABEL: Record<ToolRun['status'], string> = {
   running: 'running…',
   done: 'finished',
@@ -70,6 +74,9 @@ export default function DatasetTools({ datasetName, onDatasetChanged }: Props) {
 
   const logRef = useRef<HTMLPreElement | null>(null);
   const pollAbortRef = useRef<AbortController | null>(null);
+  // byte offset of the log we already hold for pollRunId — the poll asks only for what
+  // was appended since (a long tagger run used to ship its whole buffer every second)
+  const logOffsetRef = useRef<number | null>(null);
   const pollRun = useCallback(async () => {
     if (!isOpen || !pollRunId) return;
 
@@ -77,18 +84,29 @@ export default function DatasetTools({ datasetName, onDatasetChanged }: Props) {
     pollAbortRef.current?.abort();
     pollAbortRef.current = controller;
     try {
-      const res = await apiClient.get(`/api/datasets/tools?runId=${encodeURIComponent(pollRunId)}`, {
+      const offset = logOffsetRef.current;
+      const query = offset === null ? '' : `&offset=${offset}`;
+      const res = await apiClient.get(`/api/datasets/tools?runId=${encodeURIComponent(pollRunId)}${query}`, {
         signal: controller.signal,
         timeout: POLL_TIMEOUT_MS,
       });
-      const nextRun: ToolRun | null = res.data.run;
+      const nextRun: ToolRunSlice | null = res.data.run;
       if (!nextRun) {
         setPollRunId(null);
         return;
       }
 
+      const { offset: nextOffset, reset, log: slice, ...runFields } = nextRun;
+      logOffsetRef.current = nextOffset;
       // keep the output name the POST reported — the poll payload doesn't carry it
-      setRun(prev => ({ ...nextRun, outputName: prev?.runId === nextRun.runId ? prev.outputName : undefined }));
+      setRun(prev => {
+        const same = prev?.runId === runFields.runId;
+        return {
+          ...runFields,
+          log: reset || !same ? slice : (prev?.log ?? '') + slice,
+          outputName: same ? prev?.outputName : undefined,
+        };
+      });
       // A poll that got through clears whatever the last failed one reported, so
       // a blip that recovers on its own does not leave a stale error on screen.
       setError(null);
@@ -135,9 +153,11 @@ export default function DatasetTools({ datasetName, onDatasetChanged }: Props) {
       })
       .then(res => {
         if (cancelled) return;
-        const activeRun: ToolRun | null = res.data.run;
+        const activeRun: ToolRunSlice | null = res.data.run;
         if (activeRun) {
-          setRun(activeRun);
+          const { offset, reset: _reset, ...runFields } = activeRun;
+          logOffsetRef.current = offset;
+          setRun(runFields);
           if (activeRun.status === 'running') setPollRunId(activeRun.runId);
         }
       })
@@ -167,6 +187,7 @@ export default function DatasetTools({ datasetName, onDatasetChanged }: Props) {
     apiClient
       .post('/api/datasets/tools', { datasetName, tool, options })
       .then(res => {
+        logOffsetRef.current = null;
         setRun({
           runId: res.data.runId,
           tool,

@@ -30,7 +30,8 @@
               1024
             ],
             "num_repeats": 1,
-            "cache_latents_to_disk": true
+            "cache_latents_to_disk": true,
+            "cache_latents": true
           }
         ],
         "train": {
@@ -45,7 +46,9 @@
           "timestep_type": "sigmoid",
           "content_or_style": "balanced",
           "lr": 0.0001,
-          "dtype": "bf16"
+          "dtype": "bf16",
+          "loss_sync_every": 4,
+          "ui_db_poll_seconds": 2
         },
         "model": {
           "name_or_path": "Tongyi-MAI/Z-Image-Turbo",
@@ -70,7 +73,7 @@
   },
   "meta": {
     "name": "[name]",
-    "version": "1.1",
-    "description": "Character LoRA on Z-Image Turbo (Tongyi-MAI/Z-Image-Turbo). Ported from LoRA Dataset Studio's researched built-in (rank 32/alpha 32 = community default, lower-regret for hard faces; sigmoid timesteps per Ostris' subject guidance). Prose captions with a unique trigger word. Steps: LDS computes ~120/image clamped [1500,3500] — 2500 here is the midpoint; scale to your set. Sample settings assume the distilled Turbo (CFG 1, 8 steps). v1.1 (2026-08-29): arch is zimage:turbo with Ostris' training adapter (assistant_lora_path) — v1.0 paired the Turbo weights with the base zimage arch and no adapter, i.e. trained the distilled model directly. For base Z-Image instead, set arch zimage, name_or_path Tongyi-MAI/Z-Image and drop assistant_lora_path."
+    "version": "1.2",
+    "description": "Character LoRA on Z-Image Turbo (Tongyi-MAI/Z-Image-Turbo). Ported from LoRA Dataset Studio's researched built-in (rank 32/alpha 32 = community default, lower-regret for hard faces; sigmoid timesteps per Ostris' subject guidance). Prose captions with a unique trigger word. Steps: LDS computes ~120/image clamped [1500,3500] — 2500 here is the midpoint; scale to your set. Sample settings assume the distilled Turbo (CFG 1, 8 steps). v1.1 (2026-08-29): arch is zimage:turbo with Ostris' training adapter (assistant_lora_path) — v1.0 paired the Turbo weights with the base zimage arch and no adapter, i.e. trained the distilled model directly. For base Z-Image instead, set arch zimage, name_or_path Tongyi-MAI/Z-Image and drop assistant_lora_path. Speed (2026-08-29): latents are served from RAM after the first pass (cache_latents + cache_latents_to_disk — disk-only caching re-read every latent every step), loss_sync_every 4, ui_db_poll_seconds 2. Training math unchanged."
   }
 }

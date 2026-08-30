@@ -29,7 +29,8 @@
               1024
             ],
             "num_repeats": 1,
-            "cache_latents_to_disk": true
+            "cache_latents_to_disk": true,
+            "cache_latents": true
           }
         ],
         "train": {
@@ -43,7 +44,9 @@
           "optimizer": "adamw8bit",
           "content_or_style": "balanced",
           "lr": 0.0001,
-          "dtype": "bf16"
+          "dtype": "bf16",
+          "loss_sync_every": 4,
+          "ui_db_poll_seconds": 2
         },
         "model": {
           "name_or_path": "stabilityai/stable-diffusion-xl-base-1.0",
@@ -64,7 +67,7 @@
   },
   "meta": {
     "name": "[name]",
-    "version": "1.0",
-    "description": "Concept (object/action) LoRA on base SDXL. Ported from LDS's researched built-in: rank 16 (simple concepts 4-8, complex 16-32 — mid-choice), alpha = rank/2. Booru-tag captions naming everything EXCEPT the concept. No conv layers here (the LDS concept recipe doesn't specify them; the sibling character/style presets do use conv 16/16). Steps: LDS computes 475*sqrt(images) clamped [2000,12000]."
+    "version": "1.1",
+    "description": "Concept (object/action) LoRA on base SDXL. Ported from LDS's researched built-in: rank 16 (simple concepts 4-8, complex 16-32 — mid-choice), alpha = rank/2. Booru-tag captions naming everything EXCEPT the concept. No conv layers here (the LDS concept recipe doesn't specify them; the sibling character/style presets do use conv 16/16). Steps: LDS computes 475*sqrt(images) clamped [2000,12000]. Speed (2026-08-29): latents are served from RAM after the first pass (cache_latents + cache_latents_to_disk — disk-only caching re-read every latent every step), loss_sync_every 4, ui_db_poll_seconds 2. Training math unchanged."
   }
 }

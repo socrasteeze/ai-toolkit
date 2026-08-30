@@ -30,7 +30,8 @@
               1024
             ],
             "num_repeats": 1,
-            "cache_latents_to_disk": true
+            "cache_latents_to_disk": true,
+            "cache_latents": true
           }
         ],
         "train": {
@@ -50,7 +51,9 @@
             "weight_decay": 0.0001,
             "min_lr": 1e-06,
             "max_lr": 0.0001
-          }
+          },
+          "loss_sync_every": 4,
+          "ui_db_poll_seconds": 2
         },
         "model": {
           "name_or_path": "black-forest-labs/FLUX.2-klein-base-4B",
@@ -74,7 +77,7 @@
   },
   "meta": {
     "name": "[name]",
-    "version": "1.0",
-    "description": "Character LoRA on FLUX.2 Klein 4B (gated on HF — accept the licence). UNVERIFIED: ported from LDS's built-in, itself extrapolated from generic subject guidance (rank 16/16 family default, sigmoid timesteps NOT Klein-verified). For the 9B: arch flux2_klein_9b + black-forest-labs/FLUX.2-klein-base-9B (needs ~32-48 GB VRAM). Steps: LDS computes ~120/image clamped [1500,3500]. automagic3 variant: the LR above is a launch point, not a target - the optimizer adapts one LR per param group from gradient sign consensus, so no scheduler is needed. min_lr/max_lr rail it (max_lr = this preset's own LR, so it can only adapt downward). Gradient accumulation MUST stay 1 unless you also set optimizer_params.fused=false: fused automagic steps every micro-batch and the trainer hard-errors at config parse otherwise. UNVERIFIED for this arch - automagic3 has no published per-arch data; Krea 2 is the only arch in this fork with a real measured run."
+    "version": "1.1",
+    "description": "Character LoRA on FLUX.2 Klein 4B (gated on HF — accept the licence). UNVERIFIED: ported from LDS's built-in, itself extrapolated from generic subject guidance (rank 16/16 family default, sigmoid timesteps NOT Klein-verified). For the 9B: arch flux2_klein_9b + black-forest-labs/FLUX.2-klein-base-9B (needs ~32-48 GB VRAM). Steps: LDS computes ~120/image clamped [1500,3500]. automagic3 variant: the LR above is a launch point, not a target - the optimizer adapts one LR per param group from gradient sign consensus, so no scheduler is needed. min_lr/max_lr rail it (max_lr = this preset's own LR, so it can only adapt downward). Gradient accumulation MUST stay 1 unless you also set optimizer_params.fused=false: fused automagic steps every micro-batch and the trainer hard-errors at config parse otherwise. UNVERIFIED for this arch - automagic3 has no published per-arch data; Krea 2 is the only arch in this fork with a real measured run. Speed (2026-08-29): latents are served from RAM after the first pass (cache_latents + cache_latents_to_disk — disk-only caching re-read every latent every step), loss_sync_every 4, ui_db_poll_seconds 2. Training math unchanged."
   }
 }

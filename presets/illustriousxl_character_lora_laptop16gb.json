@@ -27,7 +27,9 @@
             "folder_path": "/path/to/images/folder",
             "caption_ext": "txt",
             "caption_dropout_rate": 0.05,
-            "resolution": [1024],
+            "resolution": [
+              1024
+            ],
             "num_repeats": 1,
             "cache_latents": true,
             "cache_latents_to_disk": true
@@ -45,7 +47,8 @@
           "content_or_style": "balanced",
           "lr": 0.0001,
           "dtype": "bf16",
-          "ui_db_poll_seconds": 2
+          "ui_db_poll_seconds": 2,
+          "loss_sync_every": 4
         },
         "model": {
           "name_or_path": "OnomaAIResearch/Illustrious-XL-v1.0",
@@ -67,7 +70,7 @@
   },
   "meta": {
     "name": "[name]",
-    "version": "1.0",
-    "description": "Character LoRA on IllustriousXL (SDXL arch) for a 16GB laptop GPU. Recipe values (rank 32/alpha 32 + conv 16/16, adamw8bit, LR 1e-4, 1024 training resolution) are UNCHANGED from illustriousxl_character_lora. The point of this variant is batch discipline: this preset keeps batch 1 and reaches an effective batch of 2 via gradient_accumulation 2, trading wall-clock for VRAM. Effective batch 2, not 4: the step suggestion divides by effective batch, and at 4 that quotient drops under the arch's step floor on any small/medium dataset, gets clamped back up, and silently inflates real per-image exposure 2-3x past target - the advisor then recommends a step count its own exposure gauge would flag as fry-risk. The advisor's Illustrious recipe now also recommends batch 2, so the two agree; it remains VRAM-unaware, so on this machine reach effective batch through accumulation as configured here rather than raising batch size. Note the advisor also suggests a HIGHER LR for Illustrious (2e-4 small / 3e-4 otherwise) than the 1e-4 inherited here, and its optimizer choice is genuinely contested in the source guides (adamw8bit + constant vs Prodigy + cosine) - those are recipe questions, unaffected by this hardware profile, and are left exactly as the parent preset had them. Other deltas: low_vram true, cache_latents true alongside cache_latents_to_disk so latents are served from RAM rather than re-read and deep-copied from disk every step (native Windows runs the dataloader at num_workers 0), and ui_db_poll_seconds 2 to throttle the UI's per-step sqlite polling (cost: up to 2s of latency on the stop/save-now buttons). Left unquantized like the parent, holding quantization in reserve as an OOM lever. NOT measured on 16GB hardware. Point model.name_or_path at your local Illustrious checkpoint if you have one. Use booru-style tag captions with a unique trigger tag first. If you swap the optimizer to an Automagic variant, this batch-1-plus-accumulation pattern will not work as-is - Automagic fuses its step into the backward pass by default, so gradient_accumulation must go back to 1 and the effective batch reached by raising batch size instead."
+    "version": "1.1",
+    "description": "Character LoRA on IllustriousXL (SDXL arch) for a 16GB laptop GPU. Recipe values (rank 32/alpha 32 + conv 16/16, adamw8bit, LR 1e-4, 1024 training resolution) are UNCHANGED from illustriousxl_character_lora. The point of this variant is batch discipline: this preset keeps batch 1 and reaches an effective batch of 2 via gradient_accumulation 2, trading wall-clock for VRAM. Effective batch 2, not 4: the step suggestion divides by effective batch, and at 4 that quotient drops under the arch's step floor on any small/medium dataset, gets clamped back up, and silently inflates real per-image exposure 2-3x past target - the advisor then recommends a step count its own exposure gauge would flag as fry-risk. The advisor's Illustrious recipe now also recommends batch 2, so the two agree; it remains VRAM-unaware, so on this machine reach effective batch through accumulation as configured here rather than raising batch size. Note the advisor also suggests a HIGHER LR for Illustrious (2e-4 small / 3e-4 otherwise) than the 1e-4 inherited here, and its optimizer choice is genuinely contested in the source guides (adamw8bit + constant vs Prodigy + cosine) - those are recipe questions, unaffected by this hardware profile, and are left exactly as the parent preset had them. Other deltas: low_vram true, cache_latents true alongside cache_latents_to_disk so latents are served from RAM rather than re-read and deep-copied from disk every step (native Windows runs the dataloader at num_workers 0), and ui_db_poll_seconds 2 to throttle the UI's per-step sqlite polling (cost: up to 2s of latency on the stop/save-now buttons). Left unquantized like the parent, holding quantization in reserve as an OOM lever. NOT measured on 16GB hardware. Point model.name_or_path at your local Illustrious checkpoint if you have one. Use booru-style tag captions with a unique trigger tag first. If you swap the optimizer to an Automagic variant, this batch-1-plus-accumulation pattern will not work as-is - Automagic fuses its step into the backward pass by default, so gradient_accumulation must go back to 1 and the effective batch reached by raising batch size instead. Speed (2026-08-29): latents are served from RAM after the first pass (cache_latents + cache_latents_to_disk — disk-only caching re-read every latent every step), loss_sync_every 4, ui_db_poll_seconds 2. Training math unchanged."
   }
 }

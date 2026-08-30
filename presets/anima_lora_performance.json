@@ -42,7 +42,8 @@
               1024
             ],
             "num_repeats": 1,
-            "cache_latents_to_disk": true
+            "cache_latents_to_disk": true,
+            "cache_latents": true
           }
         ],
         "train": {
@@ -57,7 +58,9 @@
           "optimizer": "adamw",
           "timestep_type": "sigmoid",
           "lr": 2e-05,
-          "dtype": "bf16"
+          "dtype": "bf16",
+          "loss_sync_every": 4,
+          "ui_db_poll_seconds": 2
         },
         "model": {
           "name_or_path": "circlestone-labs/Anima-Base-v1.0-Diffusers",
@@ -80,7 +83,7 @@
   },
   "meta": {
     "name": "[name]",
-    "version": "3.0",
-    "description": "Anima 2B LoRA, performance profile: full bf16, no quantization, batch 2 — sized for a 32GB card with nothing else running. Author's recipe (rank 32, AdamW 2e-5, LLM adapter frozen — upstream's default) on everything except effective batch: the author pairs this with effective batch 4, and this fork ships 2. Reason: at effective batch 4 the in-app step suggestion divides by it, falls under its step floor on a small/medium dataset, and gets clamped back up — which silently pushes real per-image exposure 2-3x past target and overfits. Rank/alpha/LR/optimizer are untouched author values; set batch_size back to 4 if you are reproducing the author's config exactly on a large dataset. The ignore_if_contains list mirrors sd-scripts' Block-only targeting (no LoRA on AdaLN modulation/embedders/final projection) in upstream's diffusers module names. Note: the author's sigmoid_scale 1.3 timestep widening is not supported by upstream's Anima implementation. Use the background preset when sharing the GPU with desktop work. Effective batch 4 (batch 4 x accum 1) matches the Anima author's published recipe. Needs >=32 training files: below that the advisor's step floor binds and real per-image exposure runs into the fry band -- use anima_lora_background (effective batch 2) instead."
+    "version": "3.1",
+    "description": "Anima 2B LoRA, performance profile: full bf16, no quantization, batch 2 — sized for a 32GB card with nothing else running. Author's recipe (rank 32, AdamW 2e-5, LLM adapter frozen — upstream's default) on everything except effective batch: the author pairs this with effective batch 4, and this fork ships 2. Reason: at effective batch 4 the in-app step suggestion divides by it, falls under its step floor on a small/medium dataset, and gets clamped back up — which silently pushes real per-image exposure 2-3x past target and overfits. Rank/alpha/LR/optimizer are untouched author values; set batch_size back to 4 if you are reproducing the author's config exactly on a large dataset. The ignore_if_contains list mirrors sd-scripts' Block-only targeting (no LoRA on AdaLN modulation/embedders/final projection) in upstream's diffusers module names. Note: the author's sigmoid_scale 1.3 timestep widening is not supported by upstream's Anima implementation. Use the background preset when sharing the GPU with desktop work. Effective batch 4 (batch 4 x accum 1) matches the Anima author's published recipe. Needs >=32 training files: below that the advisor's step floor binds and real per-image exposure runs into the fry band -- use anima_lora_background (effective batch 2) instead. Speed (2026-08-29): latents are served from RAM after the first pass (cache_latents + cache_latents_to_disk — disk-only caching re-read every latent every step), loss_sync_every 4, ui_db_poll_seconds 2. Training math unchanged."
   }
 }

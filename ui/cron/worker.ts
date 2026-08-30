@@ -49,12 +49,24 @@ async function ensureJournalMode() {
   }
 }
 
+// Fork: queue scan cadence. Each tick is one `queue.findMany` plus one or two
+// `job.find*` per queue against the same sqlite file the trainer writes its step
+// counter to — at 1 s that was the largest steady-state source of lock contention
+// on aitk_db.db (PLAN.md 2026-08-29 performance pass). Nothing here needs
+// sub-second latency: the only effect of a slower tick is how soon a queued job
+// starts after the previous one ends. Override with AI_TOOLKIT_QUEUE_POLL_MS.
+const DEFAULT_QUEUE_POLL_MS = 2000;
+const queuePollMs = (() => {
+  const raw = Number(process.env.AI_TOOLKIT_QUEUE_POLL_MS);
+  return Number.isFinite(raw) && raw >= 250 ? raw : DEFAULT_QUEUE_POLL_MS;
+})();
+
 class CronWorker {
   interval: number;
   is_running: boolean;
   intervalId: NodeJS.Timeout;
   constructor() {
-    this.interval = 1000; // Default interval of 1 second
+    this.interval = queuePollMs;
     this.is_running = false;
     this.intervalId = setInterval(() => {
       this.run();

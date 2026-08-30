@@ -1798,3 +1798,61 @@ Python 31/31 (`test_qol_scripts` 15 new + the four existing suites), `py_compile
 touched script. `git diff upstream/main --name-status | grep -v '^A'` = 57, unchanged. Not
 covered: the tools run end-to-end (needs the WD14/U2Net downloads) and the advisor panel
 visually — both are runtime-only.
+
+## Performance pass (2026-08-29)
+
+A read of the training hot path and the UI/server/worker for headroom, after the bug
+sweep above. Tracker AIO.45–51. Two findings changed the picture more than any code:
+
+**Two speed claims in FORK_NOTES were stale.** (a) "`torch.compile` — Windows/Triton
+viability question": upstream ships a complete implementation (`ModelConfig.compile`,
+`block_compile`, `compile_mode`, `compile_fullgraph`, `compile_dynamic`; per-block compile,
+auto dynamo cache sizing and rollback-on-failure in `jobs/process/BaseSDTrainProcess.py`
+~2288-2482, upstream `089e41d`) and the repo `.venv` carries `triton_windows 3.7.1.post27`
+on torch 2.9.1+cu128. Not one preset enabled it. (b) "`num_workers` hardcoded to 0 on
+Windows": upstream reads `dataset.num_workers` (default 2) / `prefetch_factor` and sets
+`persistent_workers` (`toolkit/data_loader.py` ~730-738). Both corrected in FORK_NOTES.
+
+**The fork had built its levers and then not applied them.** `cache_latents: true` (RAM-served
+latents) was documented as essential — disk-only caching drops `_encoded_latent` in
+`cleanup_latent()` and re-does `safetensors.load_file` + uint8→float rehydration per item
+per step in `get_latent()` (`toolkit/dataloader_mixins.py` ~1859-1906) — yet 21 of 27 presets
+set only `cache_latents_to_disk`; the laptop tier had the fast path and the desktop presets
+did not, and `krea2_lora_16gb` cached nowhere (VAE re-encode every epoch). `loss_sync_every`
+was in one preset; `ui_db_poll_seconds` in six, so the UI trainer opened five sqlite
+connections per step (`DiffusionTrainer.py` ~372-386: one write + four reads, each a fresh
+`sqlite3.connect`) for every other job. **Change:** every preset except `anima_lora_5090_fast`
+(already had all three) now sets `cache_latents: true` (+ `cache_latents_to_disk` where it
+was off), `loss_sync_every: 4`, `ui_db_poll_seconds: 2`; versions bumped, descriptions say so.
+Config defaults stay upstream's, so hand-written configs are untouched. All 27 presets parse
+through `TrainConfig`/`DatasetConfig`/`ModelConfig`/`NetworkConfig`. The `_5090_fast` example
+yaml said `batch_size: 2` while the v2.0 preset says 4 — yaml corrected.
+
+**UI/server (fork-only):** cron worker queue scan 1 s → 2 s (`AI_TOOLKIT_QUEUE_POLL_MS`);
+it was 5–9 Prisma round-trips per second against the file the trainer writes each step, and
+nothing in it needs sub-second latency. Dataset Tools log polling shipped the whole (≤200 KB)
+buffer every second and re-sliced a 150 KB string per stdout chunk — now a chunked
+`LogBuffer` plus the `?offset=` incremental contract the job-log route already uses. Peer
+probes ran on the GPU list's 5 s cadence with up to a 6 s timeout per offline peer — now
+≥30 s client-side and a 30 s server TTL (POST still invalidates).
+
+**`torch.compile` on the 5090 — NOT measured.** A bench series (`anima_lora_5090_fast`
+baseline vs `compile: true` + `block_compile: true`, 20-image set, 200 steps) was started
+and stopped at the operator's request before the pre-warm finished; no row was written and
+`docs/speed_benchmarks.md` still does not exist. No compile preset ships until it is
+measured (AIO.46). The bench configs are two lines on top of the fast preset:
+`model.compile: true`, `model.block_compile: true`; keep `compile_dynamic` at its default
+`true` for a bucketed resolution list.
+
+**Filed, not done:** the remaining config-only levers each need one measured run before a
+preset ships them (AIO.47: fused AdamW on the non-quantized anima presets via
+`optimizer_params`, `gradient_checkpointing: false` on `anima_lora_performance`,
+`layer_offloading_transformer_percent` < 1 on the krea2 offload presets,
+`cache_text_embeddings` on non-anima presets, sample/save cadence, explicit `num_workers`);
+the one remaining unconditional per-step host sync (`additional_model_loss.item()`,
+`SDTrainer.py` ~1070) and the per-accumulation `empty_cache()` on multi-resolution `low_vram`
+runs, both upstream insertions (AIO.48); and the upstream-owned UI polling hotspots — the
+uncached `/api/jobs` full list with every `job_config`, the job page's six loops running at
+full rate on finished jobs, hot-path `console.log`s, the 500 ms monitor tick, unshared
+`useJobsList`/`useSettings` (AIO.50) — each a touchpoint decision. mtime-keyed server caching
+of count/analyze is an idea with real caveats (AIO.51).

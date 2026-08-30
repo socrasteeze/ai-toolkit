@@ -28,9 +28,12 @@
             "folder_path": "/path/to/images/folder",
             "caption_ext": "txt",
             "caption_dropout_rate": 0.05,
-            "resolution": [512],
+            "resolution": [
+              512
+            ],
             "num_repeats": 1,
-            "cache_latents_to_disk": false
+            "cache_latents_to_disk": true,
+            "cache_latents": true
           }
         ],
         "train": {
@@ -46,7 +49,7 @@
           "content_or_style": "balanced",
           "optimizer_params": {
             "weight_decay": 0.0001,
-            "min_lr": 0.000001,
+            "min_lr": 1e-06,
             "max_lr": 0.0001
           },
           "unload_text_encoder": true,
@@ -54,7 +57,9 @@
           "lr": 0.0001,
           "disable_sampling": true,
           "dtype": "bf16",
-          "loss_type": "mse"
+          "loss_type": "mse",
+          "loss_sync_every": 4,
+          "ui_db_poll_seconds": 2
         },
         "model": {
           "name_or_path": "krea/Krea-2-Raw",
@@ -82,7 +87,7 @@
   },
   "meta": {
     "name": "[name]",
-    "version": "1.1",
-    "description": "LoRA on Krea 2 (raw) for 16GB+ cards: qfloat8 on transformer + TE, low_vram, layer offloading (35% transformer, 100% TE), TE unloaded after encoding, 512 training resolution, Automagic3 optimizer (adaptive per-group LR, weight decay 1e-4), sigmoid timesteps. v1.1 bounds the Automagic3 controller with min_lr 1e-6 / max_lr 1e-4 (the preset's own start LR is the ceiling; the controller self-adapts downward from it) — the source config predates upstream's 2026-07-17 runaway-LR fix, whose default bounds are only numerical overflow guards, not practical limits. Sampling is disabled by default to avoid VRAM spikes — re-enable it (or sample at 512) if you want previews. Resolution stays at 512 deliberately: train Krea 2 at 512 or 1024, matching a resolution the base model was actually trained at, rather than something in between. On step count, a documented 16GB run (36 images, 1152 steps = 32 passes per image, on musubi-tuner rather than this trainer) found 32 passes the most faithful checkpoint and 24 already over-idealized, and independently arrived at this same rank 32 / alpha 32 / LR 1e-4 combination — the in-app advisor's Krea 2 step target is tiered to match, so let it size your steps rather than trusting the generic 2000 here. If your LoRA bleeds into prompts that omit the trigger word, that is normal LoRA behaviour rather than a caption bug: the real fixes are Differential Output Preservation (train.diff_output_preservation — requires a trigger_word, and cannot be combined with cache_text_embeddings) or regularization images (is_reg / reg_weight), both supported by this trainer. Community-sourced profile; for roomier cards use the krea2_lora_low_vram (24GB) preset instead, and for a 16GB laptop use krea2_lora_laptop16gb."
+    "version": "1.2",
+    "description": "LoRA on Krea 2 (raw) for 16GB+ cards: qfloat8 on transformer + TE, low_vram, layer offloading (35% transformer, 100% TE), TE unloaded after encoding, 512 training resolution, Automagic3 optimizer (adaptive per-group LR, weight decay 1e-4), sigmoid timesteps. v1.1 bounds the Automagic3 controller with min_lr 1e-6 / max_lr 1e-4 (the preset's own start LR is the ceiling; the controller self-adapts downward from it) — the source config predates upstream's 2026-07-17 runaway-LR fix, whose default bounds are only numerical overflow guards, not practical limits. Sampling is disabled by default to avoid VRAM spikes — re-enable it (or sample at 512) if you want previews. Resolution stays at 512 deliberately: train Krea 2 at 512 or 1024, matching a resolution the base model was actually trained at, rather than something in between. On step count, a documented 16GB run (36 images, 1152 steps = 32 passes per image, on musubi-tuner rather than this trainer) found 32 passes the most faithful checkpoint and 24 already over-idealized, and independently arrived at this same rank 32 / alpha 32 / LR 1e-4 combination — the in-app advisor's Krea 2 step target is tiered to match, so let it size your steps rather than trusting the generic 2000 here. If your LoRA bleeds into prompts that omit the trigger word, that is normal LoRA behaviour rather than a caption bug: the real fixes are Differential Output Preservation (train.diff_output_preservation — requires a trigger_word, and cannot be combined with cache_text_embeddings) or regularization images (is_reg / reg_weight), both supported by this trainer. Community-sourced profile; for roomier cards use the krea2_lora_low_vram (24GB) preset instead, and for a 16GB laptop use krea2_lora_laptop16gb. Speed (2026-08-29): latents are served from RAM after the first pass (cache_latents + cache_latents_to_disk — disk-only caching re-read every latent every step), loss_sync_every 4, ui_db_poll_seconds 2. Training math unchanged."
   }
 }

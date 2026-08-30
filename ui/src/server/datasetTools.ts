@@ -28,8 +28,66 @@ export interface ToolRun {
   locks?: string[];
   status: RegisteredRunStatus;
   exitCode: number | null;
+  // Retained log text. Appended chunk-wise (see LogBuffer) so a chatty tagger
+  // does not reallocate the whole buffer per line; read through readLog().
   log: string;
+  // total bytes ever produced — the offset contract for incremental polling
+  logOffset: number;
   startedAt: number;
+}
+
+// Bounded, append-only buffer. Keeps at most `cap` characters, dropping the
+// oldest whole chunks past it. The string is only joined on read.
+const LOG_CAP = 200_000;
+class LogBuffer {
+  private chunks: string[] = [];
+  private held = 0;
+  // characters discarded from the front (so offsets stay monotonic)
+  dropped = 0;
+  // total characters ever appended
+  total = 0;
+
+  append(chunk: string) {
+    this.chunks.push(chunk);
+    this.held += chunk.length;
+    this.total += chunk.length;
+    while (this.held > LOG_CAP && this.chunks.length > 1) {
+      const gone = this.chunks.shift() as string;
+      this.held -= gone.length;
+      this.dropped += gone.length;
+    }
+  }
+
+  text(): string {
+    if (this.chunks.length > 1) this.chunks = [this.chunks.join('')];
+    return this.chunks[0] ?? '';
+  }
+}
+
+const buffers = new Map<string, LogBuffer>();
+
+export interface LogSlice {
+  log: string;
+  // pass back as `offset` on the next poll
+  offset: number;
+  // true when the slice starts from the retained head (first poll, or the
+  // caller's offset fell behind what is still retained)
+  reset: boolean;
+}
+
+/**
+ * The part of a run's log the caller has not seen. Mirrors the job log route's
+ * `?offset=` contract (api/jobs/[jobID]/log): the first call, or an offset
+ * older than what is retained, gets the whole retained tail with reset=true.
+ */
+export function readLog(run: ToolRun, offset?: number): LogSlice {
+  const buf = buffers.get(run.runId);
+  if (!buf) return { log: run.log, offset: run.logOffset, reset: true };
+  const text = buf.text();
+  if (offset === undefined || !Number.isFinite(offset) || offset < buf.dropped || offset > buf.total) {
+    return { log: text, offset: buf.total, reset: true };
+  }
+  return { log: text.slice(offset - buf.dropped), offset: buf.total, reset: false };
 }
 
 // Registration, per-dataset ownership and retention live in the registry so they
@@ -97,17 +155,17 @@ export function startToolRun(
     status: 'running',
     exitCode: null,
     log: '',
+    logOffset: 0,
     startedAt: Date.now(),
   };
   registry.register(run);
+  const buffer = new LogBuffer();
+  buffers.set(runId, buffer);
 
   const script = path.join(TOOLKIT_ROOT, 'scripts', SCRIPTS[tool]);
   const append = (chunk: Buffer | string) => {
-    run.log += typeof chunk === 'string' ? chunk : chunk.toString('utf-8');
-    // cap the buffer; these tools log modestly but never trust a child process
-    if (run.log.length > 200_000) {
-      run.log = run.log.slice(-150_000);
-    }
+    buffer.append(typeof chunk === 'string' ? chunk : chunk.toString('utf-8'));
+    run.logOffset = buffer.total;
   };
 
   let finalized = false;
@@ -117,7 +175,11 @@ export function startToolRun(
     finalized = true;
     run.status = status;
     run.exitCode = exitCode;
+    // freeze the text on the run so it survives the buffer being forgotten
+    run.log = buffer.text();
+    run.logOffset = buffer.total;
     children.delete(runId);
+    buffers.delete(runId);
 
     // The finished run stays discoverable until retention expires — exclusivity
     // does not depend on unregistering it, since the guard above tests

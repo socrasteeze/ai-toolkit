@@ -28,7 +28,9 @@
             "folder_path": "/path/to/images/folder",
             "caption_ext": "txt",
             "caption_dropout_rate": 0.05,
-            "resolution": [512],
+            "resolution": [
+              512
+            ],
             "num_repeats": 1,
             "cache_latents": true,
             "cache_latents_to_disk": true
@@ -47,7 +49,7 @@
           "content_or_style": "balanced",
           "optimizer_params": {
             "weight_decay": 0.0001,
-            "min_lr": 0.000001,
+            "min_lr": 1e-06,
             "max_lr": 0.0001
           },
           "unload_text_encoder": true,
@@ -56,7 +58,8 @@
           "disable_sampling": true,
           "dtype": "bf16",
           "loss_type": "mse",
-          "ui_db_poll_seconds": 2
+          "ui_db_poll_seconds": 2,
+          "loss_sync_every": 4
         },
         "model": {
           "name_or_path": "krea/Krea-2-Raw",
@@ -84,7 +87,7 @@
   },
   "meta": {
     "name": "[name]",
-    "version": "1.0",
-    "description": "LoRA on Krea 2 (raw) for a 16GB laptop GPU (RTX 5080 Laptop class) with a large system-RAM pool. Every recipe value is INHERITED UNCHANGED from krea2_lora_16gb (rank 32/alpha 32, Automagic3 bounded min_lr 1e-6 / max_lr 1e-4, LR 1e-4, sigmoid timesteps, qfloat8 on transformer + TE, low_vram, layer offloading 35% transformer / 100% TE, TE unloaded after encoding, 512 resolution), so checkpoints are interchangeable with the parent - only memory/IO behaviour differs. Three deltas vs the parent: (1) cache_latents true ALONGSIDE cache_latents_to_disk, so latents are written once and then served from RAM instead of being re-read and deep-copied from disk every step - matters most on native Windows, where the dataloader is hardcoded to num_workers 0 and every disk read is serialized with GPU compute. (2) Preview sampling dropped from 1024 to 768: sampling, not the training loop, is the VRAM peak on this class of card. Note sampling is disabled by default here as in the parent, so this only takes effect if you turn it back on. (3) ui_db_poll_seconds 2 throttles the UI's per-step sqlite polling (4 blocking SELECTs + 1 write every step) to once every 2s; the only cost is that the UI's stop/save-now/sample-now buttons take up to 2s to be noticed. Resolution stays at 512 deliberately: train Krea 2 at 512 or 1024, matching a resolution the base model was actually trained at, rather than something in between. On step count, a documented 16GB run (36 images, 1152 steps = 32 passes per image) found 32 passes the most faithful checkpoint and 24 already over-idealized - the in-app advisor's Krea 2 target is tiered to match, so let it size your steps rather than trusting this preset's generic 2000. If your LoRA bleeds into prompts that omit the trigger, that is normal LoRA behaviour rather than a caption bug: the fixes are Differential Output Preservation (needs a trigger_word set, and cannot be combined with cache_text_embeddings) or regularization images, both of which this trainer supports. NOT measured on 16GB hardware - the 16GB run cited above was a different trainer (musubi-tuner) at a different resolution, so treat the memory headroom here as inferred. If you OOM, drop to the krea2_lora_16gb parent's disk-only latent caching first, then lower layer_offloading_transformer_percent."
+    "version": "1.1",
+    "description": "LoRA on Krea 2 (raw) for a 16GB laptop GPU (RTX 5080 Laptop class) with a large system-RAM pool. Every recipe value is INHERITED UNCHANGED from krea2_lora_16gb (rank 32/alpha 32, Automagic3 bounded min_lr 1e-6 / max_lr 1e-4, LR 1e-4, sigmoid timesteps, qfloat8 on transformer + TE, low_vram, layer offloading 35% transformer / 100% TE, TE unloaded after encoding, 512 resolution), so checkpoints are interchangeable with the parent - only memory/IO behaviour differs. Three deltas vs the parent: (1) cache_latents true ALONGSIDE cache_latents_to_disk, so latents are written once and then served from RAM instead of being re-read and deep-copied from disk every step - matters most on native Windows, where the dataloader is hardcoded to num_workers 0 and every disk read is serialized with GPU compute. (2) Preview sampling dropped from 1024 to 768: sampling, not the training loop, is the VRAM peak on this class of card. Note sampling is disabled by default here as in the parent, so this only takes effect if you turn it back on. (3) ui_db_poll_seconds 2 throttles the UI's per-step sqlite polling (4 blocking SELECTs + 1 write every step) to once every 2s; the only cost is that the UI's stop/save-now/sample-now buttons take up to 2s to be noticed. Resolution stays at 512 deliberately: train Krea 2 at 512 or 1024, matching a resolution the base model was actually trained at, rather than something in between. On step count, a documented 16GB run (36 images, 1152 steps = 32 passes per image) found 32 passes the most faithful checkpoint and 24 already over-idealized - the in-app advisor's Krea 2 target is tiered to match, so let it size your steps rather than trusting this preset's generic 2000. If your LoRA bleeds into prompts that omit the trigger, that is normal LoRA behaviour rather than a caption bug: the fixes are Differential Output Preservation (needs a trigger_word set, and cannot be combined with cache_text_embeddings) or regularization images, both of which this trainer supports. NOT measured on 16GB hardware - the 16GB run cited above was a different trainer (musubi-tuner) at a different resolution, so treat the memory headroom here as inferred. If you OOM, drop to the krea2_lora_16gb parent's disk-only latent caching first, then lower layer_offloading_transformer_percent. Speed (2026-08-29): latents are served from RAM after the first pass (cache_latents + cache_latents_to_disk — disk-only caching re-read every latent every step), loss_sync_every 4, ui_db_poll_seconds 2. Training math unchanged."
   }
 }

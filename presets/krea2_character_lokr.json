@@ -1,0 +1,79 @@
+{
+  "job": "extension",
+  "config": {
+    "name": "preset",
+    "process": [
+      {
+        "type": "diffusion_trainer",
+        "training_folder": "output",
+        "device": "cuda",
+        "trigger_word": null,
+        "network": {
+          "type": "lokr",
+          "linear": 32,
+          "linear_alpha": 32,
+          "lokr_full_rank": true,
+          "lokr_factor": 8
+        },
+        "save": {
+          "dtype": "bf16",
+          "save_every": 250,
+          "max_step_saves_to_keep": 4,
+          "save_format": "safetensors",
+          "push_to_hub": false
+        },
+        "datasets": [
+          {
+            "folder_path": "/path/to/images/folder",
+            "caption_ext": "txt",
+            "caption_dropout_rate": 0.05,
+            "resolution": [
+              1024
+            ],
+            "num_repeats": 1,
+            "cache_latents_to_disk": true,
+            "cache_latents": true
+          }
+        ],
+        "train": {
+          "batch_size": 1,
+          "steps": 2000,
+          "gradient_accumulation": 1,
+          "train_unet": true,
+          "train_text_encoder": false,
+          "gradient_checkpointing": true,
+          "noise_scheduler": "flowmatch",
+          "optimizer": "adamw8bit",
+          "timestep_type": "linear",
+          "content_or_style": "balanced",
+          "lr": 0.00005,
+          "dtype": "bf16",
+          "loss_sync_every": 4,
+          "ui_db_poll_seconds": 2
+        },
+        "model": {
+          "name_or_path": "krea/Krea-2-Raw",
+          "arch": "krea2",
+          "quantize": true,
+          "qtype": "qfloat8",
+          "quantize_te": true,
+          "qtype_te": "qfloat8",
+          "low_vram": true
+        },
+        "sample": {
+          "sampler": "flowmatch",
+          "sample_every": 250,
+          "width": 1024,
+          "height": 1024,
+          "guidance_scale": 4,
+          "sample_steps": 30
+        }
+      }
+    ]
+  },
+  "meta": {
+    "name": "[name]",
+    "version": "1.0",
+    "description": "Character LoKr (not LoRA) on Krea 2 Raw, 24GB class - new 2026-09-11. WHY: LoKr is reported to bleed identity noticeably less than LoRA on this model - put two characters in one image and they keep their own faces instead of averaging - which is the same failure the Krea 2 LoRA presets answer with Differential Output Preservation and regularization datasets. LoKr is a cheaper first try than either. Everything else is krea2_lora_low_vram unchanged: adamw8bit, linear timesteps (Krea-canonical), 1024 resolution (train at 512 or 1024, never 768 - Krea 2's own training resolutions are 256/512/1024 and 768 runs are reported to go wrong), qfloat8 + low_vram. TWO deltas from the LoRA presets. (1) network.type lokr with lokr_factor 8. The factor is CONTESTED and this is the compromise value: the ai-toolkit community leans 4, 8 is the stated middle, one published guide says 16 (at 768, which contradicts the resolution rule). Mind the direction - in LyCORIS factorization a LOWER factor means a LARGER, more expressive network (factor 4 on a 1024-dim layer gives a 256x256 block, factor 16 gives 64x64), so 4 is the heavy end and produces the multi-GB files people report. lokr_full_rank is true, which is the trainer's default and makes network.linear / linear_alpha IGNORED (config_modules.py overrides them) - they are left at 32/32 only so the UI fields show something sane. (2) LR 5e-5, half the LoRA presets' 1e-4: LoKr wants the lower rate (one wrapper rails an adaptive controller at min 5e-5 / max 1e-4 for LoKr specifically, and keeps 1e-4 for plain LoRA). Set a made-up trigger word rather than a real name. Steps 2000 is a placeholder - let the in-app advisor size them from your image count (Krea 2's target is tiered: ~45 passes/image under 30 images, 32 at 30-149, 20 above). UNVERIFIED IN THIS FORK: no measured LoKr run here, and no LoKr checkpoint has been round-tripped through ComfyUI from this trainer. Treat it as an experiment against the known-good LoRA presets, not a replacement for them."
+  }
+}

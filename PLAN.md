@@ -1955,3 +1955,82 @@ uncached `/api/jobs` full list with every `job_config`, the job page's six loops
 full rate on finished jobs, hot-path `console.log`s, the 500 ms monitor tick, unshared
 `useJobsList`/`useSettings` (AIO.50) — each a touchpoint decision. mtime-keyed server caching
 of count/analyze is an idea with real caveats (AIO.51).
+
+## Klein / Krea 2 recipe review (2026-09-11)
+
+Operator asked whether the FLUX.2 Klein and Krea 2 presets and the advisor recipes had gone
+stale. They had, in two different ways: Klein's *caveats* were stale (official guidance now
+exists) and its *VRAM numbers* were simply wrong; Krea 2's numbers held up but the arch has a
+new network type worth having.
+
+### FLUX.2 Klein — the "no FLUX.2 recipe exists" caveat is retired
+
+Every Klein number in this fork was introduced as "FLUX.1 community defaults used as a
+proxy". Black Forest Labs has since published its own guidance, and it ratifies most of what
+was here:
+
+| Value | Fork before | Published guidance | Action |
+|---|---|---|---|
+| LR | 1e-4 (proxy) | 1e-4 default (BFL training doc + the "LoRA under 60 minutes" walkthrough) | kept, caveat dropped |
+| Rank | 16 small / 32 medium+ | 16 default, 32 for complex or abstract concepts | kept, caveat dropped |
+| Dataset size | not stated | 20-50 images | added to notes |
+| Steps | presets 2500; advisor ceiling 3000 (inherited from `flux` by prefix) | "start at 1500"; LoRAs peak 1000-1750 | character presets -> 1500; explicit Klein `ARCH_HEURISTICS` entries with ceiling 2500 |
+| 4B VRAM | "~32GB minimum, 48GB practical" | ~13 GB fp16 / ~7 GB fp8; quantized is a 12-16 GB job; unquantized fits 24 GB, ~1 h on a 4090 | **corrected — the old claim was wrong by 2-3x** |
+| 9B VRAM | "48GB practical minimum" / "~32-48 GB" | ~29 GB fp16 / ~15 GB fp8; single 24 GB card (3090/4090/A5000) recommended | **corrected** |
+| Style network | 4B and 9B both 64/32 linear + 32/16 conv | BFL's own style example: 128/64 linear + 64/32 conv, LR 9.5e-5, weight decay 1.5e-4, 3000 steps | 9B raised to the official 128/64/64/32; 4B stays half-scale, now labelled a deliberate deviation |
+| Timestep type | sigmoid char / weighted style, flagged unverified | nothing published | unchanged, still the one unsourced value |
+
+Deliberately NOT changed: `stepsPerItem` stays 60 for Klein. It is the same value the arch
+already got by inheriting `flux`, so the exposure gauge and the batch-4 threshold (≥40 files
+on Klein, pinned by `ui/tests/stepSuggestion.test.mjs` and quoted in `presets/README.md`)
+cannot drift from this edit. Only the `maxSteps` ceiling moved. The 4B style preset keeps its
+half-scale fold: the argument for halving ("128 is too heavy for a 4B") is a judgment about
+the 4B, but it is now a deviation from the model author's published numbers rather than a
+guess made in their absence, and the preset says so.
+
+A second, more conservative published point is recorded in the notes but not adopted: fal's
+hosted Klein base trainers default to LR 5e-5 / 1000 steps. It is a hosted service's safe
+default, not a measured optimum, and adopting it would contradict BFL's own 1e-4.
+
+### Krea 2 — numbers confirmed, LoKr added
+
+No Krea 2 value changed. Two independent corroborations were added to the notes instead:
+
+- `CaptainGrock/Krea2Trainer`, a wrapper around **this** trainer, ships exactly this fork's
+  recipe as its defaults: rank 32, alpha 32, LR 1e-4, adamw8bit, batch 1, 2000 steps, caption
+  dropout 0.05, LR range 1e-5..5e-4. That is a stronger anchor than the musubi-tuner 16 GB run
+  the recipe was built on, because it is the same implementation.
+- The 512-or-1024 resolution rule is now two-source: a second guide ties it to Krea 2's own
+  training resolutions (256/512/1024, never 768) and cites 768 runs going wrong. (Note that
+  `Krea2Trainer` itself defaults to 632, and the one published LoKr recipe uses 768 — both
+  contradict the rule; the rule is better sourced than either.)
+
+The one genuinely new development is **LoKr**, reported to bleed identity far less than LoRA
+on this model — two characters in one image keep their own faces instead of averaging. That
+is the same failure the Krea 2 notes currently answer with Differential Output Preservation
+and regularization datasets, and LoKr is a cheaper first attempt than either. The trainer
+supports it natively (`network.type: lokr` + `lokr_factor`, `toolkit/models/lokr.py`), so
+`presets/krea2_character_lokr.json` ships it: `krea2_lora_low_vram` unchanged except
+`type: lokr`, `lokr_full_rank: true`, `lokr_factor: 8`, and LR 5e-5.
+
+Two things recorded rather than resolved:
+
+- **The factor is contested** — the ai-toolkit community leans 4, 8 is the stated compromise,
+  the one published guide says 16 (and pairs it with the 768 resolution the rule above rejects).
+  8 shipped as the middle; the preset names the spread instead of presenting 8 as settled.
+- **The factor direction is counter-intuitive and was documented backwards here.**
+  `toolkit/models/lokr.py`'s `factorization()` returns `(factor, dim/factor)`, so on a
+  1024-dim layer factor 4 gives a 4x4 and a 256x256 block (~65 k params) while factor 16 gives
+  16x16 and 64x64 (~4 k). A **lower** factor is the larger, more expressive network — which
+  also explains the multi-GB files people report from factor 4. `forkDocs.tsx`'s
+  `network.lokr_factor` help text said the opposite ("higher factors make a larger / more
+  expressive network") and was corrected in this pass. Note `lokr_full_rank: true` (the
+  trainer's default) overrides `network.linear`/`linear_alpha` entirely
+  (`toolkit/config_modules.py`), so those fields are inert in the new preset.
+
+LoKr is UNVERIFIED in this fork: no measured run, and no LoKr checkpoint round-tripped from
+this trainer through ComfyUI. It ships as an experiment against the known-good LoRA presets.
+
+**Verified:** `ui/` `npm ci` + `npx tsc --noEmit` + `npx next build` + `npm test` (62/62),
+plus the Python preset/fork gates. Not covered, as always: a real training run — every number
+adopted here is published guidance, not a measurement made on this hardware.

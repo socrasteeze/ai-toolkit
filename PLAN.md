@@ -2080,3 +2080,55 @@ here):
 Considered and NOT done: an `OptimizerHint` warning for adafactor + Klein. The component
 exists and is the right home, but the adafactor claim is single-source and unverified here,
 and a red inline warning would present it as settled. Offered to the operator instead.
+
+### Addendum 2: Automagic v3 re-read against the pinned source (2026-09-11)
+
+Asked for more evidence on best-setting for automagic. There is almost no external evidence —
+no published per-arch data, one author post ("set it to 1e-6, you don't need to adjust"), and
+the third-party write-ups that do exist describe **older v3 internals** (one LR per output
+channel, then per tensor) because the pooling level changed. The authoritative source is
+`toolkit/optimizers/automagic3.py` in this tree, current since the 2026-08-14 sync, and
+re-reading it moved several things:
+
+**Signature defaults (the real answer to "best settings"):** `lr` 1e-6, `min_lr` 1e-8,
+`max_lr` 1e3, `beta2` 0.999, `eps` 1e-30, `clip_threshold` 1.0, `weight_decay` 0.0,
+`polarity_history` 8, `fused` True. This fork deviates on three: launch LR 1e-4 (100x the
+author's, inherited from the community Krea 2 config where it was the AdamW LR), weight_decay
+1e-4, and the min_lr 1e-6 / max_lr 1e-4 rails.
+
+**The rails need re-framing, and the notes were fixed to do it.** The old note said the bounds
+"were added upstream 2026-07-17 specifically to prevent runaway edge cases". The current
+docstring says the opposite about their purpose: at the defaults they are "purely a numerical
+overflow guard far outside the usable range", offered as optional user rails ("set it higher to
+put a hard floor under the controller"). Runaway LR is documented as **v2's** structural flaw —
+v2 bumped the LR from raw single-step agreement, which has no upper fixed point — and v3 claims
+to fix it by construction: votes come from each element's recent sign window (a real
+equilibrium), and one LR is pooled per param group so coupled tensors (the canonical Q/K pair)
+cannot split to opposite extremes. The docstring's own claim is that the vote "anchors the lr's
+absolute level without external rails". v2's own defaults were practical rails (min 1e-7 /
+max 1e-3); v3 deliberately widened them to overflow guards.
+
+**Consequence, stated in-place but NOT changed:** with `max_lr` equal to the launch LR — which
+is what the preset ships and what `OptimizerHint`'s "Bound it" button sets — the controller can
+only ever adapt downward. That is half a controller, on a design whose whole claim is that it
+finds the level from either side. It is a defensible ceiling on a shared machine, and it is
+what the working community config does, so no preset value was touched. Loosening it (e.g.
+`max_lr` 1e-3 with launch 1e-6, the author's shape) is an experiment to run, not a fix to
+apply blind — offered to the operator.
+
+**A high start LR is survivable without rails**, which weakens the safety argument further:
+`clip_threshold` 1.0 is a trust region on every update (RMS scaled to <= 1, elements clamped to
++/-1), and v3 merely prints a note and walks a too-high LR down, where v1 hard-forces it to
+1e-6 (`automagic.py:24`). The v1 clamp claim in `OptimizerHint` was re-verified as still true.
+
+**`polarity_history` is the undocumented second dial.** H, default 8, range 2-64, costing H/8
+bytes of state per element. Longer windows make the two vote events rarer and more decisive
+(probability 2^(1-H) each under noise) so detection sharpens, at the cost of memory, an H-step
+warmup/reaction lag, and fewer voters per step. No UI field, no mention anywhere in the fork
+until this pass; now named in the Krea 2 recipe notes and the 16 GB preset description.
+
+**Also worth knowing:** `fused: True` is the low-VRAM mode, not only an accumulation
+constraint — each grad is freed as soon as autograd finishes accumulating into it, which is why
+it is the default and why it matters at 16 GB. `OptimizerHint`'s v3 text was checked and is
+accurate as written (author default 1e-6, weight decay 0, bounds-are-overflow-guards); only its
+framing of unbounded as a warning is arguably stricter than the author's design intent.

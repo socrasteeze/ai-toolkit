@@ -562,11 +562,29 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'Turbo variants need the training adapter (set automatically when the arch is selected); keep low_vram on unless you have 48GB+. ' +
       'Alternative: Automagic v3 (self-adapting per-group LR, no scheduler needed) — used by the community 16GB config this ' +
       "fork ships as a preset. Its LR is a launch point the controller adapts away from (author's doc); if you use it, bound " +
-      'the controller with optimizer_params min_lr/max_lr (e.g. 1e-6/1e-4) — the bounds were added upstream 2026-07-17 ' +
-      'specifically to prevent runaway edge cases. Automagic fuses its step into the backward pass by default, so it requires ' +
+      'the controller with optimizer_params min_lr/max_lr (e.g. 1e-6/1e-4) if you want a hard ceiling on a shared machine. ' +
+      'RE-READ AGAINST THE PINNED SOURCE 2026-09-11 (toolkit/optimizers/automagic3.py, current since the 2026-08-14 sync) — ' +
+      'the authoritative numbers are its own signature defaults, and this fork deviates from three of them: launch LR 1e-6 ' +
+      '(this recipe and the presets launch at 1e-4, 100x higher, inherited from the community config where it was the AdamW ' +
+      'LR), weight_decay 0.0 (presets set 1e-4), and min_lr 1e-8 / max_lr 1e3, which the docstring calls "purely a numerical ' +
+      'overflow guard far outside the usable range" and offers as OPTIONAL user rails, not as runaway protection. Runaway is ' +
+      "documented as v2's structural flaw (v2 bumped the LR from raw single-step agreement, which has no upper fixed point) " +
+      'and v3 claims to fix it by design: it votes from each element\'s recent sign window, pools one LR per param group so ' +
+      'coupled tensors cannot split, and says the vote "anchors the LR\'s absolute level without external rails". Consequence ' +
+      'worth knowing before copying the preset: with max_lr set equal to the launch LR the controller can only ever adapt ' +
+      'DOWNWARD, which is half a controller. A high start is survivable without rails — clip_threshold 1.0 is a trust region ' +
+      'on every update, and v3 merely prints a note and walks a too-high LR down, where v1 hard-forced it to 1e-6. ' +
+      'The second real dial, which has no UI field and is not otherwise documented here: polarity_history (H, default 8, ' +
+      'range 2-64, H/8 bytes of state per element). Longer windows make the two vote events rarer and more decisive, so ' +
+      'detection sharpens — at the cost of memory, an H-step warmup/reaction lag, and fewer voters per step. ' +
+      'Automagic fuses its step into the backward pass by default, so it requires ' +
       'gradient_accumulation (and the legacy gradient_accumulation_steps) at 1 — reach a larger effective batch by raising ' +
       'batch size instead, or set optimizer_params.fused: false to accumulate normally (config_modules.py hard-errors on the ' +
-      'fused+accumulating combination). Low-confidence: the optimizer is ~6 weeks old with almost no arch-specific data. ' +
+      'fused+accumulating combination). Fused is also the low-VRAM mode, not just a constraint: each grad is freed the moment ' +
+      'autograd finishes accumulating into it, which is why it is the default and why it matters on 16GB. ' +
+      'Still low-confidence per arch: no published per-arch automagic data exists, and the version pinned here pools one LR ' +
+      'per param group where earlier v3s pooled per output channel and then per tensor — third-party write-ups still ' +
+      'describe those older shapes, so do not trust them over the docstring in this tree. ' +
       'Timestep guidance (via LoRA Dataset Studio / RunComfy): linear timestep_type is the Krea-canonical choice. ' +
       'CORROBORATION (2026-09-11 review): an independent ai-toolkit wrapper (CaptainGrock/Krea2Trainer) ships this exact ' +
       'recipe as its defaults on THIS trainer — rank 32, alpha 32, LR 1e-4, adamw8bit, batch 1, 2000 steps, caption ' +

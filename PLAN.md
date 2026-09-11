@@ -2229,3 +2229,53 @@ What was wrong was one sentence in each of two docs, both now fixed:
 so on the SDXL family it is the DESKTOP presets that lag the advisor, not the laptop ones. That
 is a base-recipe decision on presets the operator has been running, and the advisor is
 VRAM-unaware, so it needs a deliberate call rather than a doc fix.
+
+## Machine-aware batch plan (2026-09-11)
+
+The operator's premise: inside the [1, 2, 4] ladder, batch mostly trades speed for VRAM and
+does not change the outcome much, so "if you can run it, you should" — and since 3000 steps at
+batch 1 and 3000 at batch 4 are different runs, the advisor should choose batch from the
+machine AND the dataset and re-derive steps from that choice. Checked and agreed, with the
+two limits recorded in `batchAdvisor.ts`: the fry-band gate still binds on small sets, and past
+batch 4 the LR would need to drop (Klein general-FT pairs batch 4 with LR 1e-5).
+
+**What already existed:** `suggestSteps` divides by effective batch (exposure-constant), and
+`maxHealthyBatch` already picks the largest safe effective batch for the dataset. Both were
+advisory — the user still set batch and accumulation by hand, and nothing knew the card.
+
+**What was added** — `ui/src/utils/batchAdvisor.ts` + `ui/tests/batchAdvisor.test.mjs`, mounted
+in `StepSuggestion.tsx`:
+
+1. `tierForVramMb()` from the live GPU monitor (`useGPUInfo`, nvidia-smi MiB): ≤18k → 16 GB
+   laptop, ≤28k → 24 GB, else 32 GB+ desktop. A select overrides it to plan for the other
+   machine.
+2. `VRAM_TABLE` — **the operator's own measurements, 2026-09-11**, max `batch_size` that fit:
+
+   | | SDXL/Illustrious | Anima | Klein 4B/9B | Krea 2 |
+   |---|---|---|---|---|
+   | 32 GB desktop | 4 | 4 | 2 (4 untested) | 2 (4 untested) |
+   | 16 GB laptop | 2 (4 untested) | 2 (4 untested) | **OOM** (variant unrecorded) | 1 (2 OOM) |
+   | 24 GB | no measurements — reuses the 16 GB row as a floor, every cell flagged inferred |
+
+   Archs with no cell get batch 1, flagged inferred. No OOMs on the desktop at any tested
+   value.
+3. `suggestBatch()`: effective = min(dataset gate, VRAM cell). Route: desktop → `batch_size`
+   (one kernel pass, no cache flush); 16/24 GB → `gradient_accumulation` at batch 1, which VRAM
+   does not bind (Krea 2 on the laptop reaches effective 2 this way even though batch 2 OOMs);
+   fused Automagic → `batch_size` on every tier, so on the laptop Krea 2 + automagic3 is
+   effective batch 1 and the plan says why. Klein on the laptop returns `fits: false`.
+4. The panel shows `batch × accum = eff · ~steps (dataset allows N, VRAM measured|inferred M)`
+   with one **Apply batch + steps** that writes `batch_size`, `gradient_accumulation`, the
+   legacy `gradient_accumulation_steps` (to 1, so an imported config cannot contradict the
+   plan) and `steps` in one click. Reasons are in the tooltip.
+
+Invariant pinned by test: across 8 archs × 3 tiers × 3 optimizers × 300 file counts (21,600
+plans) the effective batch never exceeds `maxHealthyBatch` and never leaves the ladder, and
+`batch_size` never exceeds the VRAM cell. So this cannot reintroduce the 2026-07-29 bug — it
+only ever chooses a batch the exposure gauge already accepted.
+
+**Not measured, and the table says so:** batch 4 on Klein/Krea 2 on the desktop, batch 4 on
+anything on the laptop, every 24 GB cell, and which Klein variant OOMed on the laptop. Each
+is a one-run experiment; the cell note tells the next session what to try.
+
+**Verified:** `tsc --noEmit`, `npm test` 73/73 (was 62), `next build`.

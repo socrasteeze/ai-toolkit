@@ -92,7 +92,9 @@ export default function OptimizerHint({ jobConfig, setJobConfig }: Props) {
       {accumulationWarning}
       <div>
         Automagic v3 self-adapts one LR per group — the LR above is a launch point, not a target (author default 1e-6),
-        and no LR scheduler is needed. Weight decay is decoupled (optimizer default 0).
+        and no LR scheduler is needed. Weight decay is decoupled (optimizer default 0). Not a Prodigy variant: Prodigy's
+        step-size estimate only ever grows (d = max(d_max, d_hat)), which is why it is paired with a decaying scheduler;
+        Automagic votes the LR down as well as up and needs none. Arch-agnostic by construction, unverified per arch.
       </div>
       <div className="pt-0.5">
         {boundsSet ? (

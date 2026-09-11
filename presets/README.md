@@ -30,13 +30,15 @@ on the New Training Job page in the UI.
 | `flux2_klein_style_lora.json` | FLUX.2 Klein 4B style, 64/32 linear + 32/16 conv (4:2:2:1), weighted | Herbst 64-run sweep + BFL's official Klein style example, which runs the full 128/64/64/32 at LR 9.5e-5 / wd 1.5e-4. The half-scale fold is a deliberate 4B deviation (see docs/preset_alignment_2026_07.md 2026-07-21) |
 | `flux2_klein_9b_character_lora.json` / `flux2_klein_9b_style_lora.json` | Klein 9B: char 16/16 @ 1500 steps; style raised to BFL's official 128/64 linear + 64/32 conv | v1.2 (2026-09-11) corrects the VRAM claim — the 9B is ~29 GB fp16 / ~15 GB fp8, so a single 24 GB card with quantization, not 32-48 GB. Not 9B-measured |
 | `*_automagic.json` (klein char, illustrious char, anima) | Parent recipe + `automagic3` with `min_lr`/`max_lr` rails, no scheduler, accum pinned to 1 | Rail pattern from `krea2_lora_16gb`; UNVERIFIED per arch (see PLAN.md 2026-07-19 + 2026-08-24) |
-| `*_laptop16gb.json` (anima, flux, sdxl char, illustrious char, krea2) | Same recipe as the parent preset — memory/IO profile only | Hardware tier for a 16 GB laptop GPU; see `docs/profiles.md` |
+| `*_laptop16gb.json` (anima, flux, sdxl char, illustrious char, krea2) | Parent recipe, memory/IO profile only — EXCEPT effective batch on the two SDXL-family ones (batch 1 + accum 2 vs the parents' effective 1) | Hardware tier for a 16 GB laptop GPU; see `docs/profiles.md`. The SDXL/Illustrious exception is deliberate (2026-07-29 batch discipline) and puts those presets in agreement with the advisor, which recommends batch 2 for that family; flux and krea2 laptop presets stay at effective 1 because the advisor recommends batch 1 for those archs |
 
 **Hardware profiles vs. recipes.** Most files here are *recipes* (rank/LR/optimizer/steps).
 A few are *hardware profiles* that inherit a recipe unchanged and only change how it fits on
 a given card: `anima_lora_{performance,background,5090_fast}` (32 GB desktop),
 `krea2_lora_16gb`, and the `*_laptop16gb` set. Checkpoints are interchangeable across
-profiles of the same recipe — you can resume a run under a different profile.
+profiles of the same recipe — you can resume a run under a different profile. One caveat
+(2026-09-11): the two SDXL-family laptop profiles run effective batch 2 against their desktop
+parents' 1, so resuming across that pair keeps the weights valid but changes exposure per step.
 
 **Effective batch is gated on dataset size, not just VRAM** (2026-08-24). A preset's
 `batch_size × gradient_accumulation` has to fit the card *and* be large enough not to trip the

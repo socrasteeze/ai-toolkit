@@ -2186,3 +2186,46 @@ documentation drift: `presets/README.md` and `docs/profiles.md` say the laptop p
 the parent recipe unchanged and only change memory/IO behaviour, but the SDXL, Illustrious and
 Anima laptop presets all raise effective batch 1 -> 2 versus their desktop parents, which is a
 recipe change by the advisor's own accounting.
+
+### Addendum 4: the effective-batch question resolved — presets right, docs wrong (2026-09-11)
+
+Verdict: the presets are correct and two documentation sentences were wrong, including
+`flux_lora_laptop16gb`, which I had flagged as a possible oversight. It is not one.
+
+The deciding evidence is the advisor's own per-arch batch recommendation, which every preset
+already matches:
+
+| Arch | Advisor recommends | Desktop preset | Laptop preset |
+|---|---|---|---|
+| SDXL / Illustrious / Pony | batch 2 (4 on large) | effective 1 | effective 2 (batch 1 + accum 2) |
+| FLUX | batch 1 | 1 | 1 |
+| Krea 2, Klein, Z-Image, Qwen | batch 1 | 1 | 1 |
+| Anima | batch 1 (author 4) | 4 | 2, documented deviation |
+
+So `flux_lora_laptop16gb` sits at effective batch 1 because the advisor recommends batch 1 for
+FLUX — it agrees with its own arch recipe. The SDXL-family laptop presets sit at 2 because the
+advisor recommends 2 for that family; their descriptions already say so in full ("the point of
+this variant is batch discipline"), as does `docs/profiles.md` lever 4. Nothing in the preset
+set is inconsistent.
+
+The advisor's gate confirms both are safe as shipped — effective batch 2 needs >= 15 files on
+SDXL, 16 on Anima, 20 on FLUX/Klein and Krea 2 (measured by `minItemsForBatch(2, arch)`; below
+those counts the advisor flags `overBatched`). A 16 GB character set is normally above the
+SDXL floor of 15.
+
+What was wrong was one sentence in each of two docs, both now fixed:
+
+- `docs/profiles.md` asserted in bold that "every recipe value is inherited unchanged from the
+  parent preset" and then described lever 4, a deliberate effective-batch change, four
+  paragraphs later. The claim now names the exception, and the interchangeability sentence now
+  says resuming across the two SDXL-family profiles keeps the weights valid but changes
+  exposure per step.
+- `presets/README.md`'s `*_laptop16gb` row said "same recipe as the parent preset — memory/IO
+  profile only", same problem; it now names the exception and explains why flux and krea2 stay
+  at effective 1.
+
+**Separate finding, NOT changed:** `sdxl_character_lora` and `illustriousxl_character_lora`
+(the desktop presets) sit at effective batch 1 while the advisor recommends 2 for their arch —
+so on the SDXL family it is the DESKTOP presets that lag the advisor, not the laptop ones. That
+is a base-recipe decision on presets the operator has been running, and the advisor is
+VRAM-unaware, so it needs a deliberate call rather than a doc fix.

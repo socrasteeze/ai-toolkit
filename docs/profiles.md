@@ -57,9 +57,16 @@ Second machine: RTX 5080 Laptop (16 GB, ~15.9 GB usable), Core Ultra 9 275HX,
 the laptop variant adds RAM-served latents, 768 preview sampling and the
 sqlite poll throttle, and changes no recipe value).
 
-**Every recipe value is inherited unchanged from the parent preset.** These files
-change only how a run fits in memory and how it feeds the GPU, so checkpoints stay
-interchangeable with the desktop profiles. The four levers:
+**Every recipe value is inherited unchanged from the parent preset, with ONE exception:
+effective batch on the SDXL-family presets** (lever 4 below — `sdxl_character_lora_laptop16gb`
+and `illustriousxl_character_lora_laptop16gb` run batch 1 + `gradient_accumulation: 2` where
+their desktop parents are effective batch 1). That exception is deliberate: it moves those
+presets INTO agreement with the advisor, which recommends batch 2 for SDXL/SD1.5/Illustrious/
+Pony. Corrected 2026-09-11 — the unqualified claim contradicted lever 4 in this same
+document. Otherwise these files change only how a run fits in memory and how it feeds the GPU.
+LoRA weights stay interchangeable with the desktop profiles; note that resuming across the two
+SDXL-family profiles changes effective batch mid-run, so exposure per step changes with it.
+The four levers:
 
 1. **`cache_latents: true` alongside `cache_latents_to_disk: true`** — latents are
    written once and then served from RAM. Disk-only caching re-reads *and deep-copies*

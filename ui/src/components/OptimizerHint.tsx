@@ -53,7 +53,7 @@ export default function OptimizerHint({ jobConfig, setJobConfig }: Props) {
         <button
           type="button"
           className="text-blue-400 hover:text-blue-300 underline"
-          title="Reach the same effective batch size by raising Batch Size instead"
+          title="Reach the same effective batch size by raising Batch Size instead — possible on a 32GB+ desktop, usually not on 16GB, where the honest options are effective batch 1 or optimizer_params.fused: false"
           onClick={() => {
             setJobConfig(1, 'config.process[0].train.gradient_accumulation');
             setJobConfig(1, 'config.process[0].train.gradient_accumulation_steps');

@@ -482,6 +482,25 @@ const REPEATS_NOTE =
   'duplicates the file list, so exposure is steps x effective batch regardless. Leave num_repeats at 1 and size the ' +
   'run with steps; raise it only to balance one dataset against another. ';
 
+// Shared (2026-09-11). batch_size x gradient_accumulation is the same gradient either way —
+// the trainer averages the micro-batches (accum_scale = 1/n_accum, SDTrainer.py) so there is no
+// doubled LR, grad clipping runs once per optimizer step, and these are transformers, so there
+// is no BatchNorm statistic to differ. What differs is hardware, which is exactly how this
+// fork's profiles are split: the 32 GB desktop profiles reach effective batch with batch_size
+// (one kernel pass, faster) and the 16 GB laptop/background profiles reach it with
+// gradient_accumulation (one micro-batch of activations resident at a time). Accumulating also
+// pays a torch.cuda.empty_cache() after EVERY micro-batch when low_vram is on
+// (SDTrainer.py ~2339) — a throughput tax batch_size does not pay, and low_vram is on in every
+// 16 GB profile here. So: not interchangeable in practice, identical in math.
+const EFFECTIVE_BATCH_NOTE =
+  'EFFECTIVE BATCH = batch_size x gradient_accumulation, and the two routes are the same gradient but not the same ' +
+  'run. Reach it with batch_size on a 32GB+ desktop (one kernel pass, and no per-micro-batch cache flush); reach it ' +
+  'with gradient_accumulation on 16GB, where only one micro-batch of activations is resident. Accumulating costs a ' +
+  'cuda empty_cache() per micro-batch whenever low_vram is on, so it is the slower route when you have the VRAM to ' +
+  'avoid it. Fused Automagic is the exception that removes the choice: it steps every micro-batch and the trainer ' +
+  'hard-errors on accumulation, so there batch_size is the only route — and on 16GB, where you cannot raise it, the ' +
+  'honest options are effective batch 1 or optimizer_params.fused: false (which gives up fused\'s low-VRAM benefit). ';
+
 const ARCH_RECIPES: Record<string, RecipeByTier> = {
   // Vanilla SDXL checkpoints only (not Illustrious/Pony — those are detected
   // separately via checkpoint name/path, see illustriousOrPonyRecipe below).
@@ -579,7 +598,8 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'detection sharpens — at the cost of memory, an H-step warmup/reaction lag, and fewer voters per step. ' +
       'Automagic fuses its step into the backward pass by default, so it requires ' +
       'gradient_accumulation (and the legacy gradient_accumulation_steps) at 1 — reach a larger effective batch by raising ' +
-      'batch size instead, or set optimizer_params.fused: false to accumulate normally (config_modules.py hard-errors on the ' +
+      'batch size instead IF the card allows it (see the effective-batch note below; on 16GB it usually does not), or set ' +
+      'optimizer_params.fused: false to accumulate normally (config_modules.py hard-errors on the ' +
       'fused+accumulating combination). Fused is also the low-VRAM mode, not just a constraint: each grad is freed the moment ' +
       'autograd finishes accumulating into it, which is why it is the default and why it matters on 16GB. ' +
       'Still low-confidence per arch: no published per-arch automagic data exists, and the version pinned here pools one LR ' +
@@ -608,7 +628,8 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'the balanced middle for composability with other LoRAs, 32 is for a precise subject meant to dominate a stack — ' +
       'which is why this recipe sits at 32 for character work and the concept preset drops alpha instead of rank. ' +
       'BATCH BY CARD from the same guide: 1 on 8GB, 2 on 12GB, and this fork gates 4 on file count (>=45 here). ' +
-      REPEATS_NOTE,
+      REPEATS_NOTE +
+      EFFECTIVE_BATCH_NOTE,
   }),
   zimage: tier => ({
     settings: [
@@ -670,7 +691,8 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'not one without the other. Prodigy stays the LR-free escape hatch if you refuse to guess an LR. ' +
       'DATASET SIZE: BFL says 20-50 images; character guides go as low as 10 (with heavy repeats, see below). No ' +
       'published upper bound — the advisor damps steps/image itself above ~65 files. ' +
-      REPEATS_NOTE,
+      REPEATS_NOTE +
+      EFFECTIVE_BATCH_NOTE,
   }),
   flux2_klein_9b: tier => ({
     settings: [
@@ -706,7 +728,8 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'not one without the other. Prodigy stays the LR-free escape hatch if you refuse to guess an LR. ' +
       'DATASET SIZE: BFL says 20-50 images; character guides go as low as 10 (with heavy repeats, see below). No ' +
       'published upper bound — the advisor damps steps/image itself above ~65 files. ' +
-      REPEATS_NOTE,
+      REPEATS_NOTE +
+      EFFECTIVE_BATCH_NOTE,
   }),
   // Anima 2B (native upstream arch since ostris#860): unusually well-sourced — the numbers below are the model
   // author's own published recipe (Circlestone Labs finetuning tips + his diffusion-pipe
@@ -740,7 +763,8 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'optimizer_params.fused=false — fused Automagic steps every micro-batch (config-parse error otherwise). ' +
       'Never train the LLM adapter (default off): ' +
       'it shapes all text conditioning and degrades easily. Anima is a base model with no aesthetic tuning to overcome — ' +
-      '"a light touch is all you need". Danbooru-style tag captions work well (anime-focused base).',
+      '"a light touch is all you need". Danbooru-style tag captions work well (anime-focused base). ' +
+      EFFECTIVE_BATCH_NOTE,
   }),
 };
 ARCH_RECIPES.flex = ARCH_RECIPES.flux;

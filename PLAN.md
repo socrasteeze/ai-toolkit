@@ -2132,3 +2132,57 @@ constraint — each grad is freed as soon as autograd finishes accumulating into
 it is the default and why it matters at 16 GB. `OptimizerHint`'s v3 text was checked and is
 accurate as written (author default 1e-6, weight decay 0, bounds-are-overflow-guards); only its
 framing of unbounded as a warning is arguably stricter than the author's design intent.
+
+### Addendum 3: effective batch is a hardware split, and two presets disagreed with their own text (2026-09-11)
+
+Operator confirmed the framing: batch_size and gradient_accumulation are the same gradient, and
+this fork's two hardware tiers already pick between them deliberately — 32 GB desktop reaches
+effective batch with `batch_size`, 16 GB laptop/background reaches it with
+`gradient_accumulation`. Verified against the presets, and the split is consistent:
+
+| Profile | batch x accum | low_vram |
+|---|---|---|
+| `anima_lora_performance`, `anima_lora_5090_fast` (32 GB desktop) | 4 x 1 | false |
+| `anima_lora_background`, `anima_lora_laptop16gb`, `sdxl_character_lora_laptop16gb`, `illustriousxl_character_lora_laptop16gb` (16 GB) | 1 x 2 | true |
+| everything else | 1 x 1 | mostly true |
+
+Why they are not interchangeable, from the source rather than from theory:
+
+- **Math is equivalent.** `accum_scale = 1.0 / n_accum` (`SDTrainer.py:2320`) averages the
+  micro-batch losses, so no doubled effective LR. Grad clipping runs once per optimizer step
+  (`SDTrainer.py:2343`), not per micro-batch. These are transformers — LayerNorm/RMSNorm are
+  per-sample, so the BatchNorm-statistics difference that makes this question interesting
+  elsewhere does not exist here.
+- **VRAM is the whole point.** Accumulating keeps one micro-batch of activations resident.
+- **Accumulating costs throughput**, and not only from the extra pass:
+  `if len(batch_list) > 1 and self.model_config.low_vram: torch.cuda.empty_cache()`
+  (`SDTrainer.py:2339`) fires after EVERY micro-batch. `low_vram` is on in every 16 GB profile,
+  so that tax is always paid there. `batch_size` pays none of it.
+- **Bucket diversity slightly favours accumulation**: `gradient_accumulation` makes N
+  independent `next(dataloader_iterator)` calls (`BaseSDTrainProcess.py:2555`), so micro-batches
+  may come from different resolution buckets, where a single larger batch shares one bucket.
+- **Fused Automagic removes the choice**: it steps every micro-batch, and
+  `config_modules.py:478-493` hard-errors on accumulation. `batch_size` is the only route.
+
+Written up as a shared `EFFECTIVE_BATCH_NOTE` in `stepSuggestion.ts` (alongside
+`REPEATS_NOTE`), used by the Krea 2, Klein 4B/9B and Anima recipes.
+
+**Two things said "raise batch size instead" where that is not available**, and are now fixed:
+
+1. `presets/anima_lora_automagic.json` (v1.2) opened by describing itself as "batch 1 + grad
+   accumulation 2 (same effective batch as performance)" — copied from its `background` parent —
+   while the file pins `gradient_accumulation: 1`, because fused Automagic cannot accumulate. It
+   trains at **effective batch 1, half its parent**, and the description now says so, with the
+   two real remedies (raise `batch_size` on a 32 GB desktop, or `fused: false` to keep
+   accumulation 2 on 16 GB and give up fused's low peak VRAM).
+2. `OptimizerHint`'s "Bound it" sibling tooltip and the Krea 2 automagic note both advised
+   reaching effective batch by raising batch size with no caveat. Both now name the 16 GB case.
+
+**Found, NOT changed — needs the operator's call:** `flux_lora_laptop16gb` is effective batch 1
+while the other three `*_laptop16gb` presets are effective batch 2. Either it is an oversight
+(accumulation is nearly free in VRAM, so the laptop tier could carry 1x2 here too) or it is
+deliberate fidelity to `flux_lora_24gb`, whose recipe is effective batch 1. Note the related
+documentation drift: `presets/README.md` and `docs/profiles.md` say the laptop presets inherit
+the parent recipe unchanged and only change memory/IO behaviour, but the SDXL, Illustrious and
+Anima laptop presets all raise effective batch 1 -> 2 versus their desktop parents, which is a
+recipe change by the advisor's own accounting.

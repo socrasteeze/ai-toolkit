@@ -469,6 +469,19 @@ type RecipeByTier = (tier: SizeTier) => ArchRecipe;
 // Every recipe below scales rank/alpha/LR with dataset size; where research found no
 // real consensus (e.g. scheduler for Krea 2 / Flux2), the notes say so explicitly
 // instead of presenting a guess as settled.
+// Shared and arch-independent (2026-09-11). Every published Klein / Krea 2 character guide is
+// written for an epoch-bounded trainer (kohya, musubi-tuner), where num_repeats IS the exposure
+// knob — "90-120 repeats on a 10-image set", "2-15 repeats depending on dataset size". None of
+// that transfers here: this trainer is step-bounded, and num_repeats only duplicates the file
+// list (`file_list * num_repeats`, toolkit/data_loader.py), so total exposure is
+// steps x effective batch whatever repeats says. Worth stating in-place, because following that
+// advice literally is how a run ends up 10x its intended length.
+const REPEATS_NOTE =
+  'REPEATS: ignore the repeat counts published in guides for this model (90-120 repeats on 10 images, 2-15 by dataset ' +
+  'size, and so on) — they are written for epoch-bounded trainers. This one is step-bounded and num_repeats only ' +
+  'duplicates the file list, so exposure is steps x effective batch regardless. Leave num_repeats at 1 and size the ' +
+  'run with steps; raise it only to balance one dataset against another. ';
+
 const ARCH_RECIPES: Record<string, RecipeByTier> = {
   // Vanilla SDXL checkpoints only (not Illustrious/Pony — those are detected
   // separately via checkpoint name/path, see illustriousOrPonyRecipe below).
@@ -569,7 +582,15 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'factor means a LARGER network (factor 4 on a 1024-dim layer gives a 256x256 block, factor 16 gives 64x64), so ' +
       'factor 4 is the heavy end. LoKr also wants a lower LR than LoRA — 5e-5 rather than 1e-4, and an adaptive ' +
       'controller railed at min 5e-5 / max 1e-4 (Fizgig). Shipped as the krea2_character_lokr preset at factor 8 / ' +
-      'LR 5e-5. Unverified in this fork: no measured LoKr run here.',
+      'LR 5e-5. Unverified in this fork: no measured LoKr run here. ' +
+      "DATASET SIZE: Krea's own hosted LoRA service states a 3-IMAGE MINIMUM and says a clean, repetitive set beats a " +
+      'large mixed one; the community LoKr recipe wants ~20 (up to 40 if the images are weaker) with 2-5 full-body ' +
+      'shots so proportions are learned rather than just the face. Nothing published sets an upper bound. ' +
+      'RANK BY INTENT (a 12GB musubi guide, independent of the recipe above): 8 gives a lighter style influence, 16 is ' +
+      'the balanced middle for composability with other LoRAs, 32 is for a precise subject meant to dominate a stack — ' +
+      'which is why this recipe sits at 32 for character work and the concept preset drops alpha instead of rank. ' +
+      'BATCH BY CARD from the same guide: 1 on 8GB, 2 on 12GB, and this fork gates 4 on file count (>=45 here). ' +
+      REPEATS_NOTE,
   }),
   zimage: tier => ({
     settings: [
@@ -619,7 +640,19 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'point for reference: fal\'s hosted Klein base trainers default to LR 5e-5 / 1000 steps. ' +
       'Timestep guidance (LoRA Dataset Studio, itself extrapolated/not Klein-verified): sigmoid for characters, weighted ' +
       'for style — the only value in this recipe with no published Klein source behind it. ' +
-      "STYLE-specific network: BFL's own Klein style example is a linear+Conv2d LoRA at 128/64 linear + 64/32 conv (ratio 4:2:2:1), which is exactly what LDS ships. The 4B style preset folds that to half scale (64/32 linear + 32/16 conv) — now a deliberate fork deviation for a 4B rather than a guess in the absence of a source — while flux2_klein_9b_style_lora.json uses the official 128/64/64/32. This ramp is linear-only; use a style preset for the conv recipe.",
+      "STYLE-specific network: BFL's own Klein style example is a linear+Conv2d LoRA at 128/64 linear + 64/32 conv (ratio 4:2:2:1), which is exactly what LDS ships. The 4B style preset folds that to half scale (64/32 linear + 32/16 conv) — now a deliberate fork deviation for a 4B rather than a guess in the absence of a source — while flux2_klein_9b_style_lora.json uses the official 128/64/64/32. This ramp is linear-only; use a style preset for the conv recipe. " +
+      'OPTIMIZER (single-source but specific, worth heeding): adamw8bit is the recommendation and ADAFACTOR IS ' +
+      'REPORTED TO FAIL on Klein 9B character training — its adaptive scaling does not converge for identity and ' +
+      'the face collapses to a generic average by ~1k steps. Adafactor sits in this app\'s optimizer dropdown and ' +
+      'is the obvious pick for a big model on a small card, so treat it as a trap for character work specifically. ' +
+      'That guide pairs adamw8bit with LR 1e-4, betas [0.9, 0.999], weight decay 0.01, batch 1 + gradient ' +
+      'accumulation 2, and 3000 steps; its literal choice is AdamW8bitKahan, which this trainer does not have — ' +
+      'adamw8bit is the closest available. A separate published Klein config for general (non-character) ' +
+      'fine-tuning instead runs rank 64 / alpha 128 at total batch 4 with LR 1e-5 — batch up and LR down together, ' +
+      'not one without the other. Prodigy stays the LR-free escape hatch if you refuse to guess an LR. ' +
+      'DATASET SIZE: BFL says 20-50 images; character guides go as low as 10 (with heavy repeats, see below). No ' +
+      'published upper bound — the advisor damps steps/image itself above ~65 files. ' +
+      REPEATS_NOTE,
   }),
   flux2_klein_9b: tier => ({
     settings: [
@@ -643,7 +676,19 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'point for reference: fal\'s hosted Klein base trainers default to LR 5e-5 / 1000 steps. ' +
       'Timestep guidance (LoRA Dataset Studio, itself extrapolated/not Klein-verified): sigmoid for characters, weighted ' +
       'for style — the only value in this recipe with no published Klein source behind it. ' +
-      "STYLE-specific network: BFL's own Klein style example is a linear+Conv2d LoRA at 128/64 linear + 64/32 conv (ratio 4:2:2:1), which is exactly what LDS ships. The 4B style preset folds that to half scale (64/32 linear + 32/16 conv) — now a deliberate fork deviation for a 4B rather than a guess in the absence of a source — while flux2_klein_9b_style_lora.json uses the official 128/64/64/32. This ramp is linear-only; use a style preset for the conv recipe.",
+      "STYLE-specific network: BFL's own Klein style example is a linear+Conv2d LoRA at 128/64 linear + 64/32 conv (ratio 4:2:2:1), which is exactly what LDS ships. The 4B style preset folds that to half scale (64/32 linear + 32/16 conv) — now a deliberate fork deviation for a 4B rather than a guess in the absence of a source — while flux2_klein_9b_style_lora.json uses the official 128/64/64/32. This ramp is linear-only; use a style preset for the conv recipe. " +
+      'OPTIMIZER (single-source but specific, worth heeding): adamw8bit is the recommendation and ADAFACTOR IS ' +
+      'REPORTED TO FAIL on Klein 9B character training — its adaptive scaling does not converge for identity and ' +
+      'the face collapses to a generic average by ~1k steps. Adafactor sits in this app\'s optimizer dropdown and ' +
+      'is the obvious pick for a big model on a small card, so treat it as a trap for character work specifically. ' +
+      'That guide pairs adamw8bit with LR 1e-4, betas [0.9, 0.999], weight decay 0.01, batch 1 + gradient ' +
+      'accumulation 2, and 3000 steps; its literal choice is AdamW8bitKahan, which this trainer does not have — ' +
+      'adamw8bit is the closest available. A separate published Klein config for general (non-character) ' +
+      'fine-tuning instead runs rank 64 / alpha 128 at total batch 4 with LR 1e-5 — batch up and LR down together, ' +
+      'not one without the other. Prodigy stays the LR-free escape hatch if you refuse to guess an LR. ' +
+      'DATASET SIZE: BFL says 20-50 images; character guides go as low as 10 (with heavy repeats, see below). No ' +
+      'published upper bound — the advisor damps steps/image itself above ~65 files. ' +
+      REPEATS_NOTE,
   }),
   // Anima 2B (native upstream arch since ostris#860): unusually well-sourced — the numbers below are the model
   // author's own published recipe (Circlestone Labs finetuning tips + his diffusion-pipe

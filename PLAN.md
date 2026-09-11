@@ -2034,3 +2034,49 @@ this trainer through ComfyUI. It ships as an experiment against the known-good L
 **Verified:** `ui/` `npm ci` + `npx tsc --noEmit` + `npx next build` + `npm test` (62/62),
 plus the Python preset/fork gates. Not covered, as always: a real training run — every number
 adopted here is published guidance, not a measurement made on this hardware.
+
+### Addendum, same day: the VRAM figure's provenance, plus optimizer / batch / repeat / dataset-size guidance
+
+The operator pointed out they have trained Klein on 32 GB, against a note claiming 48 GB was
+practical. Tracing it: the 32/48 GB figure was never measured and has **no source recorded
+anywhere in this repo** — the 2026-07-19 Phase 3 entry files all Flux2/Klein numbers under
+"thin/no evidence, flagged rather than guessed", and the note itself only said "per early
+reports". Two things inflated it. First, unquantized arithmetic: the 9B is ~29 GB in bf16
+weights alone, so weights + AdamW state + activations genuinely does not fit 24 GB *if you
+ignore quantization* — which the note did, while the presets it described ship `qtype:
+qfloat8` + `low_vram`. Second, family conflation: FLUX.2 **dev** (the 32B sibling) really is
+a 48 GB+/80 GB-class trainer, and Klein inherited dev's hardware framing along with FLUX.1's
+hyperparameters. Corrected figures are in the table above; a 32 GB card is comfortable for
+the 9B quantized and roomy for the 4B.
+
+Also added to the notes from the same research pass (all published guidance, none measured
+here):
+
+- **Optimizer.** adamw8bit is the recommendation, and **adafactor is reported to fail on
+  Klein 9B character training** — adaptive scaling not converging for identity, face
+  collapsing to a generic average by ~1 k steps. Single-source, but specific enough to be
+  worth naming, because adafactor is in this app's optimizer dropdown and is exactly what
+  someone reaches for when a 9B won't fit. The same guide's literal pick is AdamW8bitKahan,
+  which this trainer does not implement (`toolkit/optimizer.py`); adamw8bit is the closest.
+  Its surrounding config: LR 1e-4, betas [0.9, 0.999], weight decay 0.01, batch 1 + accum 2,
+  3000 steps. A separate published Klein config for *general* fine-tuning runs rank 64 /
+  alpha 128 at total batch 4 with LR 1e-5 — batch up and LR down together.
+- **Dataset size.** Klein: BFL says 20-50 images, character guides go as low as 10. Krea 2:
+  Krea's own hosted service states a **3-image minimum** and says a clean repetitive set
+  beats a large mixed one; the community LoKr recipe wants ~20 (40 if weaker) with 2-5
+  full-body shots. No source sets an upper bound for either.
+- **Rank by intent** (Krea 2, from a 12 GB musubi guide): 8 = lighter style influence, 16 =
+  balanced for stacking, 32 = a subject meant to dominate a stack. Consistent with this
+  fork's 32 for character and alpha-drop-not-rank-drop for concept.
+- **Repeats do not transfer**, and this is the one that can actually ruin a run. Every guide
+  for these models is written for kohya/musubi, where `num_repeats` *is* the exposure knob
+  ("90-120 repeats on a 10-image set"; "2-15 by dataset size"). This trainer is step-bounded
+  and `num_repeats` only duplicates the file list (`file_list * num_repeats`,
+  `toolkit/data_loader.py`), so exposure is steps x effective batch regardless. Now a shared
+  `REPEATS_NOTE` const in `stepSuggestion.ts`, used by the Klein 4B/9B and Krea 2 recipes.
+  Upstream's own `dataset.num_repeats` help text is already correct (dataset balancing) and
+  was deliberately left alone — `verify_fork.py` forbids shadowing a `docs.tsx` key.
+
+Considered and NOT done: an `OptimizerHint` warning for adafactor + Klein. The component
+exists and is the right home, but the adafactor claim is single-source and unverified here,
+and a red inline warning would present it as settled. Offered to the operator instead.

@@ -2279,3 +2279,39 @@ anything on the laptop, every 24 GB cell, and which Klein variant OOMed on the l
 is a one-run experiment; the cell note tells the next session what to try.
 
 **Verified:** `tsc --noEmit`, `npm test` 73/73 (was 62), `next build`.
+
+## Fix: upstream shipped a broken inference engine, missing `engineStream.ts` (2026-09-12)
+
+Upstream's PR #1039 ("Add an inference engine and generation via the UI", merged
+`24916ec`) added a resident-process inference engine plus a `/generate` page, but
+`generate/page.tsx` imports `latentToImage`, `payloadToFloat32`, `readEngineFrames`, and
+`PreviewInfo` from `@/lib/engineStream` — a file that was never committed. Confirmed with
+`git ls-tree -r upstream/main` and `git log --all -- '*engineStream*'`, both empty: this is
+upstream's own bug, present on `ostris/ai-toolkit` itself, not something this merge
+introduced. Left as-is it fails `tsc --noEmit` and `next build` outright.
+
+`extensions_built_in/inference_engine/protocol.py`'s module docstring already names the
+missing file and documents the exact wire format (`u32 header_len | json header | u64
+payload_len | payload`), so this wasn't a guess: ported a JS mirror of that framing plus
+the linear latent→RGB preview math from `latent_format_tables.py`, using the scaling
+ComfyUI's own `Latent2RGBPreviewer` uses for the same factor/bias tables (`latent_format_tables.py`
+says its numbers come from `comfy/latent_formats.py`) — `(projected + 1) / 2`, clamped to
+`[0, 1]`, then ×255. New fork-only file: `ui/src/lib/engineStream.ts` (needs `git add -f`,
+this repo's `.gitignore` has a blanket `lib/` rule).
+
+**Deliberately left unhandled:** `reshape: "flux2_2x2"` (Flux2, the Klein variants,
+ideogram4) — the packed-channel layout isn't documented anywhere in this codebase, and
+rather than guess at an unshuffle order and risk a garbled thumbnail, those archs get the
+same generic per-channel projection as everyone else. Preview-only: it doesn't touch the
+actual generation or output path, just the live progress thumbnail while a frame is being
+denoised. If upstream ever ships their own `engineStream.ts` (or an equivalent client),
+diff it against this one and prefer theirs if it's a superset — same pattern as the
+`ideogram4_prompt.py` retirement on 2026-08-29.
+
+**Not verified beyond static checks:** no GPU/torch in the sync container, so the engine
+was never actually run end-to-end; the port is checked against `protocol.py` /
+`latent_preview.py` / `latent_format_tables.py` / the exact call sites in
+`generate/page.tsx` by reading, not by watching a real generation stream through it.
+
+**Verified:** `tsc --noEmit` 0 errors, `next build` clean (all 31 routes), `npm test`
+73/73, `py_compile` on all 21 touched/new Python files.

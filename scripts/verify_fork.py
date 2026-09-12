@@ -34,7 +34,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Keep in step with FORK_NOTES.md's "Upstream files modified" table.
-EXPECTED_TOUCHPOINTS = 57
+EXPECTED_TOUCHPOINTS = 58
 
 # (file, needle, what it is). Substring match, not regex — these are anchors that
 # survive reformatting, not exact lines.
@@ -160,8 +160,12 @@ def check_next_params(result):
     if not app.is_dir():
         result.skip("next-params", "ui/src/app not found")
         return
-    # `{ params }: { params: { x: string } }` — the Next 14 shape upstream keeps shipping
-    stale = re.compile(r"params:\s*\{\s*[A-Za-z_$][\w$]*\s*:")
+    # `{ params }: { params: { x: string } }` — the Next 14 shape upstream keeps shipping.
+    # The trailing type alternatives are what keep an axios request option
+    # (`{ params: { id: someVar } }`, a value not a type) from reading as a route param.
+    stale = re.compile(
+        r"params:\s*\{\s*[A-Za-z_$][\w$]*\s*:\s*(?:string|number|boolean)\s*(?:\[\])?\s*\}"
+    )
     for path in sorted(app.rglob("*.ts*")):
         text = path.read_text(encoding="utf-8", errors="replace")
         if "params" not in text:

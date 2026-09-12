@@ -9,7 +9,7 @@ const isWindows = process.platform === 'win32';
 
 // Force stop: SIGKILL the job process (tree-kill on Windows) and mark the row
 // stopped. For jobs that ignored the graceful stop (a hung model load).
-export async function GET(request: NextRequest, { params }: { params: { jobID: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ jobID: string }> }) {
   const { jobID } = await params;
   const job = await prisma.job.findUnique({ where: { id: jobID } });
   // the pid from the row, else (inference engines) the one the live process

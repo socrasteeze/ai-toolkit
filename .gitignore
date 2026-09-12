@@ -206,3 +206,5 @@ testing/.model_test_outputs
 *.pfx
 id_rsa
 id_ed25519
+testing/.engine_test_outputs
+testing/.*

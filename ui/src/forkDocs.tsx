@@ -116,8 +116,10 @@ const forkDocs: { [key: string]: ConfigDoc } = {
     title: 'LoKr Factor',
     description: (
       <>
-        Decomposition factor for LoKr networks. Higher factors make a larger / more expressive network. Auto (-1) lets
-        the trainer choose a factor. Only used when Target Type is LoKr.
+        Decomposition factor for LoKr networks. <strong>Lower</strong> factors make a larger / more expressive network,
+        not higher ones: the factor is one side of the Kronecker split, so on a 1024-dim layer factor 4 gives a 4x4 and a
+        256x256 block while factor 16 gives 16x16 and 64x64. Auto (-1) lets the trainer pick the most even split, which
+        is the smallest network. Only used when Target Type is LoKr.
       </>
     ),
   },

@@ -107,7 +107,10 @@ async function proxy(request: NextRequest, segments: string[]) {
   return new Response(upstream.body, { status: upstream.status, headers: responseHeaders });
 }
 
-type Ctx = { params: Promise<{ path: string[] }> | { path: string[] } };
+// Next 15 always passes route params as a Promise; the union upstream ships here
+// fails `next build`'s generated ParamCheck, which requires Promise<any>.
+// `await` on a non-thenable is a no-op, so the bodies below are unchanged.
+type Ctx = { params: Promise<{ path: string[] }> };
 
 export async function GET(request: NextRequest, ctx: Ctx) {
   const { path } = await ctx.params;

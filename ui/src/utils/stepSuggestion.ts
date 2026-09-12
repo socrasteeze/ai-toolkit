@@ -60,6 +60,15 @@ const ARCH_HEURISTICS: Record<string, StepHeuristic | ((tier: SizeTier) => StepH
     minSteps: 600,
     maxSteps: 4000,
   }),
+  // FLUX.2 Klein 4B/9B (2026-09-11): these used to fall through to `flux` by prefix, which
+  // also inherited FLUX.1's 3000-step ceiling. Klein now has published guidance and it is
+  // tighter than that: BFL's Klein training doc says start at 1500 steps for a 20-50 image
+  // set, and their "LoRA under 60 minutes" walkthrough reports Klein LoRAs peaking between
+  // 1000 and 1750 steps. steps/item stays 60 — identical to the inherited flux target — so
+  // the exposure gauge and the batch-4 threshold (40 files on Klein) do not move; only the
+  // ceiling drops, from 3000 to 2500.
+  flux2_klein_4b: { stepsPerItem: 60, minSteps: 1000, maxSteps: 2500 },
+  flux2_klein_9b: { stepsPerItem: 60, minSteps: 1000, maxSteps: 2500 },
 };
 
 // `tier` only affects archs whose entry is tier-aware (currently just krea2). Callers pass an
@@ -460,6 +469,38 @@ type RecipeByTier = (tier: SizeTier) => ArchRecipe;
 // Every recipe below scales rank/alpha/LR with dataset size; where research found no
 // real consensus (e.g. scheduler for Krea 2 / Flux2), the notes say so explicitly
 // instead of presenting a guess as settled.
+// Shared and arch-independent (2026-09-11). Every published Klein / Krea 2 character guide is
+// written for an epoch-bounded trainer (kohya, musubi-tuner), where num_repeats IS the exposure
+// knob — "90-120 repeats on a 10-image set", "2-15 repeats depending on dataset size". None of
+// that transfers here: this trainer is step-bounded, and num_repeats only duplicates the file
+// list (`file_list * num_repeats`, toolkit/data_loader.py), so total exposure is
+// steps x effective batch whatever repeats says. Worth stating in-place, because following that
+// advice literally is how a run ends up 10x its intended length.
+const REPEATS_NOTE =
+  'REPEATS: ignore the repeat counts published in guides for this model (90-120 repeats on 10 images, 2-15 by dataset ' +
+  'size, and so on) — they are written for epoch-bounded trainers. This one is step-bounded and num_repeats only ' +
+  'duplicates the file list, so exposure is steps x effective batch regardless. Leave num_repeats at 1 and size the ' +
+  'run with steps; raise it only to balance one dataset against another. ';
+
+// Shared (2026-09-11). batch_size x gradient_accumulation is the same gradient either way —
+// the trainer averages the micro-batches (accum_scale = 1/n_accum, SDTrainer.py) so there is no
+// doubled LR, grad clipping runs once per optimizer step, and these are transformers, so there
+// is no BatchNorm statistic to differ. What differs is hardware, which is exactly how this
+// fork's profiles are split: the 32 GB desktop profiles reach effective batch with batch_size
+// (one kernel pass, faster) and the 16 GB laptop/background profiles reach it with
+// gradient_accumulation (one micro-batch of activations resident at a time). Accumulating also
+// pays a torch.cuda.empty_cache() after EVERY micro-batch when low_vram is on
+// (SDTrainer.py ~2339) — a throughput tax batch_size does not pay, and low_vram is on in every
+// 16 GB profile here. So: not interchangeable in practice, identical in math.
+const EFFECTIVE_BATCH_NOTE =
+  'EFFECTIVE BATCH = batch_size x gradient_accumulation, and the two routes are the same gradient but not the same ' +
+  'run. Reach it with batch_size on a 32GB+ desktop (one kernel pass, and no per-micro-batch cache flush); reach it ' +
+  'with gradient_accumulation on 16GB, where only one micro-batch of activations is resident. Accumulating costs a ' +
+  'cuda empty_cache() per micro-batch whenever low_vram is on, so it is the slower route when you have the VRAM to ' +
+  'avoid it. Fused Automagic is the exception that removes the choice: it steps every micro-batch and the trainer ' +
+  'hard-errors on accumulation, so there batch_size is the only route — and on 16GB, where you cannot raise it, the ' +
+  'honest options are effective batch 1 or optimizer_params.fused: false (which gives up fused\'s low-VRAM benefit). ';
+
 const ARCH_RECIPES: Record<string, RecipeByTier> = {
   // Vanilla SDXL checkpoints only (not Illustrious/Pony — those are detected
   // separately via checkpoint name/path, see illustriousOrPonyRecipe below).
@@ -540,12 +581,55 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'Turbo variants need the training adapter (set automatically when the arch is selected); keep low_vram on unless you have 48GB+. ' +
       'Alternative: Automagic v3 (self-adapting per-group LR, no scheduler needed) — used by the community 16GB config this ' +
       "fork ships as a preset. Its LR is a launch point the controller adapts away from (author's doc); if you use it, bound " +
-      'the controller with optimizer_params min_lr/max_lr (e.g. 1e-6/1e-4) — the bounds were added upstream 2026-07-17 ' +
-      'specifically to prevent runaway edge cases. Automagic fuses its step into the backward pass by default, so it requires ' +
+      'the controller with optimizer_params min_lr/max_lr (e.g. 1e-6/1e-4) if you want a hard ceiling on a shared machine. ' +
+      'RE-READ AGAINST THE PINNED SOURCE 2026-09-11 (toolkit/optimizers/automagic3.py, current since the 2026-08-14 sync) — ' +
+      'the authoritative numbers are its own signature defaults, and this fork deviates from three of them: launch LR 1e-6 ' +
+      '(this recipe and the presets launch at 1e-4, 100x higher, inherited from the community config where it was the AdamW ' +
+      'LR), weight_decay 0.0 (presets set 1e-4), and min_lr 1e-8 / max_lr 1e3, which the docstring calls "purely a numerical ' +
+      'overflow guard far outside the usable range" and offers as OPTIONAL user rails, not as runaway protection. Runaway is ' +
+      "documented as v2's structural flaw (v2 bumped the LR from raw single-step agreement, which has no upper fixed point) " +
+      'and v3 claims to fix it by design: it votes from each element\'s recent sign window, pools one LR per param group so ' +
+      'coupled tensors cannot split, and says the vote "anchors the LR\'s absolute level without external rails". Consequence ' +
+      'worth knowing before copying the preset: with max_lr set equal to the launch LR the controller can only ever adapt ' +
+      'DOWNWARD, which is half a controller. A high start is survivable without rails — clip_threshold 1.0 is a trust region ' +
+      'on every update, and v3 merely prints a note and walks a too-high LR down, where v1 hard-forced it to 1e-6. ' +
+      'The second real dial, which has no UI field and is not otherwise documented here: polarity_history (H, default 8, ' +
+      'range 2-64, H/8 bytes of state per element). Longer windows make the two vote events rarer and more decisive, so ' +
+      'detection sharpens — at the cost of memory, an H-step warmup/reaction lag, and fewer voters per step. ' +
+      'Automagic fuses its step into the backward pass by default, so it requires ' +
       'gradient_accumulation (and the legacy gradient_accumulation_steps) at 1 — reach a larger effective batch by raising ' +
-      'batch size instead, or set optimizer_params.fused: false to accumulate normally (config_modules.py hard-errors on the ' +
-      'fused+accumulating combination). Low-confidence: the optimizer is ~6 weeks old with almost no arch-specific data. ' +
-      'Timestep guidance (via LoRA Dataset Studio / RunComfy): linear timestep_type is the Krea-canonical choice.',
+      'batch size instead IF the card allows it (see the effective-batch note below; on 16GB it usually does not), or set ' +
+      'optimizer_params.fused: false to accumulate normally (config_modules.py hard-errors on the ' +
+      'fused+accumulating combination). Fused is also the low-VRAM mode, not just a constraint: each grad is freed the moment ' +
+      'autograd finishes accumulating into it, which is why it is the default and why it matters on 16GB. ' +
+      'Still low-confidence per arch: no published per-arch automagic data exists, and the version pinned here pools one LR ' +
+      'per param group where earlier v3s pooled per output channel and then per tensor — third-party write-ups still ' +
+      'describe those older shapes, so do not trust them over the docstring in this tree. ' +
+      'Timestep guidance (via LoRA Dataset Studio / RunComfy): linear timestep_type is the Krea-canonical choice. ' +
+      'CORROBORATION (2026-09-11 review): an independent ai-toolkit wrapper (CaptainGrock/Krea2Trainer) ships this exact ' +
+      'recipe as its defaults on THIS trainer — rank 32, alpha 32, LR 1e-4, adamw8bit, batch 1, 2000 steps, caption ' +
+      'dropout 0.05, LR range 1e-5..5e-4 — which is a stronger anchor than the musubi-tuner run above. A second guide ' +
+      "independently ties the 512-or-1024 rule to Krea 2's own training resolutions (256/512/1024, never 768) and cites " +
+      'reports of 768 runs going wrong, so that rule is now two-source. ' +
+      'LOKR INSTEAD OF LORA (new 2026-09-11, the one genuinely new development for this arch): for character work LoKr ' +
+      'is reported to bleed identity noticeably less than LoRA — two characters in one image keep their own faces rather ' +
+      'than averaging into one — which is the same failure the DOP/regularization paragraph above exists for. This trainer ' +
+      'supports it natively (network.type "lokr" + network.lokr_factor). Contested, do not resolve it silently: factor 4 ' +
+      'is where the ai-toolkit community leans, 8 is the stated compromise, one published guide says 16 (at 768, which ' +
+      'contradicts the resolution rule above — prefer 512/1024). Mind the direction: in LyCORIS factorization a LOWER ' +
+      'factor means a LARGER network (factor 4 on a 1024-dim layer gives a 256x256 block, factor 16 gives 64x64), so ' +
+      'factor 4 is the heavy end. LoKr also wants a lower LR than LoRA — 5e-5 rather than 1e-4, and an adaptive ' +
+      'controller railed at min 5e-5 / max 1e-4 (Fizgig). Shipped as the krea2_character_lokr preset at factor 8 / ' +
+      'LR 5e-5. Unverified in this fork: no measured LoKr run here. ' +
+      "DATASET SIZE: Krea's own hosted LoRA service states a 3-IMAGE MINIMUM and says a clean, repetitive set beats a " +
+      'large mixed one; the community LoKr recipe wants ~20 (up to 40 if the images are weaker) with 2-5 full-body ' +
+      'shots so proportions are learned rather than just the face. Nothing published sets an upper bound. ' +
+      'RANK BY INTENT (a 12GB musubi guide, independent of the recipe above): 8 gives a lighter style influence, 16 is ' +
+      'the balanced middle for composability with other LoRAs, 32 is for a precise subject meant to dominate a stack — ' +
+      'which is why this recipe sits at 32 for character work and the concept preset drops alpha instead of rank. ' +
+      'BATCH BY CARD from the same guide: 1 on 8GB, 2 on 12GB, and this fork gates 4 on file count (>=45 here). ' +
+      REPEATS_NOTE +
+      EFFECTIVE_BATCH_NOTE,
   }),
   zimage: tier => ({
     settings: [
@@ -568,9 +652,10 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
     notes:
       'Qwen-Image: adamw8bit, LR 1e-4, batch 1 at 1024. No arch-specific scheduler research found — left unset (defaults to constant).',
   }),
-  // FLUX.2 Klein: ai-toolkit has native support (arch keys flux2_klein_4b/9b) but almost no
-  // FLUX.2-specific tuning literature exists yet — these numbers are the FLUX.1 consensus
-  // recipe used as the best available proxy, flagged as such.
+  // FLUX.2 Klein: reviewed 2026-09-11. Official BFL guidance now exists and it RATIFIES the
+  // numbers that were here as a FLUX.1 proxy (LR 1e-4, rank 16 default / 32 for complex
+  // concepts). What was stale was the framing ("no FLUX.2 recipe exists") and the VRAM
+  // figures, which were wrong by 2-3x. Timestep type is the one value still unverified.
   flux2_klein_4b: tier => ({
     settings: [
       lrSetting(0.0001),
@@ -580,13 +665,34 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       schedulerSetting('constant'),
     ],
     notes:
-      'FLUX.2 Klein 4B: unverified — no FLUX.2-specific recipe exists yet, these are FLUX.1 community defaults used as a proxy. ' +
-      'Needs ~32GB VRAM minimum (48GB practical) per early reports. Natural-language captions. ' +
+      'FLUX.2 Klein 4B: LR 1e-4 and rank 16 are BFL-published, not a FLUX.1 proxy — their Klein training doc gives ' +
+      'LR 1e-4 as the default, rank 16 as the default with 32 for complex or abstract concepts, 20-50 images as the ' +
+      'working dataset size, and "start at 1500 steps"; the 60-minute walkthrough reports Klein LoRAs peaking between ' +
+      '1000 and 1750 steps, which is why the step advisor now ceilings Klein at 2500 instead of FLUX.1\'s 3000. ' +
+      'VRAM (corrected 2026-09-11 — the old "~32GB minimum, 48GB practical" here was wrong): the 4B is ~13GB in fp16 ' +
+      'and ~7GB at fp8, so a quantized run is a 12-16GB-class job and an unquantized LoRA run fits 24GB in about an ' +
+      'hour on a 4090. Train at 512 on a 24GB card (BFL). Natural-language captions. ' +
       'A 50+-run community study (single-source, style-focused) found Flux-family training extremely LR-sensitive — ' +
       '"leave the learning rate alone" — with training dose (steps × batch × accum vs image count) the main lever, and ' +
-      'weight decay mattering more than expected (their style runs preferred 1e-5 over the 1e-4 default). ' +
-      'Timestep guidance (LoRA Dataset Studio, itself extrapolated/not Klein-verified): sigmoid for characters, weighted for style. ' +
-      "STYLE-specific network (that same sweep + BFL's official Klein example): a linear+Conv2d LoRA at ratio 4:2:2:1 — LDS ships 128/64/64/32; the flux2_klein_style_lora.json preset folds that to a half-scale 64/32 linear + 32/16 conv (128 judged too heavy for a 4B). This ramp is linear-only; use the style preset for the conv recipe.",
+      'weight decay mattering more than expected (their style runs preferred 1e-5 over the 1e-4 default). BFL\'s own ' +
+      'style example lands near that independently: LR 9.5e-5 with weight decay 1.5e-4. A more conservative published ' +
+      'point for reference: fal\'s hosted Klein base trainers default to LR 5e-5 / 1000 steps. ' +
+      'Timestep guidance (LoRA Dataset Studio, itself extrapolated/not Klein-verified): sigmoid for characters, weighted ' +
+      'for style — the only value in this recipe with no published Klein source behind it. ' +
+      "STYLE-specific network: BFL's own Klein style example is a linear+Conv2d LoRA at 128/64 linear + 64/32 conv (ratio 4:2:2:1), which is exactly what LDS ships. The 4B style preset folds that to half scale (64/32 linear + 32/16 conv) — now a deliberate fork deviation for a 4B rather than a guess in the absence of a source — while flux2_klein_9b_style_lora.json uses the official 128/64/64/32. This ramp is linear-only; use a style preset for the conv recipe. " +
+      'OPTIMIZER (single-source but specific, worth heeding): adamw8bit is the recommendation and ADAFACTOR IS ' +
+      'REPORTED TO FAIL on Klein 9B character training — its adaptive scaling does not converge for identity and ' +
+      'the face collapses to a generic average by ~1k steps. Adafactor sits in this app\'s optimizer dropdown and ' +
+      'is the obvious pick for a big model on a small card, so treat it as a trap for character work specifically. ' +
+      'That guide pairs adamw8bit with LR 1e-4, betas [0.9, 0.999], weight decay 0.01, batch 1 + gradient ' +
+      'accumulation 2, and 3000 steps; its literal choice is AdamW8bitKahan, which this trainer does not have — ' +
+      'adamw8bit is the closest available. A separate published Klein config for general (non-character) ' +
+      'fine-tuning instead runs rank 64 / alpha 128 at total batch 4 with LR 1e-5 — batch up and LR down together, ' +
+      'not one without the other. Prodigy stays the LR-free escape hatch if you refuse to guess an LR. ' +
+      'DATASET SIZE: BFL says 20-50 images; character guides go as low as 10 (with heavy repeats, see below). No ' +
+      'published upper bound — the advisor damps steps/image itself above ~65 files. ' +
+      REPEATS_NOTE +
+      EFFECTIVE_BATCH_NOTE,
   }),
   flux2_klein_9b: tier => ({
     settings: [
@@ -597,13 +703,33 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       schedulerSetting('constant'),
     ],
     notes:
-      'FLUX.2 Klein 9B: unverified — no FLUX.2-specific recipe exists yet, these are FLUX.1 community defaults used as a proxy. ' +
-      'Needs more VRAM than the 4B variant; 48GB is a practical minimum. Natural-language captions. ' +
+      'FLUX.2 Klein 9B: same BFL-published base recipe as the 4B — LR 1e-4, rank 16 default (32 for complex or ' +
+      'abstract concepts), 20-50 images, start at 1500 steps, LoRAs peaking 1000-1750; the advisor ceilings Klein at ' +
+      '2500. None of it is 9B-MEASURED, but it is no longer a FLUX.1 extrapolation either. ' +
+      'VRAM (corrected 2026-09-11 — the old "48GB practical minimum" here was wrong): the 9B is ~29GB in fp16 and ' +
+      '~15GB at fp8, so a single 24GB card (3090/4090/A5000) is the published recommendation with quantization on. ' +
+      'Natural-language captions. ' +
       'A 50+-run community study (single-source, style-focused) found Flux-family training extremely LR-sensitive — ' +
       '"leave the learning rate alone" — with training dose (steps × batch × accum vs image count) the main lever, and ' +
-      'weight decay mattering more than expected (their style runs preferred 1e-5 over the 1e-4 default). ' +
-      'Timestep guidance (LoRA Dataset Studio, itself extrapolated/not Klein-verified): sigmoid for characters, weighted for style. ' +
-      "STYLE-specific network (that same sweep + BFL's official Klein example): a linear+Conv2d LoRA at ratio 4:2:2:1 — LDS ships 128/64/64/32; the flux2_klein_style_lora.json preset folds that to a half-scale 64/32 linear + 32/16 conv (128 judged too heavy for a 4B). This ramp is linear-only; use the style preset for the conv recipe.",
+      'weight decay mattering more than expected (their style runs preferred 1e-5 over the 1e-4 default). BFL\'s own ' +
+      'style example lands near that independently: LR 9.5e-5 with weight decay 1.5e-4. A more conservative published ' +
+      'point for reference: fal\'s hosted Klein base trainers default to LR 5e-5 / 1000 steps. ' +
+      'Timestep guidance (LoRA Dataset Studio, itself extrapolated/not Klein-verified): sigmoid for characters, weighted ' +
+      'for style — the only value in this recipe with no published Klein source behind it. ' +
+      "STYLE-specific network: BFL's own Klein style example is a linear+Conv2d LoRA at 128/64 linear + 64/32 conv (ratio 4:2:2:1), which is exactly what LDS ships. The 4B style preset folds that to half scale (64/32 linear + 32/16 conv) — now a deliberate fork deviation for a 4B rather than a guess in the absence of a source — while flux2_klein_9b_style_lora.json uses the official 128/64/64/32. This ramp is linear-only; use a style preset for the conv recipe. " +
+      'OPTIMIZER (single-source but specific, worth heeding): adamw8bit is the recommendation and ADAFACTOR IS ' +
+      'REPORTED TO FAIL on Klein 9B character training — its adaptive scaling does not converge for identity and ' +
+      'the face collapses to a generic average by ~1k steps. Adafactor sits in this app\'s optimizer dropdown and ' +
+      'is the obvious pick for a big model on a small card, so treat it as a trap for character work specifically. ' +
+      'That guide pairs adamw8bit with LR 1e-4, betas [0.9, 0.999], weight decay 0.01, batch 1 + gradient ' +
+      'accumulation 2, and 3000 steps; its literal choice is AdamW8bitKahan, which this trainer does not have — ' +
+      'adamw8bit is the closest available. A separate published Klein config for general (non-character) ' +
+      'fine-tuning instead runs rank 64 / alpha 128 at total batch 4 with LR 1e-5 — batch up and LR down together, ' +
+      'not one without the other. Prodigy stays the LR-free escape hatch if you refuse to guess an LR. ' +
+      'DATASET SIZE: BFL says 20-50 images; character guides go as low as 10 (with heavy repeats, see below). No ' +
+      'published upper bound — the advisor damps steps/image itself above ~65 files. ' +
+      REPEATS_NOTE +
+      EFFECTIVE_BATCH_NOTE,
   }),
   // Anima 2B (native upstream arch since ostris#860): unusually well-sourced — the numbers below are the model
   // author's own published recipe (Circlestone Labs finetuning tips + his diffusion-pipe
@@ -637,7 +763,8 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'optimizer_params.fused=false — fused Automagic steps every micro-batch (config-parse error otherwise). ' +
       'Never train the LLM adapter (default off): ' +
       'it shapes all text conditioning and degrades easily. Anima is a base model with no aesthetic tuning to overcome — ' +
-      '"a light touch is all you need". Danbooru-style tag captions work well (anime-focused base).',
+      '"a light touch is all you need". Danbooru-style tag captions work well (anime-focused base). ' +
+      EFFECTIVE_BATCH_NOTE,
   }),
 };
 ARCH_RECIPES.flex = ARCH_RECIPES.flux;

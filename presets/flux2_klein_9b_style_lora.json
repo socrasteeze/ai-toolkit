@@ -10,10 +10,10 @@
         "trigger_word": null,
         "network": {
           "type": "lora",
-          "linear": 64,
-          "linear_alpha": 32,
-          "conv": 32,
-          "conv_alpha": 16
+          "linear": 128,
+          "linear_alpha": 64,
+          "conv": 64,
+          "conv_alpha": 32
         },
         "save": {
           "dtype": "bf16",
@@ -74,7 +74,7 @@
   },
   "meta": {
     "name": "[name]",
-    "version": "1.1",
-    "description": "Style LoRA on FLUX.2 Klein 9B (gated on HF - accept the licence). Needs ~32-48 GB VRAM; on less, use the 4B preset. Recipe is the 4B preset unchanged except arch and repo - UNVERIFIED, nothing Klein-specific is published and none of these numbers are 9B-measured. Effective batch 1: raise to 4 only at >=40 files (advisor names the ceiling for your set). Speed (2026-08-29): latents are served from RAM after the first pass (cache_latents + cache_latents_to_disk — disk-only caching re-read every latent every step), loss_sync_every 4, ui_db_poll_seconds 2. Training math unchanged."
+    "version": "1.2",
+    "description": "Style LoRA on FLUX.2 Klein 9B (gated on HF - accept the licence). VRAM: the 9B is ~29 GB in fp16 and ~15 GB at fp8, so a single 24 GB card (3090/4090/A5000) with quantization on is the published recommendation - the old \"~32-48 GB\" claim in this description was wrong. Network raised 2026-09-11 to BFL's OWN Klein style example - 128/64 linear + 64/32 conv (ratio 4:2:2:1), the full-scale recipe LDS also ships - replacing the half-scale 64/32 + 32/16 fold this preset inherited from the 4B. The halving was justified by \"128 is too heavy for a 4B\"; that argument never applied to the 9B and the model author publishes 128/64/64/32. BFL's style example also runs LR 9.5e-5 with weight decay 1.5e-4 over 3000 steps against the 1e-4 / 2500 shipped here - both are within the published spread, and a 50+-run community sweep independently found style runs preferring weight decay 1e-5, so treat LR and decay as the knobs to try, not rank. Weighted timesteps remain the one value with no published Klein source. Effective batch 1: raise to 4 only at >=40 files (advisor names the ceiling for your set). Speed (2026-08-29): latents are served from RAM after the first pass (cache_latents + cache_latents_to_disk — disk-only caching re-read every latent every step), loss_sync_every 4, ui_db_poll_seconds 2. Training math unchanged."
   }
 }

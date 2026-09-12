@@ -62,14 +62,16 @@ decisions in §9).
 ## Fork hygiene rules (apply to any future change)
 
 1. New functionality goes in new files. Upstream files should only ever get small,
-   easy-to-reapply insertions. As of 2026-09-12 that is **58 files**. It jumped from 26 to 57 on
+   easy-to-reapply insertions. As of 2026-09-12 that is **59 files**. It jumped from 26 to 57 on
    2026-08-13 (a Next 15 route/page `params` type fix — see FORK_NOTES.md — touched 16 App
    Router route handlers plus `ui/src/app/jobs/[jobID]/page.tsx`), reached 58, and came back down
    to 57 on 2026-08-29 when upstream independently adopted the fork's `r"""` fix to
    `extensions_built_in/captioner/prompts/ideogram4_prompt.py` — that file is byte-identical to
-   upstream again and is no longer a touchpoint. It went back to 58 on 2026-09-12: upstream's
-   inference-engine merge added `ui/src/app/api/jobs/[jobID]/kill/route.ts` carrying the same
-   stale Next 14 `params` type, which the fork re-typed (17 route handlers now, not 16). Get the current
+   upstream again and is no longer a touchpoint. It went to 59 on 2026-09-12: upstream's
+   inference-engine merge added two more route handlers with wrong `params` types —
+   `jobs/[jobID]/kill/route.ts` with the same stale Next 14 sync shape, and
+   `inference/[...path]/route.ts` with a `Promise<...> | {...}` union that `tsc` accepts but
+   `next build`'s generated `ParamCheck` rejects — both re-typed (18 route handlers now, not 16). Get the current
    list with `git diff upstream/main --name-status | grep -v '^A'`, and the per-file
    change + conflict-resolution notes from `FORK_NOTES.md`'s "Upstream files modified"
    table (the authoritative record; this count goes stale, that table does not).

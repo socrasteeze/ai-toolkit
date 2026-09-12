@@ -11,6 +11,8 @@ import { apiClient } from '@/utils/api';
 import { JobConfig } from '@/types';
 import { suggestSteps, exposureGauge, analyzeBuckets, resolutionAdvice, getArchRecipe } from '@/utils/stepSuggestion';
 import { weightedBatchSize } from '@/utils/advisorBatch';
+import { suggestBatch, tierForVramMb, TIER_LABEL, MachineTier } from '@/utils/batchAdvisor';
+import useGPUInfo from '@/hooks/useGPUInfo';
 import { defaultDatasetConfig } from '@/app/jobs/new/jobConfig';
 import { modelArchs } from '@/app/jobs/new/options';
 import useSettings from '@/hooks/useSettings';
@@ -185,6 +187,17 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
   const defaultBatchSize = process.train.batch_size;
   const gradAccum = process.train.gradient_accumulation;
   const currentSteps = process.train.steps;
+  const optimizer = process.train.optimizer;
+  const optimizerFused = ((process.train.optimizer_params || {}) as { fused?: boolean }).fused;
+
+  // Machine tier for the batch plan (2026-09-11): read live from the monitor stream, with a
+  // manual override for planning a run for the other machine. Largest card wins on a
+  // multi-GPU box; the trainer runs on one device.
+  const { gpuList } = useGPUInfo();
+  const detectedVramMb = useMemo(() => gpuList.reduce((m, g) => Math.max(m, g.memory?.total ?? 0), 0), [gpuList]);
+  const detectedTier = tierForVramMb(detectedVramMb);
+  const [tierOverride, setTierOverride] = useState<MachineTier | 'auto'>('auto');
+  const tier: MachineTier | null = tierOverride === 'auto' ? detectedTier : tierOverride;
 
   // Everything below is per-IMAGE math (steps per file, exposures per image, bucket
   // grids). For a video or audio arch it is the wrong unit and used to render anyway.
@@ -274,6 +287,36 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
   const suggestion = useMemo(() => {
     return suggestSteps({ itemCount, arch, batchSize: advisorBatchSize, gradientAccumulation: gradAccum });
   }, [itemCount, arch, advisorBatchSize, gradAccum]);
+
+  // Machine-aware batch plan: min(dataset gate, VRAM cell), routed as batch_size on the
+  // desktop and gradient_accumulation on 16/24 GB, with steps re-derived at that effective
+  // batch so all three move together.
+  const batchPlan = useMemo(
+    () => (tier && itemCount > 0 ? suggestBatch({ itemCount, arch, tier, optimizer, fused: optimizerFused }) : null),
+    [tier, itemCount, arch, optimizer, optimizerFused],
+  );
+  const planSteps = useMemo(
+    () =>
+      batchPlan && batchPlan.fits
+        ? suggestSteps({ itemCount, arch, batchSize: batchPlan.batchSize, gradientAccumulation: batchPlan.gradAccum })
+        : null,
+    [batchPlan, itemCount, arch],
+  );
+  const planApplied =
+    !!batchPlan &&
+    batchPlan.fits &&
+    defaultBatchSize === batchPlan.batchSize &&
+    Math.max(1, gradAccum || 1) === batchPlan.gradAccum &&
+    !!planSteps &&
+    currentSteps === planSteps.suggested;
+  const applyBatchPlan = () => {
+    if (!batchPlan || !batchPlan.fits || !planSteps) return;
+    setJobConfig(batchPlan.batchSize, 'config.process[0].train.batch_size');
+    setJobConfig(batchPlan.gradAccum, 'config.process[0].train.gradient_accumulation');
+    // legacy field, config-import only; keep it from contradicting the plan
+    setJobConfig(1, 'config.process[0].train.gradient_accumulation_steps');
+    setJobConfig(planSteps.suggested, 'config.process[0].train.steps');
+  };
 
   const runAnalysis = async (force = false) => {
     setAnalyzing(true);
@@ -457,6 +500,50 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
           {itemCount} files)
         </div>
       )}
+
+      <div className="pt-1" title={batchPlan ? batchPlan.reasons.join('\n') : undefined}>
+        <span className="text-gray-500">Machine:</span>{' '}
+        <select
+          className="bg-gray-800 text-gray-300 border border-gray-700 rounded px-1 py-0 text-xs"
+          value={tierOverride}
+          onChange={e => setTierOverride(e.target.value as MachineTier | 'auto')}
+          title="Detected from the GPU monitor; override to plan a run for the other machine"
+        >
+          <option value="auto">
+            auto{detectedTier ? ` (${TIER_LABEL[detectedTier]}, ${Math.round(detectedVramMb / 1024)} GB)` : ' (no GPU data yet)'}
+          </option>
+          <option value="laptop16">{TIER_LABEL.laptop16}</option>
+          <option value="mid24">{TIER_LABEL.mid24}</option>
+          <option value="desktop32">{TIER_LABEL.desktop32}</option>
+        </select>
+        {!tier && <span className="ml-2 text-gray-500">pick a machine to get a batch plan</span>}
+        {batchPlan && !batchPlan.fits && (
+          <span className="ml-2 text-red-400">✗ {batchPlan.reasons[0]}</span>
+        )}
+        {batchPlan && batchPlan.fits && planSteps && (
+          <>
+            {' '}
+            → batch {batchPlan.batchSize} × accum {batchPlan.gradAccum} = eff. {batchPlan.effective} · ~{planSteps.suggested}{' '}
+            steps
+            <span className="ml-1 text-gray-500">
+              (dataset allows {batchPlan.datasetCeiling}, VRAM{' '}
+              {batchPlan.measured ? 'measured' : <span className="text-orange-400">inferred</span>} {batchPlan.vramCeiling})
+            </span>
+            {planApplied ? (
+              <span className="ml-2 text-green-400">✓ set</span>
+            ) : (
+              <button
+                type="button"
+                className="ml-2 text-blue-400 hover:text-blue-300 underline"
+                title="Sets batch_size, gradient_accumulation and steps together"
+                onClick={applyBatchPlan}
+              >
+                Apply batch + steps
+              </button>
+            )}
+          </>
+        )}
+      </div>
 
       {showAnalysis && (hasAnalysis || failedAnalyses.length > 0) && (
         <div className="mt-2 p-2 rounded border border-gray-700 bg-gray-900/50 space-y-2">

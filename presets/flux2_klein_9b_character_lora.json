@@ -36,7 +36,7 @@
         ],
         "train": {
           "batch_size": 1,
-          "steps": 2500,
+          "steps": 1500,
           "gradient_accumulation": 1,
           "train_unet": true,
           "train_text_encoder": false,
@@ -72,7 +72,7 @@
   },
   "meta": {
     "name": "[name]",
-    "version": "1.1",
-    "description": "Character LoRA on FLUX.2 Klein 9B (gated on HF - accept the licence). Needs ~32-48 GB VRAM; on less, use the 4B preset. Recipe is the 4B preset unchanged except arch and repo - UNVERIFIED, nothing Klein-specific is published and none of these numbers are 9B-measured. Effective batch 1: raise to 4 only at >=40 files (advisor names the ceiling for your set). Speed (2026-08-29): latents are served from RAM after the first pass (cache_latents + cache_latents_to_disk — disk-only caching re-read every latent every step), loss_sync_every 4, ui_db_poll_seconds 2. Training math unchanged."
+    "version": "1.2",
+    "description": "Character LoRA on FLUX.2 Klein 9B (gated on HF - accept the licence). VRAM: the 9B is ~29 GB in fp16 and ~15 GB at fp8, so a single 24 GB card (3090/4090/A5000) with quantization on is the published recommendation - the old \"~32-48 GB\" claim in this description was wrong. Reviewed 2026-09-11 against BFL's own Klein training docs: rank 16 and LR 1e-4 are the published defaults (rank 32 for complex or abstract concepts), 20-50 images is the published working dataset size, and \"start at 1500 steps\" is the published starting point, with Klein LoRAs reported to peak between 1000 and 1750 steps - so steps here drop from 2500 to 1500 and the step advisor now ceilings Klein at 2500 instead of inheriting FLUX.1's 3000. Recipe is the 4B preset unchanged except arch and repo; the BFL guidance above does not split 4B from 9B, so none of these numbers are 9B-MEASURED - but they are no longer a FLUX.1 extrapolation either. The sigmoid timestep type is the only value with no published Klein source. Effective batch 1: raise to 4 only at >=40 files (advisor names the ceiling for your set). Speed (2026-08-29): latents are served from RAM after the first pass (cache_latents + cache_latents_to_disk — disk-only caching re-read every latent every step), loss_sync_every 4, ui_db_poll_seconds 2. Training math unchanged."
   }
 }

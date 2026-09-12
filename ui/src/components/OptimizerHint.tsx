@@ -53,7 +53,7 @@ export default function OptimizerHint({ jobConfig, setJobConfig }: Props) {
         <button
           type="button"
           className="text-blue-400 hover:text-blue-300 underline"
-          title="Reach the same effective batch size by raising Batch Size instead"
+          title="Reach the same effective batch size by raising Batch Size instead — possible on a 32GB+ desktop, usually not on 16GB, where the honest options are effective batch 1 or optimizer_params.fused: false"
           onClick={() => {
             setJobConfig(1, 'config.process[0].train.gradient_accumulation');
             setJobConfig(1, 'config.process[0].train.gradient_accumulation_steps');
@@ -92,7 +92,9 @@ export default function OptimizerHint({ jobConfig, setJobConfig }: Props) {
       {accumulationWarning}
       <div>
         Automagic v3 self-adapts one LR per group — the LR above is a launch point, not a target (author default 1e-6),
-        and no LR scheduler is needed. Weight decay is decoupled (optimizer default 0).
+        and no LR scheduler is needed. Weight decay is decoupled (optimizer default 0). Not a Prodigy variant: Prodigy's
+        step-size estimate only ever grows (d = max(d_max, d_hat)), which is why it is paired with a decaying scheduler;
+        Automagic votes the LR down as well as up and needs none. Arch-agnostic by construction, unverified per arch.
       </div>
       <div className="pt-0.5">
         {boundsSet ? (

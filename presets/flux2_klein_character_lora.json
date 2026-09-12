@@ -36,7 +36,7 @@
         ],
         "train": {
           "batch_size": 1,
-          "steps": 2500,
+          "steps": 1500,
           "gradient_accumulation": 1,
           "train_unet": true,
           "train_text_encoder": false,
@@ -72,7 +72,7 @@
   },
   "meta": {
     "name": "[name]",
-    "version": "1.1",
-    "description": "Character LoRA on FLUX.2 Klein 4B (gated on HF — accept the licence). UNVERIFIED: ported from LDS's built-in, itself extrapolated from generic subject guidance (rank 16/16 family default, sigmoid timesteps NOT Klein-verified). For the 9B: arch flux2_klein_9b + black-forest-labs/FLUX.2-klein-base-9B (needs ~32-48 GB VRAM). Steps: LDS computes ~120/image clamped [1500,3500]. Speed (2026-08-29): latents are served from RAM after the first pass (cache_latents + cache_latents_to_disk — disk-only caching re-read every latent every step), loss_sync_every 4, ui_db_poll_seconds 2. Training math unchanged."
+    "version": "1.2",
+    "description": "Character LoRA on FLUX.2 Klein 4B (gated on HF — accept the licence). Reviewed 2026-09-11 against BFL's own Klein training docs: rank 16 and LR 1e-4 are the published defaults (rank 32 for complex or abstract concepts), 20-50 images is the published working dataset size, and \"start at 1500 steps\" is the published starting point, with Klein LoRAs reported to peak between 1000 and 1750 steps - so steps here drop from 2500 to 1500 and the step advisor now ceilings Klein at 2500 instead of inheriting FLUX.1's 3000. The sigmoid timestep type is now the ONLY unverified value in this preset (LDS extrapolation, no Klein source). VRAM: the 4B is ~13 GB in fp16 and ~7 GB at fp8, so quantized as shipped this is a 12-16 GB-class job and an unquantized run fits 24 GB in about an hour on a 4090 - the old \"~32-48 GB\" claim in this description was wrong. For the 9B: arch flux2_klein_9b + black-forest-labs/FLUX.2-klein-base-9B (~29 GB fp16 / ~15 GB fp8, i.e. a 24 GB card with quantization on). Speed (2026-08-29): latents are served from RAM after the first pass (cache_latents + cache_latents_to_disk — disk-only caching re-read every latent every step), loss_sync_every 4, ui_db_poll_seconds 2. Training math unchanged."
   }
 }

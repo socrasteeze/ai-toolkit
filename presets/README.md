@@ -24,18 +24,21 @@ on the New Training Job page in the UI.
 | `sdxl_concept_lora.json` | SDXL concept, 16/8 | Ported from LoRA Dataset Studio's researched built-in |
 | `krea2_lora_16gb.json` / `krea2_lora_low_vram.json` | Krea 2, 32/32 | Community (low-confidence — model is young) |
 | `krea2_concept_lora.json` | Krea 2 concept, 32/16, linear | Extrapolated (no published recipe; LDS flags this too) |
+| `krea2_character_lokr.json` | Krea 2 character **LoKr**, full-rank + `lokr_factor` 8, LR 5e-5, linear | New 2026-09-11 — LoKr reported to bleed identity far less than LoRA; factor CONTESTED (community 4 / middle 8 / one guide 16). UNVERIFIED here: no measured run |
 | `zimage_character_lora.json` / `zimage_style_lora.json` / `zimage_concept_lora.json` | Z-Image Turbo (`zimage:turbo` + training adapter), 32/32 char+style, 16/8 concept | Ported from LDS's researched built-ins. v1.1 (2026-08-29) fixes the arch: v1.0 trained the distilled Turbo weights under the base `zimage` arch without the adapter |
-| `flux2_klein_character_lora.json` | FLUX.2 Klein 4B, 16/16 char, sigmoid | UNVERIFIED — LDS extrapolation, nothing Klein-specific published |
-| `flux2_klein_style_lora.json` | FLUX.2 Klein 4B style, 64/32 linear + 32/16 conv (4:2:2:1), weighted | Herbst 64-run sweep + BFL official Klein example (LDS ships 128/64/64/32; ATK folds to half scale — see docs/preset_alignment_2026_07.md 2026-07-21) |
-| `flux2_klein_9b_character_lora.json` / `flux2_klein_9b_style_lora.json` | Same as the 4B pair, arch/repo swapped to Klein 9B | UNVERIFIED — needs ~32-48 GB VRAM; added 2026-08-24 so the 9B stops being a hand-edit |
+| `flux2_klein_character_lora.json` | FLUX.2 Klein 4B, 16/16 char, sigmoid, 1500 steps | v1.2 (2026-09-11): rank 16 / LR 1e-4 / 1500 steps / 20-50 images are now BFL-PUBLISHED defaults, not an LDS extrapolation. Only the sigmoid timestep type is still unverified |
+| `flux2_klein_style_lora.json` | FLUX.2 Klein 4B style, 64/32 linear + 32/16 conv (4:2:2:1), weighted | Herbst 64-run sweep + BFL's official Klein style example, which runs the full 128/64/64/32 at LR 9.5e-5 / wd 1.5e-4. The half-scale fold is a deliberate 4B deviation (see docs/preset_alignment_2026_07.md 2026-07-21) |
+| `flux2_klein_9b_character_lora.json` / `flux2_klein_9b_style_lora.json` | Klein 9B: char 16/16 @ 1500 steps; style raised to BFL's official 128/64 linear + 64/32 conv | v1.2 (2026-09-11) corrects the VRAM claim — the 9B is ~29 GB fp16 / ~15 GB fp8, so a single 24 GB card with quantization, not 32-48 GB. Not 9B-measured |
 | `*_automagic.json` (klein char, illustrious char, anima) | Parent recipe + `automagic3` with `min_lr`/`max_lr` rails, no scheduler, accum pinned to 1 | Rail pattern from `krea2_lora_16gb`; UNVERIFIED per arch (see PLAN.md 2026-07-19 + 2026-08-24) |
-| `*_laptop16gb.json` (anima, flux, sdxl char, illustrious char, krea2) | Same recipe as the parent preset — memory/IO profile only | Hardware tier for a 16 GB laptop GPU; see `docs/profiles.md` |
+| `*_laptop16gb.json` (anima, flux, sdxl char, illustrious char, krea2) | Parent recipe, memory/IO profile only — EXCEPT effective batch on the two SDXL-family ones (batch 1 + accum 2 vs the parents' effective 1) | Hardware tier for a 16 GB laptop GPU; see `docs/profiles.md`. The SDXL/Illustrious exception is deliberate (2026-07-29 batch discipline) and puts those presets in agreement with the advisor, which recommends batch 2 for that family; flux and krea2 laptop presets stay at effective 1 because the advisor recommends batch 1 for those archs |
 
 **Hardware profiles vs. recipes.** Most files here are *recipes* (rank/LR/optimizer/steps).
 A few are *hardware profiles* that inherit a recipe unchanged and only change how it fits on
 a given card: `anima_lora_{performance,background,5090_fast}` (32 GB desktop),
 `krea2_lora_16gb`, and the `*_laptop16gb` set. Checkpoints are interchangeable across
-profiles of the same recipe — you can resume a run under a different profile.
+profiles of the same recipe — you can resume a run under a different profile. One caveat
+(2026-09-11): the two SDXL-family laptop profiles run effective batch 2 against their desktop
+parents' 1, so resuming across that pair keeps the weights valid but changes exposure per step.
 
 **Effective batch is gated on dataset size, not just VRAM** (2026-08-24). A preset's
 `batch_size × gradient_accumulation` has to fit the card *and* be large enough not to trip the

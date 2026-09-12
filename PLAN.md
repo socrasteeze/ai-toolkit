@@ -1955,3 +1955,363 @@ uncached `/api/jobs` full list with every `job_config`, the job page's six loops
 full rate on finished jobs, hot-path `console.log`s, the 500 ms monitor tick, unshared
 `useJobsList`/`useSettings` (AIO.50) — each a touchpoint decision. mtime-keyed server caching
 of count/analyze is an idea with real caveats (AIO.51).
+
+## Klein / Krea 2 recipe review (2026-09-11)
+
+Operator asked whether the FLUX.2 Klein and Krea 2 presets and the advisor recipes had gone
+stale. They had, in two different ways: Klein's *caveats* were stale (official guidance now
+exists) and its *VRAM numbers* were simply wrong; Krea 2's numbers held up but the arch has a
+new network type worth having.
+
+### FLUX.2 Klein — the "no FLUX.2 recipe exists" caveat is retired
+
+Every Klein number in this fork was introduced as "FLUX.1 community defaults used as a
+proxy". Black Forest Labs has since published its own guidance, and it ratifies most of what
+was here:
+
+| Value | Fork before | Published guidance | Action |
+|---|---|---|---|
+| LR | 1e-4 (proxy) | 1e-4 default (BFL training doc + the "LoRA under 60 minutes" walkthrough) | kept, caveat dropped |
+| Rank | 16 small / 32 medium+ | 16 default, 32 for complex or abstract concepts | kept, caveat dropped |
+| Dataset size | not stated | 20-50 images | added to notes |
+| Steps | presets 2500; advisor ceiling 3000 (inherited from `flux` by prefix) | "start at 1500"; LoRAs peak 1000-1750 | character presets -> 1500; explicit Klein `ARCH_HEURISTICS` entries with ceiling 2500 |
+| 4B VRAM | "~32GB minimum, 48GB practical" | ~13 GB fp16 / ~7 GB fp8; quantized is a 12-16 GB job; unquantized fits 24 GB, ~1 h on a 4090 | **corrected — the old claim was wrong by 2-3x** |
+| 9B VRAM | "48GB practical minimum" / "~32-48 GB" | ~29 GB fp16 / ~15 GB fp8; single 24 GB card (3090/4090/A5000) recommended | **corrected** |
+| Style network | 4B and 9B both 64/32 linear + 32/16 conv | BFL's own style example: 128/64 linear + 64/32 conv, LR 9.5e-5, weight decay 1.5e-4, 3000 steps | 9B raised to the official 128/64/64/32; 4B stays half-scale, now labelled a deliberate deviation |
+| Timestep type | sigmoid char / weighted style, flagged unverified | nothing published | unchanged, still the one unsourced value |
+
+Deliberately NOT changed: `stepsPerItem` stays 60 for Klein. It is the same value the arch
+already got by inheriting `flux`, so the exposure gauge and the batch-4 threshold (≥40 files
+on Klein, pinned by `ui/tests/stepSuggestion.test.mjs` and quoted in `presets/README.md`)
+cannot drift from this edit. Only the `maxSteps` ceiling moved. The 4B style preset keeps its
+half-scale fold: the argument for halving ("128 is too heavy for a 4B") is a judgment about
+the 4B, but it is now a deviation from the model author's published numbers rather than a
+guess made in their absence, and the preset says so.
+
+A second, more conservative published point is recorded in the notes but not adopted: fal's
+hosted Klein base trainers default to LR 5e-5 / 1000 steps. It is a hosted service's safe
+default, not a measured optimum, and adopting it would contradict BFL's own 1e-4.
+
+### Krea 2 — numbers confirmed, LoKr added
+
+No Krea 2 value changed. Two independent corroborations were added to the notes instead:
+
+- `CaptainGrock/Krea2Trainer`, a wrapper around **this** trainer, ships exactly this fork's
+  recipe as its defaults: rank 32, alpha 32, LR 1e-4, adamw8bit, batch 1, 2000 steps, caption
+  dropout 0.05, LR range 1e-5..5e-4. That is a stronger anchor than the musubi-tuner 16 GB run
+  the recipe was built on, because it is the same implementation.
+- The 512-or-1024 resolution rule is now two-source: a second guide ties it to Krea 2's own
+  training resolutions (256/512/1024, never 768) and cites 768 runs going wrong. (Note that
+  `Krea2Trainer` itself defaults to 632, and the one published LoKr recipe uses 768 — both
+  contradict the rule; the rule is better sourced than either.)
+
+The one genuinely new development is **LoKr**, reported to bleed identity far less than LoRA
+on this model — two characters in one image keep their own faces instead of averaging. That
+is the same failure the Krea 2 notes currently answer with Differential Output Preservation
+and regularization datasets, and LoKr is a cheaper first attempt than either. The trainer
+supports it natively (`network.type: lokr` + `lokr_factor`, `toolkit/models/lokr.py`), so
+`presets/krea2_character_lokr.json` ships it: `krea2_lora_low_vram` unchanged except
+`type: lokr`, `lokr_full_rank: true`, `lokr_factor: 8`, and LR 5e-5.
+
+Two things recorded rather than resolved:
+
+- **The factor is contested** — the ai-toolkit community leans 4, 8 is the stated compromise,
+  the one published guide says 16 (and pairs it with the 768 resolution the rule above rejects).
+  8 shipped as the middle; the preset names the spread instead of presenting 8 as settled.
+- **The factor direction is counter-intuitive and was documented backwards here.**
+  `toolkit/models/lokr.py`'s `factorization()` returns `(factor, dim/factor)`, so on a
+  1024-dim layer factor 4 gives a 4x4 and a 256x256 block (~65 k params) while factor 16 gives
+  16x16 and 64x64 (~4 k). A **lower** factor is the larger, more expressive network — which
+  also explains the multi-GB files people report from factor 4. `forkDocs.tsx`'s
+  `network.lokr_factor` help text said the opposite ("higher factors make a larger / more
+  expressive network") and was corrected in this pass. Note `lokr_full_rank: true` (the
+  trainer's default) overrides `network.linear`/`linear_alpha` entirely
+  (`toolkit/config_modules.py`), so those fields are inert in the new preset.
+
+LoKr is UNVERIFIED in this fork: no measured run, and no LoKr checkpoint round-tripped from
+this trainer through ComfyUI. It ships as an experiment against the known-good LoRA presets.
+
+**Verified:** `ui/` `npm ci` + `npx tsc --noEmit` + `npx next build` + `npm test` (62/62),
+plus the Python preset/fork gates. Not covered, as always: a real training run — every number
+adopted here is published guidance, not a measurement made on this hardware.
+
+### Addendum, same day: the VRAM figure's provenance, plus optimizer / batch / repeat / dataset-size guidance
+
+The operator pointed out they have trained Klein on 32 GB, against a note claiming 48 GB was
+practical. Tracing it: the 32/48 GB figure was never measured and has **no source recorded
+anywhere in this repo** — the 2026-07-19 Phase 3 entry files all Flux2/Klein numbers under
+"thin/no evidence, flagged rather than guessed", and the note itself only said "per early
+reports". Two things inflated it. First, unquantized arithmetic: the 9B is ~29 GB in bf16
+weights alone, so weights + AdamW state + activations genuinely does not fit 24 GB *if you
+ignore quantization* — which the note did, while the presets it described ship `qtype:
+qfloat8` + `low_vram`. Second, family conflation: FLUX.2 **dev** (the 32B sibling) really is
+a 48 GB+/80 GB-class trainer, and Klein inherited dev's hardware framing along with FLUX.1's
+hyperparameters. Corrected figures are in the table above; a 32 GB card is comfortable for
+the 9B quantized and roomy for the 4B.
+
+Also added to the notes from the same research pass (all published guidance, none measured
+here):
+
+- **Optimizer.** adamw8bit is the recommendation, and **adafactor is reported to fail on
+  Klein 9B character training** — adaptive scaling not converging for identity, face
+  collapsing to a generic average by ~1 k steps. Single-source, but specific enough to be
+  worth naming, because adafactor is in this app's optimizer dropdown and is exactly what
+  someone reaches for when a 9B won't fit. The same guide's literal pick is AdamW8bitKahan,
+  which this trainer does not implement (`toolkit/optimizer.py`); adamw8bit is the closest.
+  Its surrounding config: LR 1e-4, betas [0.9, 0.999], weight decay 0.01, batch 1 + accum 2,
+  3000 steps. A separate published Klein config for *general* fine-tuning runs rank 64 /
+  alpha 128 at total batch 4 with LR 1e-5 — batch up and LR down together.
+- **Dataset size.** Klein: BFL says 20-50 images, character guides go as low as 10. Krea 2:
+  Krea's own hosted service states a **3-image minimum** and says a clean repetitive set
+  beats a large mixed one; the community LoKr recipe wants ~20 (40 if weaker) with 2-5
+  full-body shots. No source sets an upper bound for either.
+- **Rank by intent** (Krea 2, from a 12 GB musubi guide): 8 = lighter style influence, 16 =
+  balanced for stacking, 32 = a subject meant to dominate a stack. Consistent with this
+  fork's 32 for character and alpha-drop-not-rank-drop for concept.
+- **Repeats do not transfer**, and this is the one that can actually ruin a run. Every guide
+  for these models is written for kohya/musubi, where `num_repeats` *is* the exposure knob
+  ("90-120 repeats on a 10-image set"; "2-15 by dataset size"). This trainer is step-bounded
+  and `num_repeats` only duplicates the file list (`file_list * num_repeats`,
+  `toolkit/data_loader.py`), so exposure is steps x effective batch regardless. Now a shared
+  `REPEATS_NOTE` const in `stepSuggestion.ts`, used by the Klein 4B/9B and Krea 2 recipes.
+  Upstream's own `dataset.num_repeats` help text is already correct (dataset balancing) and
+  was deliberately left alone — `verify_fork.py` forbids shadowing a `docs.tsx` key.
+
+Considered and NOT done: an `OptimizerHint` warning for adafactor + Klein. The component
+exists and is the right home, but the adafactor claim is single-source and unverified here,
+and a red inline warning would present it as settled. Offered to the operator instead.
+
+### Addendum 2: Automagic v3 re-read against the pinned source (2026-09-11)
+
+Asked for more evidence on best-setting for automagic. There is almost no external evidence —
+no published per-arch data, one author post ("set it to 1e-6, you don't need to adjust"), and
+the third-party write-ups that do exist describe **older v3 internals** (one LR per output
+channel, then per tensor) because the pooling level changed. The authoritative source is
+`toolkit/optimizers/automagic3.py` in this tree, current since the 2026-08-14 sync, and
+re-reading it moved several things:
+
+**Signature defaults (the real answer to "best settings"):** `lr` 1e-6, `min_lr` 1e-8,
+`max_lr` 1e3, `beta2` 0.999, `eps` 1e-30, `clip_threshold` 1.0, `weight_decay` 0.0,
+`polarity_history` 8, `fused` True. This fork deviates on three: launch LR 1e-4 (100x the
+author's, inherited from the community Krea 2 config where it was the AdamW LR), weight_decay
+1e-4, and the min_lr 1e-6 / max_lr 1e-4 rails.
+
+**The rails need re-framing, and the notes were fixed to do it.** The old note said the bounds
+"were added upstream 2026-07-17 specifically to prevent runaway edge cases". The current
+docstring says the opposite about their purpose: at the defaults they are "purely a numerical
+overflow guard far outside the usable range", offered as optional user rails ("set it higher to
+put a hard floor under the controller"). Runaway LR is documented as **v2's** structural flaw —
+v2 bumped the LR from raw single-step agreement, which has no upper fixed point — and v3 claims
+to fix it by construction: votes come from each element's recent sign window (a real
+equilibrium), and one LR is pooled per param group so coupled tensors (the canonical Q/K pair)
+cannot split to opposite extremes. The docstring's own claim is that the vote "anchors the lr's
+absolute level without external rails". v2's own defaults were practical rails (min 1e-7 /
+max 1e-3); v3 deliberately widened them to overflow guards.
+
+**Consequence, stated in-place but NOT changed:** with `max_lr` equal to the launch LR — which
+is what the preset ships and what `OptimizerHint`'s "Bound it" button sets — the controller can
+only ever adapt downward. That is half a controller, on a design whose whole claim is that it
+finds the level from either side. It is a defensible ceiling on a shared machine, and it is
+what the working community config does, so no preset value was touched. Loosening it (e.g.
+`max_lr` 1e-3 with launch 1e-6, the author's shape) is an experiment to run, not a fix to
+apply blind — offered to the operator.
+
+**A high start LR is survivable without rails**, which weakens the safety argument further:
+`clip_threshold` 1.0 is a trust region on every update (RMS scaled to <= 1, elements clamped to
++/-1), and v3 merely prints a note and walks a too-high LR down, where v1 hard-forces it to
+1e-6 (`automagic.py:24`). The v1 clamp claim in `OptimizerHint` was re-verified as still true.
+
+**`polarity_history` is the undocumented second dial.** H, default 8, range 2-64, costing H/8
+bytes of state per element. Longer windows make the two vote events rarer and more decisive
+(probability 2^(1-H) each under noise) so detection sharpens, at the cost of memory, an H-step
+warmup/reaction lag, and fewer voters per step. No UI field, no mention anywhere in the fork
+until this pass; now named in the Krea 2 recipe notes and the 16 GB preset description.
+
+**Also worth knowing:** `fused: True` is the low-VRAM mode, not only an accumulation
+constraint — each grad is freed as soon as autograd finishes accumulating into it, which is why
+it is the default and why it matters at 16 GB. `OptimizerHint`'s v3 text was checked and is
+accurate as written (author default 1e-6, weight decay 0, bounds-are-overflow-guards); only its
+framing of unbounded as a warning is arguably stricter than the author's design intent.
+
+### Addendum 3: effective batch is a hardware split, and two presets disagreed with their own text (2026-09-11)
+
+Operator confirmed the framing: batch_size and gradient_accumulation are the same gradient, and
+this fork's two hardware tiers already pick between them deliberately — 32 GB desktop reaches
+effective batch with `batch_size`, 16 GB laptop/background reaches it with
+`gradient_accumulation`. Verified against the presets, and the split is consistent:
+
+| Profile | batch x accum | low_vram |
+|---|---|---|
+| `anima_lora_performance`, `anima_lora_5090_fast` (32 GB desktop) | 4 x 1 | false |
+| `anima_lora_background`, `anima_lora_laptop16gb`, `sdxl_character_lora_laptop16gb`, `illustriousxl_character_lora_laptop16gb` (16 GB) | 1 x 2 | true |
+| everything else | 1 x 1 | mostly true |
+
+Why they are not interchangeable, from the source rather than from theory:
+
+- **Math is equivalent.** `accum_scale = 1.0 / n_accum` (`SDTrainer.py:2320`) averages the
+  micro-batch losses, so no doubled effective LR. Grad clipping runs once per optimizer step
+  (`SDTrainer.py:2343`), not per micro-batch. These are transformers — LayerNorm/RMSNorm are
+  per-sample, so the BatchNorm-statistics difference that makes this question interesting
+  elsewhere does not exist here.
+- **VRAM is the whole point.** Accumulating keeps one micro-batch of activations resident.
+- **Accumulating costs throughput**, and not only from the extra pass:
+  `if len(batch_list) > 1 and self.model_config.low_vram: torch.cuda.empty_cache()`
+  (`SDTrainer.py:2339`) fires after EVERY micro-batch. `low_vram` is on in every 16 GB profile,
+  so that tax is always paid there. `batch_size` pays none of it.
+- **Bucket diversity slightly favours accumulation**: `gradient_accumulation` makes N
+  independent `next(dataloader_iterator)` calls (`BaseSDTrainProcess.py:2555`), so micro-batches
+  may come from different resolution buckets, where a single larger batch shares one bucket.
+- **Fused Automagic removes the choice**: it steps every micro-batch, and
+  `config_modules.py:478-493` hard-errors on accumulation. `batch_size` is the only route.
+
+Written up as a shared `EFFECTIVE_BATCH_NOTE` in `stepSuggestion.ts` (alongside
+`REPEATS_NOTE`), used by the Krea 2, Klein 4B/9B and Anima recipes.
+
+**Two things said "raise batch size instead" where that is not available**, and are now fixed:
+
+1. `presets/anima_lora_automagic.json` (v1.2) opened by describing itself as "batch 1 + grad
+   accumulation 2 (same effective batch as performance)" — copied from its `background` parent —
+   while the file pins `gradient_accumulation: 1`, because fused Automagic cannot accumulate. It
+   trains at **effective batch 1, half its parent**, and the description now says so, with the
+   two real remedies (raise `batch_size` on a 32 GB desktop, or `fused: false` to keep
+   accumulation 2 on 16 GB and give up fused's low peak VRAM).
+2. `OptimizerHint`'s "Bound it" sibling tooltip and the Krea 2 automagic note both advised
+   reaching effective batch by raising batch size with no caveat. Both now name the 16 GB case.
+
+**Found, NOT changed — needs the operator's call:** `flux_lora_laptop16gb` is effective batch 1
+while the other three `*_laptop16gb` presets are effective batch 2. Either it is an oversight
+(accumulation is nearly free in VRAM, so the laptop tier could carry 1x2 here too) or it is
+deliberate fidelity to `flux_lora_24gb`, whose recipe is effective batch 1. Note the related
+documentation drift: `presets/README.md` and `docs/profiles.md` say the laptop presets inherit
+the parent recipe unchanged and only change memory/IO behaviour, but the SDXL, Illustrious and
+Anima laptop presets all raise effective batch 1 -> 2 versus their desktop parents, which is a
+recipe change by the advisor's own accounting.
+
+### Addendum 4: the effective-batch question resolved — presets right, docs wrong (2026-09-11)
+
+Verdict: the presets are correct and two documentation sentences were wrong, including
+`flux_lora_laptop16gb`, which I had flagged as a possible oversight. It is not one.
+
+The deciding evidence is the advisor's own per-arch batch recommendation, which every preset
+already matches:
+
+| Arch | Advisor recommends | Desktop preset | Laptop preset |
+|---|---|---|---|
+| SDXL / Illustrious / Pony | batch 2 (4 on large) | effective 1 | effective 2 (batch 1 + accum 2) |
+| FLUX | batch 1 | 1 | 1 |
+| Krea 2, Klein, Z-Image, Qwen | batch 1 | 1 | 1 |
+| Anima | batch 1 (author 4) | 4 | 2, documented deviation |
+
+So `flux_lora_laptop16gb` sits at effective batch 1 because the advisor recommends batch 1 for
+FLUX — it agrees with its own arch recipe. The SDXL-family laptop presets sit at 2 because the
+advisor recommends 2 for that family; their descriptions already say so in full ("the point of
+this variant is batch discipline"), as does `docs/profiles.md` lever 4. Nothing in the preset
+set is inconsistent.
+
+The advisor's gate confirms both are safe as shipped — effective batch 2 needs >= 15 files on
+SDXL, 16 on Anima, 20 on FLUX/Klein and Krea 2 (measured by `minItemsForBatch(2, arch)`; below
+those counts the advisor flags `overBatched`). A 16 GB character set is normally above the
+SDXL floor of 15.
+
+What was wrong was one sentence in each of two docs, both now fixed:
+
+- `docs/profiles.md` asserted in bold that "every recipe value is inherited unchanged from the
+  parent preset" and then described lever 4, a deliberate effective-batch change, four
+  paragraphs later. The claim now names the exception, and the interchangeability sentence now
+  says resuming across the two SDXL-family profiles keeps the weights valid but changes
+  exposure per step.
+- `presets/README.md`'s `*_laptop16gb` row said "same recipe as the parent preset — memory/IO
+  profile only", same problem; it now names the exception and explains why flux and krea2 stay
+  at effective 1.
+
+**Separate finding, NOT changed:** `sdxl_character_lora` and `illustriousxl_character_lora`
+(the desktop presets) sit at effective batch 1 while the advisor recommends 2 for their arch —
+so on the SDXL family it is the DESKTOP presets that lag the advisor, not the laptop ones. That
+is a base-recipe decision on presets the operator has been running, and the advisor is
+VRAM-unaware, so it needs a deliberate call rather than a doc fix.
+
+## Machine-aware batch plan (2026-09-11)
+
+The operator's premise: inside the [1, 2, 4] ladder, batch mostly trades speed for VRAM and
+does not change the outcome much, so "if you can run it, you should" — and since 3000 steps at
+batch 1 and 3000 at batch 4 are different runs, the advisor should choose batch from the
+machine AND the dataset and re-derive steps from that choice. Checked and agreed, with the
+two limits recorded in `batchAdvisor.ts`: the fry-band gate still binds on small sets, and past
+batch 4 the LR would need to drop (Klein general-FT pairs batch 4 with LR 1e-5).
+
+**What already existed:** `suggestSteps` divides by effective batch (exposure-constant), and
+`maxHealthyBatch` already picks the largest safe effective batch for the dataset. Both were
+advisory — the user still set batch and accumulation by hand, and nothing knew the card.
+
+**What was added** — `ui/src/utils/batchAdvisor.ts` + `ui/tests/batchAdvisor.test.mjs`, mounted
+in `StepSuggestion.tsx`:
+
+1. `tierForVramMb()` from the live GPU monitor (`useGPUInfo`, nvidia-smi MiB): ≤18k → 16 GB
+   laptop, ≤28k → 24 GB, else 32 GB+ desktop. A select overrides it to plan for the other
+   machine.
+2. `VRAM_TABLE` — **the operator's own measurements, 2026-09-11**, max `batch_size` that fit:
+
+   | | SDXL/Illustrious | Anima | Klein 4B/9B | Krea 2 |
+   |---|---|---|---|---|
+   | 32 GB desktop | 4 | 4 | 2 (4 untested) | 2 (4 untested) |
+   | 16 GB laptop | 2 (4 untested) | 2 (4 untested) | **OOM** (variant unrecorded) | 1 (2 OOM) |
+   | 24 GB | no measurements — reuses the 16 GB row as a floor, every cell flagged inferred |
+
+   Archs with no cell get batch 1, flagged inferred. No OOMs on the desktop at any tested
+   value.
+3. `suggestBatch()`: effective = min(dataset gate, VRAM cell). Route: desktop → `batch_size`
+   (one kernel pass, no cache flush); 16/24 GB → `gradient_accumulation` at batch 1, which VRAM
+   does not bind (Krea 2 on the laptop reaches effective 2 this way even though batch 2 OOMs);
+   fused Automagic → `batch_size` on every tier, so on the laptop Krea 2 + automagic3 is
+   effective batch 1 and the plan says why. Klein on the laptop returns `fits: false`.
+4. The panel shows `batch × accum = eff · ~steps (dataset allows N, VRAM measured|inferred M)`
+   with one **Apply batch + steps** that writes `batch_size`, `gradient_accumulation`, the
+   legacy `gradient_accumulation_steps` (to 1, so an imported config cannot contradict the
+   plan) and `steps` in one click. Reasons are in the tooltip.
+
+Invariant pinned by test: across 8 archs × 3 tiers × 3 optimizers × 300 file counts (21,600
+plans) the effective batch never exceeds `maxHealthyBatch` and never leaves the ladder, and
+`batch_size` never exceeds the VRAM cell. So this cannot reintroduce the 2026-07-29 bug — it
+only ever chooses a batch the exposure gauge already accepted.
+
+**Not measured, and the table says so:** batch 4 on Klein/Krea 2 on the desktop, batch 4 on
+anything on the laptop, every 24 GB cell, and which Klein variant OOMed on the laptop. Each
+is a one-run experiment; the cell note tells the next session what to try.
+
+**Verified:** `tsc --noEmit`, `npm test` 73/73 (was 62), `next build`.
+
+## Fix: upstream shipped a broken inference engine, missing `engineStream.ts` (2026-09-12)
+
+Upstream's PR #1039 ("Add an inference engine and generation via the UI", merged
+`24916ec`) added a resident-process inference engine plus a `/generate` page, but
+`generate/page.tsx` imports `latentToImage`, `payloadToFloat32`, `readEngineFrames`, and
+`PreviewInfo` from `@/lib/engineStream` — a file that was never committed. Confirmed with
+`git ls-tree -r upstream/main` and `git log --all -- '*engineStream*'`, both empty: this is
+upstream's own bug, present on `ostris/ai-toolkit` itself, not something this merge
+introduced. Left as-is it fails `tsc --noEmit` and `next build` outright.
+
+`extensions_built_in/inference_engine/protocol.py`'s module docstring already names the
+missing file and documents the exact wire format (`u32 header_len | json header | u64
+payload_len | payload`), so this wasn't a guess: ported a JS mirror of that framing plus
+the linear latent→RGB preview math from `latent_format_tables.py`, using the scaling
+ComfyUI's own `Latent2RGBPreviewer` uses for the same factor/bias tables (`latent_format_tables.py`
+says its numbers come from `comfy/latent_formats.py`) — `(projected + 1) / 2`, clamped to
+`[0, 1]`, then ×255. New fork-only file: `ui/src/lib/engineStream.ts` (needs `git add -f`,
+this repo's `.gitignore` has a blanket `lib/` rule).
+
+**Deliberately left unhandled:** `reshape: "flux2_2x2"` (Flux2, the Klein variants,
+ideogram4) — the packed-channel layout isn't documented anywhere in this codebase, and
+rather than guess at an unshuffle order and risk a garbled thumbnail, those archs get the
+same generic per-channel projection as everyone else. Preview-only: it doesn't touch the
+actual generation or output path, just the live progress thumbnail while a frame is being
+denoised. If upstream ever ships their own `engineStream.ts` (or an equivalent client),
+diff it against this one and prefer theirs if it's a superset — same pattern as the
+`ideogram4_prompt.py` retirement on 2026-08-29.
+
+**Not verified beyond static checks:** no GPU/torch in the sync container, so the engine
+was never actually run end-to-end; the port is checked against `protocol.py` /
+`latent_preview.py` / `latent_format_tables.py` / the exact call sites in
+`generate/page.tsx` by reading, not by watching a real generation stream through it.
+
+**Verified:** `tsc --noEmit` 0 errors, `next build` clean (all 31 routes), `npm test`
+73/73, `py_compile` on all 21 touched/new Python files.

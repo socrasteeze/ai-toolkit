@@ -231,6 +231,7 @@ export interface SampleItem {
   sample_steps?: number;
   fps?: number;
   num_frames?: number;
+  duration?: number;
   ctrl_img?: string | null;
   ctrl_idx?: number;
   network_multiplier?: number;
@@ -254,6 +255,7 @@ export interface SampleConfig {
   sample_steps: number;
   num_frames: number;
   fps: number;
+  duration?: number;
 }
 
 export interface LoggingConfig {

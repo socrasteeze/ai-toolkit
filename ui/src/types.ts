@@ -305,6 +305,21 @@ export interface JobConfig {
   meta: MetaConfig;
 }
 
+// A LoRA published on the hub, offered for a specific model option. `path` is a
+// 'org/repo/path_to/file.safetensors' reference; the backend looks for it under
+// the models folder first and downloads it into MODELS_PATH/loras if missing.
+export interface CloudLora {
+  path: string;
+  name: string;
+  description?: string;
+}
+
+export interface CaptionLora {
+  path: string;
+  name: string;
+  strength: number;
+}
+
 export interface CaptionProcessConfig {
   type: string;
   sqlite_db_path?: string;
@@ -330,6 +345,7 @@ export interface CaptionProcessConfig {
     batch_size?: number;
     layer_offloading?: boolean;
     layer_offloading_percent?: number;
+    loras?: CaptionLora[];
   }
 }
 

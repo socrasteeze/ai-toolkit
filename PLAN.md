@@ -2451,7 +2451,10 @@ What this unblocks: the measurement ladder in proposal item 4 can now include th
 `block_compile` rung on the laptop, which was previously impossible. Still unmeasured —
 every s/it number, and whether compile actually pays for its warmup on a 16 GB card.
 
-Noted, not touched: `.venv/Lib/site-packages` carries a stray `~ip` / `~ip-25.0.1.dist-info`
-pair, the remnant of an interrupted pip self-upgrade. It makes pip print "Ignoring invalid
-distribution ~ip" on every install and is otherwise inert. Deleting those two directories is
-the fix; left alone here because nothing asked for it.
+Also cleaned up (2026-09-16): `.venv/Lib/site-packages` carried a stray `~ip` /
+`~ip-25.0.1.dist-info` pair (13 MB), the orphaned pip 25.0.1 left behind when pip
+self-upgraded to 26.1.2 — on Windows pip renames the live directory's first character to
+`~` and an interrupted upgrade never removes it. It made pip print "Ignoring invalid
+distribution ~ip" on every install and was otherwise inert. Both directories removed after
+confirming the real `pip` 26.1.2 was present and working; pip, torch, triton and pytest all
+verified afterwards and the warning is gone.

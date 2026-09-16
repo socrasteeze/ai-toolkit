@@ -2342,9 +2342,10 @@ settings actually available for the RTX 5080 Laptop. Repo read plus a community 
 
 ### What is actually wrong for the 5080 (findings)
 
-1. **Laptop venv drift.** The 5080's `.venv` is torch 2.9.1+cu128, **no triton**, no
+1. **Laptop venv drift. RESOLVED 2026-09-16, same day — see the addendum at the end of
+   this section.** The 5080's `.venv` was torch 2.9.1+cu128 with **no triton** and no
    pytest. CLAUDE.md's "torch 2.10+cu130" and FORK_NOTES' "triton_windows installed"
-   describe the 5090 desktop. `compile` cannot run on the laptop today. Upstream's README
+   describe the 5090 desktop. `compile` could not run on the laptop. Upstream's README
    now pins torch 2.13+cu130, but upstream #990 (2026-08-03) reports Krea 2 qfloat8 OOMing
    on torch 2.13 / Triton 3.7 — 2.10 or 2.11 is the defensible target, with a matching
    `triton-windows` minor. bitsandbytes #1937 reports missing sm_120 kernels on Windows for
@@ -2383,9 +2384,10 @@ was rewritten five times June–Aug and stays "experimental" in the advisor.
 
 ### Proposal, in priority order
 
-1. **Environment (laptop):** pin torch 2.10/2.11 + matching `triton-windows` + pytest in
-   the 5080 venv; record in CLAUDE.md that the torch/triton notes are per machine; verify
-   `adamw8bit` on sm_120 once.
+1. **Environment (laptop): DONE 2026-09-16** — `triton-windows` and pytest installed,
+   `adamw8bit` verified on sm_120; see the addendum below. Still open: record in CLAUDE.md
+   that the torch/triton notes are per machine, and decide whether to move the laptop off
+   torch 2.9.1 (not needed for compile, which now works as-is).
 2. **16 GB presets** (config-only; every value is published guidance, none measured here):
 
    | Arch | Change vs current |
@@ -2420,3 +2422,36 @@ ostris/ai-toolkit issues #729, #990, #1007, #653; bitsandbytes #1937; triton-win
 neurocanvas Z-Image guides (2026-03); night-dev Illustrious ai-toolkit guide (2026-04);
 OnomaAI v-pred note; purplesmartai pony-v7 LoRA README; comfyui-wiki Anima Turbo/Aesthetic
 (2026-07-08). Guides behind Medium/RunComfy/Patreon walls were read via proxy summaries only.
+
+### Addendum, same day: the laptop environment is fixed, and compile works on sm_120
+
+Finding 1 and proposal item 1 are closed. Installed into the 5080's `.venv`:
+`triton-windows==3.7.1.post27` (the version FORK_NOTES already documented as working
+against torch 2.9.1+cu128, so this matches the desktop rather than guessing a
+torch↔triton mapping) and `pytest 9.1.1`. **torch was NOT moved off 2.9.1+cu128** — the
+proposal suggested 2.10/2.11, but compile works on 2.9.1 with this triton, so the upgrade
+buys nothing measured and would re-open the upstream #990 risk surface for no reason.
+Revisit only if a future upstream feature needs it.
+
+Two results, both measured on the 5080 Laptop (sm_120) rather than inferred:
+
+- **`torch.compile` works on sm_120.** `testing/test_lora_compile_scalars.py` had been
+  failing with `torch._inductor.exc.TritonMissing`; it now passes 3/3, and the whole gate
+  script is **12/12 PASS** (was 11/12). Inductor emits two benign notes on this card: a
+  TF32 suggestion, and "Not enough SMs to use max_autotune_gemm mode" — the laptop 5080 is
+  below inductor's SM threshold for max-autotune, so `compile_mode: "max-autotune"` is not
+  worth trying here; `"default"` is.
+- **`bitsandbytes` `AdamW8bit` runs on sm_120.** A real optimizer step on a CUDA parameter
+  completes without the "no kernel image" error of bitsandbytes #1937 (bnb 0.50.0). That
+  issue is about the 4/8-bit *quantized model* kernels, a different code path — the
+  optimizer kernels are fine, so every `adamw8bit` preset in this fork is safe on this card
+  and the advisor's optimizer recommendation needs no laptop caveat.
+
+What this unblocks: the measurement ladder in proposal item 4 can now include the
+`block_compile` rung on the laptop, which was previously impossible. Still unmeasured —
+every s/it number, and whether compile actually pays for its warmup on a 16 GB card.
+
+Noted, not touched: `.venv/Lib/site-packages` carries a stray `~ip` / `~ip-25.0.1.dist-info`
+pair, the remnant of an interrupted pip self-upgrade. It makes pip print "Ignoring invalid
+distribution ~ip" on every install and is otherwise inert. Deleting those two directories is
+the fix; left alone here because nothing asked for it.

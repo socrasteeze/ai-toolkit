@@ -2315,3 +2315,108 @@ was never actually run end-to-end; the port is checked against `protocol.py` /
 
 **Verified:** `tsc --noEmit` 0 errors, `next build` clean (all 31 routes), `npm test`
 73/73, `py_compile` on all 21 touched/new Python files.
+
+## 5080 laptop review: speed levers + 16 GB settings (2026-09-16) — PROPOSAL, nothing built
+
+Operator asked for a research-only pass: are the Phase 6/8 speed optimizations still
+worth keeping against current upstream and the community, and are the best 16 GB
+settings actually available for the RTX 5080 Laptop. Repo read plus a community survey
+(sources and confidence labels below). No code, preset, or doc was changed in this pass.
+
+### Verdict on the speed optimizations: keep, do not refactor
+
+- The three fork levers (`loss_sync_every`, `ui_db_poll_seconds`, `cache_latents` +
+  `cache_latents_to_disk`) are still ahead of upstream. Upstream's loop still forces a
+  CUDA sync every step through `torch.isfinite(loss)` and the per-step `.item()` at
+  `SDTrainer.py` ~2417; nothing upstream duplicates or conflicts with the gated insertions.
+  The 2026-09-06 accumulation-scaling fix (`bbb1fda`) is merged and matches Addendum 3.
+  `testing/test_fork_speed.py` passes on the laptop venv (6/6).
+- Remaining unconditional host syncs are debug-gated (`max_loss_debug`, `SDTrainer.py`
+  ~1091) or DOP/audio-only (`additional_logs[...].item()`). Not worth a touchpoint.
+- What changed is that the big remaining wins moved from code to config. Since Phase 6
+  upstream shipped block-level `torch.compile` (`6b1f89f`, 2026-06-12), W8A8 ConvRot
+  forward (`933ca1c`, 2026-07-11) and `adamconvrot` (`7690ea6`, 2026-09-06), working
+  Windows multi-worker dataloading (`3d472de`, 2026-07-29), and a reworked offload
+  pipeline. Of 28 presets, none sets `compile`, `num_workers` or a convrot qtype; only the
+  Anima presets cache text embeddings. The reoptimization is a preset + environment pass.
+
+### What is actually wrong for the 5080 (findings)
+
+1. **Laptop venv drift.** The 5080's `.venv` is torch 2.9.1+cu128, **no triton**, no
+   pytest. CLAUDE.md's "torch 2.10+cu130" and FORK_NOTES' "triton_windows installed"
+   describe the 5090 desktop. `compile` cannot run on the laptop today. Upstream's README
+   now pins torch 2.13+cu130, but upstream #990 (2026-08-03) reports Krea 2 qfloat8 OOMing
+   on torch 2.13 / Triton 3.7 — 2.10 or 2.11 is the defensible target, with a matching
+   `triton-windows` minor. bitsandbytes #1937 reports missing sm_120 kernels on Windows for
+   some 4/8-bit paths; whether `adamw8bit`'s optimizer kernels are affected is not stated —
+   one run decides it.
+2. **Klein OOMs on the laptop because of the preset, not the card.** BFL states 12 GB
+   minimum for the 4B. The Klein presets keep the Qwen3-4B text encoder resident (no
+   `cache_text_embeddings`, no `unload_text_encoder`), sample at 1024×25 steps, and set no
+   `layer_offloading`. `krea2_lora_16gb` does all three and fits. Same gap in the Z-Image
+   presets, `flux_lora_laptop16gb` and `krea2_lora_low_vram`. This is the likely cause of
+   `LAPTOP16.flux2_klein` = OOM in `batchAdvisor.ts`.
+3. **Windows shared-memory fallback is the real 16 GB failure mode.** Upstream #1007
+   (2026-08-11, RTX 5070 Ti, Windows): a config grazing the VRAM ceiling ran 21 → 303 s/it
+   instead of OOMing; fixed for that reporter by a config that dropped VRAM 15.6 → 12.8 GB.
+   `batchAdvisor.ts`'s laptop cells record "fit", not "fit without spilling". Rule of thumb
+   for the 5080: keep ~1.5 GB free, and `dataset.pin_memory` stays off (upstream's own
+   comment in `data_loader.py` gives the same reason).
+4. **Fork is 2 upstream commits behind**, one being `e65c4d0` "Fix issue with Krea2 patch
+   size when training with shift" (2026-09-16). Sync before the next Krea 2 run.
+5. **Docs drift.** `docs/profiles.md` still says the laptop tier is "NOT MEASURED" while
+   `batchAdvisor.ts` carries 2026-09-11 laptop measurements. `layer_offloading: true`
+   silently rewrites `qfloat8` → torchao `float8` (`config_modules.py` 769-772); PLAN
+   Addendum 3 notes it, the two krea2 offload presets' descriptions do not.
+
+**Recipes are NOT stale** (checked against Sept-2026 sources): Klein (BFL training doc +
+the 2026-06-04 BFL/HF blog: LR 8e-5–1e-4, 1500–3000 steps, no Klein weight update since
+Jan), Krea 2 (musubi docs, OneTrainer's own 16 GB preset, LoKr factor 4–8 at 512/1024
+never 768, no weight update since 2026-06-23), Z-Image (no Omni/Edit release), Anima
+(Turbo v1.1 / Aesthetic v1.0 shipped July–Aug; Circlestone still says train on Base, so
+no recipe change), SDXL/Illustrious (unchanged; Illustrious LU is Lumina-based, not SDXL).
+Two small advisor additions worth having: OnomaAI says LoRA training on the v-pred
+Illustrious checkpoints "did not go well" (a warning when the path contains `vpred`), and
+Pony V7 is AuraFlow with no arch here, so `illustriousOrPonyRecipe` is correctly v6-only.
+No 2026 controlled comparison of adamw8bit vs Prodigy vs automagic3 exists; automagic3
+was rewritten five times June–Aug and stays "experimental" in the advisor.
+
+### Proposal, in priority order
+
+1. **Environment (laptop):** pin torch 2.10/2.11 + matching `triton-windows` + pytest in
+   the 5080 venv; record in CLAUDE.md that the torch/triton notes are per machine; verify
+   `adamw8bit` on sm_120 once.
+2. **16 GB presets** (config-only; every value is published guidance, none measured here):
+
+   | Arch | Change vs current |
+   |---|---|
+   | Klein 4B | `cache_text_embeddings: true` (or `unload_text_encoder`), sample 768, batch 1 × accum 2, new `_laptop16gb` variant |
+   | Klein 9B | float8 + `layer_offloading` ≥ 0.5, 512–768, batch 1; labelled unverified — upstream #653 saw a 16 GB card fail at load, offload has been reworked since |
+   | Z-Image | TE caching, new `_laptop16gb` variant |
+   | Krea 2 | keep; state the float8 rewrite in the two offload presets; A/B `convrot8` W8A8 (a 5060 Ti 16 GB report: Q8 + 50 % offload ≈ 7 s/it and faster than nvfp4) |
+   | SDXL / Illustrious / Anima | unchanged; first candidates for `compile` once triton exists |
+   | All | explicit `num_workers: 2`, no `pin_memory`, the ~1.5 GB headroom rule in `meta.description` |
+
+3. **Advisor:** headroom note on the `laptop16` cells in `batchAdvisor.ts`; re-measure
+   `LAPTOP16.flux2_klein` after the preset fix (HANDOFF open item 4); optional v-pred
+   warning in `illustriousOrPonyRecipe`.
+4. **Measurement plan on the 5080** with the existing `scripts/bench_speed.py` (200 steps,
+   sampling off, one variable per run): Klein 4B baseline → +TE cache → +`num_workers 2`
+   → +`block_compile` → +`convrot8`; Krea 2 the same ladder. This would be the first real
+   number the laptop tier has and decides whether compile/convrot earn a preset (AIO.46/47
+   remain open until then).
+5. **Docs/sync:** merge the two pending upstream commits; fix the `profiles.md` and
+   CLAUDE.md drift above; close this entry with the measured rows when they exist.
+
+**Not verified anywhere:** any s/it figure on a 5080 (closest published: ~7 s/it Krea 2 on
+a 5060 Ti at 50 % offload, community anecdote), Klein 9B on 16 GB, and every compile /
+convrot gain claim (no upstream benchmark exists; the March-2026 OneTrainer-vs-ai-toolkit
+Z-Image comparison predates upstream's compile and W8A8 work).
+
+Sources (community survey, 2026-09-16): BFL Klein training doc (docs.bfl.ml) and the
+2026-06-04 BFL/HF Klein LoRA blog; kohya musubi-tuner `docs/krea2.md`; OneTrainer
+`training_presets/Krea 2/#krea2 LoRA 16GB.json`; HF `krea/Krea-2-Turbo` discussion #10;
+ostris/ai-toolkit issues #729, #990, #1007, #653; bitsandbytes #1937; triton-windows README;
+neurocanvas Z-Image guides (2026-03); night-dev Illustrious ai-toolkit guide (2026-04);
+OnomaAI v-pred note; purplesmartai pony-v7 LoRA README; comfyui-wiki Anima Turbo/Aesthetic
+(2026-07-08). Guides behind Medium/RunComfy/Patreon walls were read via proxy summaries only.

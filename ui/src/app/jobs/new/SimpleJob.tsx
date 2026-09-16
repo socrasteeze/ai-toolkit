@@ -94,6 +94,8 @@ export default function SimpleJob({
 
   const isVideoModel = !!(modelArch?.group === 'video');
   const isAudioModel = !!(modelArch?.group === 'audio');
+  // text-generating models: samples are media in, text out (no size)
+  const isLlmModel = !!(modelArch?.group === 'llm');
 
   const taggedSampleArr: Record<string, any>[] | null = useMemo(() => {
     if (!modelArch) return null;
@@ -225,6 +227,9 @@ export default function SimpleJob({
     numDatasetCols -= 1;
     numSampleTopCols -= 1;
   }
+  if (isLlmModel) {
+    numSampleTopCols -= 1;
+  }
   if (numDatasetCols == 3) {
     datasetStyleClass = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6';
   }
@@ -310,6 +315,18 @@ export default function SimpleJob({
               placeholder=""
               required
             />
+            {modelArch?.additionalSections?.includes('model.model_kwargs.instruction') && (
+              <TextAreaInput
+                label="LLM Prompt"
+                className="pt-2"
+                rows={2}
+                docKey="model.model_kwargs.instruction"
+                value={jobConfig.config.process[0].model.model_kwargs?.instruction ?? ''}
+                onChange={value => setJobConfig(value, 'config.process[0].model.model_kwargs.instruction')}
+                placeholder="Describe this in detail."
+                required
+              />
+            )}
             {modelArch?.additionalSections?.includes('model.assistant_lora_path') && (
               <TextInput
                 label="Training Adapter Path"
@@ -507,7 +524,7 @@ export default function SimpleJob({
                 }}
                 options={transformerQuantizationOptions}
               />
-              {!disableSections.includes('model.quantize_te') && (
+              {!disableSections.includes('model.quantize_te') && !isLlmModel && (
                 <SelectInput
                   label="Text Encoder"
                   docKey={h('model.quantize_te')}
@@ -526,26 +543,30 @@ export default function SimpleJob({
                   options={quantizationOptions}
                 />
               )}
-              <FormGroup label="Compile Options">
-                <></>
-              </FormGroup>
-              <Checkbox
-                label="Compile Model"
+              {!isLlmModel && (
+                <>
+                  <FormGroup label="Compile Options">
+                    <></>
+                  </FormGroup>
+                  <Checkbox
+                    label="Compile Model"
                 docKey={h('model.compile')}
-                checked={jobConfig.config.process[0].model.compile || false}
-                onChange={value => {
-                  setJobConfig(value, 'config.process[0].model.compile');
-                  if (value) {
-                    for (const key in defaultCompileOptions) {
-                      setJobConfig((defaultCompileOptions as any)[key], `config.process[0].model.${key}`);
-                    }
-                  } else {
-                    for (const key in defaultCompileOptions) {
-                      setJobConfig(undefined, `config.process[0].model.${key}`);
-                    }
-                  }
-                }}
-              />
+                    checked={jobConfig.config.process[0].model.compile || false}
+                    onChange={value => {
+                      setJobConfig(value, 'config.process[0].model.compile');
+                      if (value) {
+                        for (const key in defaultCompileOptions) {
+                          setJobConfig((defaultCompileOptions as any)[key], `config.process[0].model.${key}`);
+                        }
+                      } else {
+                        for (const key in defaultCompileOptions) {
+                          setJobConfig(undefined, `config.process[0].model.${key}`);
+                        }
+                      }
+                    }}
+                  />
+                </>
+              )}
             </Card>
           )}
           {modelArch?.additionalSections?.includes('model.multistage') && (
@@ -776,59 +797,61 @@ export default function SimpleJob({
                   required
                 />
               </div>
-              <div>
-                {disableSections.includes('train.timestep_type') ? null : (
-                  <SelectInput
-                    label="Timestep Type"
+              {!isLlmModel && (
+                <div>
+                  {disableSections.includes('train.timestep_type') ? null : (
+                    <SelectInput
+                      label="Timestep Type"
                     docKey={h('train.timestep_type')}
-                    value={jobConfig.config.process[0].train.timestep_type}
-                    disabled={disableSections.includes('train.timestep_type') || false}
-                    onChange={value => setJobConfig(value, 'config.process[0].train.timestep_type')}
+                      value={jobConfig.config.process[0].train.timestep_type}
+                      disabled={disableSections.includes('train.timestep_type') || false}
+                      onChange={value => setJobConfig(value, 'config.process[0].train.timestep_type')}
+                      options={[
+                        { value: 'sigmoid', label: 'Sigmoid' },
+                        { value: 'linear', label: 'Linear' },
+                        { value: 'shift', label: 'Shift' },
+                        { value: 'weighted', label: 'Weighted' },
+                      ]}
+                    />
+                  )}
+                  <SelectInput
+                    label="Timestep Bias"
+                    className="pt-2"
+                  docKey={h('train.content_or_style')}
+                    value={jobConfig.config.process[0].train.content_or_style}
+                    onChange={value => setJobConfig(value, 'config.process[0].train.content_or_style')}
                     options={[
-                      { value: 'sigmoid', label: 'Sigmoid' },
-                      { value: 'linear', label: 'Linear' },
-                      { value: 'shift', label: 'Shift' },
-                      { value: 'weighted', label: 'Weighted' },
+                      { value: 'balanced', label: 'Balanced' },
+                      { value: 'content', label: 'High Noise' },
+                      { value: 'style', label: 'Low Noise' },
                     ]}
                   />
-                )}
-                <SelectInput
-                  label="Timestep Bias"
-                  className="pt-2"
-                  docKey={h('train.content_or_style')}
-                  value={jobConfig.config.process[0].train.content_or_style}
-                  onChange={value => setJobConfig(value, 'config.process[0].train.content_or_style')}
-                  options={[
-                    { value: 'balanced', label: 'Balanced' },
-                    { value: 'content', label: 'High Noise' },
-                    { value: 'style', label: 'Low Noise' },
-                  ]}
-                />
-                <SelectInput
-                  label="Loss Type"
-                  className="pt-2"
-                  docKey={h('train.loss_type')}
-                  value={jobConfig.config.process[0].train.loss_type}
-                  onChange={value => setJobConfig(value, 'config.process[0].train.loss_type')}
-                  options={[
-                    { value: 'mse', label: 'Mean Squared Error' },
-                    { value: 'mae', label: 'Mean Absolute Error' },
-                    { value: 'wavelet', label: 'Wavelet' },
-                    { value: 'stepped', label: 'Stepped Recovery' },
-                  ]}
-                />
-                {modelArch?.additionalSections?.includes('train.audio_loss_multiplier') && (
-                  <NumberInput
-                    label="Audio Loss Multiplier"
+                  <SelectInput
+                    label="Loss Type"
                     className="pt-2"
-                    value={jobConfig.config.process[0].train.audio_loss_multiplier ?? 1.0}
-                    onChange={value => setJobConfig(value, 'config.process[0].train.audio_loss_multiplier')}
-                    placeholder="eg. 1.0"
-                    docKey={'train.audio_loss_multiplier'}
-                    min={0}
+                  docKey={h('train.loss_type')}
+                    value={jobConfig.config.process[0].train.loss_type}
+                    onChange={value => setJobConfig(value, 'config.process[0].train.loss_type')}
+                    options={[
+                      { value: 'mse', label: 'Mean Squared Error' },
+                      { value: 'mae', label: 'Mean Absolute Error' },
+                      { value: 'wavelet', label: 'Wavelet' },
+                      { value: 'stepped', label: 'Stepped Recovery' },
+                    ]}
                   />
-                )}
-              </div>
+                  {modelArch?.additionalSections?.includes('train.audio_loss_multiplier') && (
+                    <NumberInput
+                      label="Audio Loss Multiplier"
+                      className="pt-2"
+                      value={jobConfig.config.process[0].train.audio_loss_multiplier ?? 1.0}
+                      onChange={value => setJobConfig(value, 'config.process[0].train.audio_loss_multiplier')}
+                      placeholder="eg. 1.0"
+                      docKey={'train.audio_loss_multiplier'}
+                      min={0}
+                    />
+                  )}
+                </div>
+              )}
               <div>
                 <FormGroup label="EMA (Exponential Moving Average)">
                   <Checkbox
@@ -851,32 +874,34 @@ export default function SimpleJob({
                   />
                 )}
 
-                <FormGroup label="Text Encoder Optimizations" className="pt-2">
-                  {!disableSections.includes('train.unload_text_encoder') && (
+                {!isLlmModel && (
+                  <FormGroup label="Text Encoder Optimizations" className="pt-2">
+                    {!disableSections.includes('train.unload_text_encoder') && (
+                      <Checkbox
+                        label="Unload TE"
+                        checked={jobConfig.config.process[0].train.unload_text_encoder || false}
+                        docKey={'train.unload_text_encoder'}
+                        onChange={value => {
+                          setJobConfig(value, 'config.process[0].train.unload_text_encoder');
+                          if (value) {
+                            setJobConfig(false, 'config.process[0].train.cache_text_embeddings');
+                          }
+                        }}
+                      />
+                    )}
                     <Checkbox
-                      label="Unload TE"
-                      checked={jobConfig.config.process[0].train.unload_text_encoder || false}
-                      docKey={'train.unload_text_encoder'}
+                      label="Cache Text Embeddings"
+                      checked={jobConfig.config.process[0].train.cache_text_embeddings || false}
+                      docKey={'train.cache_text_embeddings'}
                       onChange={value => {
-                        setJobConfig(value, 'config.process[0].train.unload_text_encoder');
+                        setJobConfig(value, 'config.process[0].train.cache_text_embeddings');
                         if (value) {
-                          setJobConfig(false, 'config.process[0].train.cache_text_embeddings');
+                          setJobConfig(false, 'config.process[0].train.unload_text_encoder');
                         }
                       }}
                     />
-                  )}
-                  <Checkbox
-                    label="Cache Text Embeddings"
-                    checked={jobConfig.config.process[0].train.cache_text_embeddings || false}
-                    docKey={'train.cache_text_embeddings'}
-                    onChange={value => {
-                      setJobConfig(value, 'config.process[0].train.cache_text_embeddings');
-                      if (value) {
-                        setJobConfig(false, 'config.process[0].train.unload_text_encoder');
-                      }
-                    }}
-                  />
-                </FormGroup>
+                  </FormGroup>
+                )}
               </div>
               <div>
                 {disableSections.includes('train.diff_output_preservation') ||
@@ -961,39 +986,41 @@ export default function SimpleJob({
                     )}
                   </>
                 )}
-                <FormGroup label="Other" className="pt-2">
-                  <>
-                    <Checkbox
-                      label="Contrastive Guidance Loss"
-                      docKey={'train.do_guidance_loss'}
-                      className="pt-1"
-                      checked={jobConfig.config.process[0].train.do_guidance_loss || false}
-                      onChange={value => {
-                        if (value) {
-                          setJobConfig(true, 'config.process[0].train.do_guidance_loss');
-                          if (!jobConfig.config.process[0].train.guidance_loss_target) {
-                            setJobConfig(4.0, 'config.process[0].train.guidance_loss_target');
+                {!isLlmModel && (
+                  <FormGroup label="Other" className="pt-2">
+                    <>
+                      <Checkbox
+                        label="Contrastive Guidance Loss"
+                        docKey={'train.do_guidance_loss'}
+                        className="pt-1"
+                        checked={jobConfig.config.process[0].train.do_guidance_loss || false}
+                        onChange={value => {
+                          if (value) {
+                            setJobConfig(true, 'config.process[0].train.do_guidance_loss');
+                            if (!jobConfig.config.process[0].train.guidance_loss_target) {
+                              setJobConfig(4.0, 'config.process[0].train.guidance_loss_target');
+                            }
+                          } else {
+                            setJobConfig(undefined, 'config.process[0].train.do_guidance_loss');
+                            setJobConfig(undefined, 'config.process[0].train.guidance_loss_target');
                           }
-                        } else {
-                          setJobConfig(undefined, 'config.process[0].train.do_guidance_loss');
-                          setJobConfig(undefined, 'config.process[0].train.guidance_loss_target');
-                        }
-                      }}
-                    />
-                    {jobConfig.config.process[0].train.do_guidance_loss && (
-                      <>
-                        <NumberInput
-                          label="Guidance Loss Target"
-                          docKey={'train.guidance_loss_target'}
-                          value={(jobConfig.config.process[0].train.guidance_loss_target as number) || 4.0}
-                          onChange={value => setJobConfig(value, 'config.process[0].train.guidance_loss_target')}
-                          placeholder="eg. 3.0"
-                          min={0}
-                        />
-                      </>
-                    )}
-                  </>
-                </FormGroup>
+                        }}
+                      />
+                      {jobConfig.config.process[0].train.do_guidance_loss && (
+                        <>
+                          <NumberInput
+                            label="Guidance Loss Target"
+                            docKey={'train.guidance_loss_target'}
+                            value={(jobConfig.config.process[0].train.guidance_loss_target as number) || 4.0}
+                            onChange={value => setJobConfig(value, 'config.process[0].train.guidance_loss_target')}
+                            placeholder="eg. 3.0"
+                            min={0}
+                          />
+                        </>
+                      )}
+                    </>
+                  </FormGroup>
+                )}
               </div>
             </div>
             {/* fork addition, see FORK_NOTES.md — full-width row below the column grid so
@@ -1002,178 +1029,182 @@ export default function SimpleJob({
           </Card>
         </div>
         <div>
-          <Card
-            title="Validation"
-            toggled={!!validationConfig}
-            onToggle={value => {
-              if (value) {
-                setJobConfig(
-                  {
-                    validation_items: [{ image_path: '', prompt: '' }],
-                    resolution: 1024,
-                    validate_every_n_steps: 1,
-                    validation_sigmas: [0.5],
-                  },
-                  'config.process[0].train.validation_config',
-                );
-              } else {
-                setJobConfig(undefined, 'config.process[0].train.validation_config');
-              }
-            }}
-          >
-            {validationConfig && (
-              <>
-                <p className="text-sm text-gray-400 mb-4">
-                  Validation runs a stable loss check on a fixed set of images. Each image is encoded once at startup
-                  and predicted at the selected sigmas with fixed seeds, so the result is always deterministic and
-                  comparable across the run. The average loss is logged as val/loss every time validation runs. The
-                  images need to match the concept of your dataset, but{' '}
-                  <span className="font-bold text-gray-300">do not include the validation images in the dataset</span>.
-                  They must be images containing the concept you want to train, but not an image trained on.
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <NumberInput
-                    label="Validate Every"
+          {!isLlmModel && (
+            <Card
+              title="Validation"
+              toggled={!!validationConfig}
+              onToggle={value => {
+                if (value) {
+                  setJobConfig(
+                    {
+                      validation_items: [{ image_path: '', prompt: '' }],
+                      resolution: 1024,
+                      validate_every_n_steps: 1,
+                      validation_sigmas: [0.5],
+                    },
+                    'config.process[0].train.validation_config',
+                  );
+                } else {
+                  setJobConfig(undefined, 'config.process[0].train.validation_config');
+                }
+              }}
+            >
+              {validationConfig && (
+                <>
+                  <p className="text-sm text-gray-400 mb-4">
+                    Validation runs a stable loss check on a fixed set of images. Each image is encoded once at startup
+                    and predicted at the selected sigmas with fixed seeds, so the result is always deterministic and
+                    comparable across the run. The average loss is logged as val/loss every time validation runs. The
+                    images need to match the concept of your dataset, but{' '}
+                    <span className="font-bold text-gray-300">do not include the validation images in the dataset</span>
+                    . They must be images containing the concept you want to train, but not an image trained on.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <NumberInput
+                      label="Validate Every"
                     docKey={h('train.validation_config.validate_every_n_steps')}
-                    value={validationConfig.validate_every_n_steps}
-                    onChange={value =>
-                      setJobConfig(value, 'config.process[0].train.validation_config.validate_every_n_steps')
-                    }
-                    placeholder="eg. 10"
-                    min={1}
-                    required
-                  />
-                  <NumberInput
-                    label="Validation Resolution"
+                      value={validationConfig.validate_every_n_steps}
+                      onChange={value =>
+                        setJobConfig(value, 'config.process[0].train.validation_config.validate_every_n_steps')
+                      }
+                      placeholder="eg. 10"
+                      min={1}
+                      required
+                    />
+                    <NumberInput
+                      label="Validation Resolution"
                     docKey={h('train.validation_config.resolution')}
-                    value={validationConfig.resolution}
-                    onChange={value => setJobConfig(value, 'config.process[0].train.validation_config.resolution')}
-                    placeholder="eg. 512"
-                    min={64}
-                    required
-                  />
-                  <SelectInput
-                    label="Validation Sigmas"
+                      value={validationConfig.resolution}
+                      onChange={value => setJobConfig(value, 'config.process[0].train.validation_config.resolution')}
+                      placeholder="eg. 512"
+                      min={64}
+                      required
+                    />
+                    <SelectInput
+                      label="Validation Sigmas"
                     docKey={h('train.validation_config.validation_sigmas')}
-                    value={(validationConfig.validation_sigmas ?? [1.0, 0.75, 0.5, 0.25]).join(', ')}
-                    onChange={value =>
-                      setJobConfig(
-                        value.split(',').map((v: string) => parseFloat(v)),
-                        'config.process[0].train.validation_config.validation_sigmas',
-                      )
-                    }
-                    options={[
-                      { value: '0.5', label: '0.5' },
-                      { value: '1, 0.5', label: '1.0, 0.5' },
-                      { value: '1, 0.66, 0.33', label: '1.0, 0.66, 0.33' },
-                      { value: '1, 0.75, 0.5, 0.25', label: '1.0, 0.75, 0.5, 0.25' },
-                    ]}
-                  />
-                </div>
-                <div className="mt-4">
-                  <label className="block text-xs text-gray-300 mb-2">
-                    Validation Images ({validationConfig.validation_items.length})
-                  </label>
-                  {validationConfig.validation_items.map((item, i) => (
-                    <div key={i} className="rounded-lg pl-4 pr-1 py-3 mb-4 bg-gray-950">
-                      <div className="flex items-center space-x-4">
-                        <SampleControlImage
-                          instruction="Add Image"
-                          src={item.image_path === '' ? null : item.image_path}
-                          onNewImageSelected={imagePath => {
-                            setJobConfig(
-                              imagePath ?? '',
-                              `config.process[0].train.validation_config.validation_items[${i}].image_path`,
-                            );
-                          }}
-                        />
-                        <div className="flex-1">
-                          <TextInput
-                            label="Prompt"
-                            docKey={h('train.validation_config.validation_items.prompt')}
-                            value={item.prompt}
-                            onChange={value =>
+                      value={(validationConfig.validation_sigmas ?? [1.0, 0.75, 0.5, 0.25]).join(', ')}
+                      onChange={value =>
+                        setJobConfig(
+                          value.split(',').map((v: string) => parseFloat(v)),
+                          'config.process[0].train.validation_config.validation_sigmas',
+                        )
+                      }
+                      options={[
+                        { value: '0.5', label: '0.5' },
+                        { value: '1, 0.5', label: '1.0, 0.5' },
+                        { value: '1, 0.66, 0.33', label: '1.0, 0.66, 0.33' },
+                        { value: '1, 0.75, 0.5, 0.25', label: '1.0, 0.75, 0.5, 0.25' },
+                      ]}
+                    />
+                  </div>
+                  <div className="mt-4">
+                    <label className="block text-xs text-gray-300 mb-2">
+                      Validation Images ({validationConfig.validation_items.length})
+                    </label>
+                    {validationConfig.validation_items.map((item, i) => (
+                      <div key={i} className="rounded-lg pl-4 pr-1 py-3 mb-4 bg-gray-950">
+                        <div className="flex items-center space-x-4">
+                          <SampleControlImage
+                            instruction="Add Image"
+                            src={item.image_path === '' ? null : item.image_path}
+                            onNewImageSelected={imagePath => {
                               setJobConfig(
-                                value,
-                                `config.process[0].train.validation_config.validation_items[${i}].prompt`,
-                              )
-                            }
-                            placeholder="Enter prompt"
+                                imagePath ?? '',
+                                `config.process[0].train.validation_config.validation_items[${i}].image_path`,
+                              );
+                            }}
                           />
-                        </div>
-                        <div>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setJobConfig(
-                                validationConfig.validation_items.filter((_, index) => index !== i),
-                                'config.process[0].train.validation_config.validation_items',
-                              )
-                            }
-                            className="rounded-full p-1 text-sm"
-                          >
-                            <X />
-                          </button>
+                          <div className="flex-1">
+                            <TextInput
+                              label="Prompt"
+                            docKey={h('train.validation_config.validation_items.prompt')}
+                              value={item.prompt}
+                              onChange={value =>
+                                setJobConfig(
+                                  value,
+                                  `config.process[0].train.validation_config.validation_items[${i}].prompt`,
+                                )
+                              }
+                              placeholder="Enter prompt"
+                            />
+                          </div>
+                          <div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setJobConfig(
+                                  validationConfig.validation_items.filter((_, index) => index !== i),
+                                  'config.process[0].train.validation_config.validation_items',
+                                )
+                              }
+                              className="rounded-full p-1 text-sm"
+                            >
+                              <X />
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setJobConfig(
-                        [...validationConfig.validation_items, { image_path: '', prompt: '' }],
-                        'config.process[0].train.validation_config.validation_items',
-                      )
-                    }
-                    className="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
-                  >
-                    Add Validation Image
-                  </button>
-                </div>
-              </>
-            )}
-          </Card>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setJobConfig(
+                          [...validationConfig.validation_items, { image_path: '', prompt: '' }],
+                          'config.process[0].train.validation_config.validation_items',
+                        )
+                      }
+                      className="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+                    >
+                      Add Validation Image
+                    </button>
+                  </div>
+                </>
+              )}
+            </Card>
+          )}
         </div>
         <div>
-          <Card title="Advanced" collapsible>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div>
-                <Checkbox
-                  label="Do Differential Guidance"
-                  docKey={'train.do_differential_guidance'}
-                  className="pt-1"
-                  checked={jobConfig.config.process[0].train.do_differential_guidance || false}
-                  onChange={value => {
-                    let newValue = value == false ? undefined : value;
-                    setJobConfig(newValue, 'config.process[0].train.do_differential_guidance');
-                    if (!newValue) {
-                      setJobConfig(undefined, 'config.process[0].train.differential_guidance_scale');
-                    } else if (
-                      jobConfig.config.process[0].train.differential_guidance_scale === undefined ||
-                      jobConfig.config.process[0].train.differential_guidance_scale === null
-                    ) {
-                      // set default differential guidance scale to 3.0
-                      setJobConfig(3.0, 'config.process[0].train.differential_guidance_scale');
-                    }
-                  }}
-                />
-                {jobConfig.config.process[0].train.differential_guidance_scale && (
-                  <>
-                    <NumberInput
-                      label="Differential Guidance Scale"
-                      className="pt-2"
+          {!isLlmModel && (
+            <Card title="Advanced" collapsible>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div>
+                  <Checkbox
+                    label="Do Differential Guidance"
+                    docKey={'train.do_differential_guidance'}
+                    className="pt-1"
+                    checked={jobConfig.config.process[0].train.do_differential_guidance || false}
+                    onChange={value => {
+                      let newValue = value == false ? undefined : value;
+                      setJobConfig(newValue, 'config.process[0].train.do_differential_guidance');
+                      if (!newValue) {
+                        setJobConfig(undefined, 'config.process[0].train.differential_guidance_scale');
+                      } else if (
+                        jobConfig.config.process[0].train.differential_guidance_scale === undefined ||
+                        jobConfig.config.process[0].train.differential_guidance_scale === null
+                      ) {
+                        // set default differential guidance scale to 3.0
+                        setJobConfig(3.0, 'config.process[0].train.differential_guidance_scale');
+                      }
+                    }}
+                  />
+                  {jobConfig.config.process[0].train.differential_guidance_scale && (
+                    <>
+                      <NumberInput
+                        label="Differential Guidance Scale"
+                        className="pt-2"
                       docKey={h('train.differential_guidance_scale')}
-                      value={(jobConfig.config.process[0].train.differential_guidance_scale as number) || 3.0}
-                      onChange={value => setJobConfig(value, 'config.process[0].train.differential_guidance_scale')}
-                      placeholder="eg. 3.0"
-                      min={0}
-                    />
-                  </>
-                )}
+                        value={(jobConfig.config.process[0].train.differential_guidance_scale as number) || 3.0}
+                        onChange={value => setJobConfig(value, 'config.process[0].train.differential_guidance_scale')}
+                        placeholder="eg. 3.0"
+                        min={0}
+                      />
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          </Card>
+            </Card>
+          )}
         </div>
         <div>
           <Card title="Datasets">
@@ -1482,7 +1513,7 @@ export default function SimpleJob({
                           />
                         )}
                       </FormGroup>
-                      {!isAudioModel && (
+                      {!isAudioModel && !isLlmModel && (
                         <FormGroup label="Flipping" docKey={'datasets.flip'} className="mt-2">
                           <Checkbox
                             label={
@@ -1583,40 +1614,44 @@ export default function SimpleJob({
                   min={0}
                   required
                 />
-                <SelectInput
-                  label="Sampler"
-                  className="pt-2"
+                {!isLlmModel && (
+                  <>
+                    <SelectInput
+                      label="Sampler"
+                      className="pt-2"
                   docKey={h('sample.sampler')}
-                  value={jobConfig.config.process[0].sample.sampler}
-                  onChange={value => setJobConfig(value, 'config.process[0].sample.sampler')}
-                  options={[
-                    { value: 'flowmatch', label: 'FlowMatch' },
-                    { value: 'ddpm', label: 'DDPM' },
-                  ]}
-                />
-                <NumberInput
-                  label="Guidance Scale"
+                      value={jobConfig.config.process[0].sample.sampler}
+                      onChange={value => setJobConfig(value, 'config.process[0].sample.sampler')}
+                      options={[
+                        { value: 'flowmatch', label: 'FlowMatch' },
+                        { value: 'ddpm', label: 'DDPM' },
+                      ]}
+                    />
+                    <NumberInput
+                      label="Guidance Scale"
                   docKey={h('sample.guidance_scale')}
-                  value={jobConfig.config.process[0].sample.guidance_scale}
-                  onChange={value => setJobConfig(value, 'config.process[0].sample.guidance_scale')}
-                  placeholder="eg. 1.0"
-                  className="pt-2"
-                  min={0}
-                  required
-                />
-                <NumberInput
-                  label="Sample Steps"
+                      value={jobConfig.config.process[0].sample.guidance_scale}
+                      onChange={value => setJobConfig(value, 'config.process[0].sample.guidance_scale')}
+                      placeholder="eg. 1.0"
+                      className="pt-2"
+                      min={0}
+                      required
+                    />
+                    <NumberInput
+                      label="Sample Steps"
                   docKey={h('sample.sample_steps')}
-                  value={jobConfig.config.process[0].sample.sample_steps}
-                  onChange={value => setJobConfig(value, 'config.process[0].sample.sample_steps')}
-                  placeholder="eg. 1"
-                  className="pt-2"
-                  min={1}
-                  required
-                />
+                      value={jobConfig.config.process[0].sample.sample_steps}
+                      onChange={value => setJobConfig(value, 'config.process[0].sample.sample_steps')}
+                      placeholder="eg. 1"
+                      className="pt-2"
+                      min={1}
+                      required
+                    />
+                  </>
+                )}
               </div>
 
-              {!isAudioModel && (
+              {!isAudioModel && !isLlmModel && (
                 <div>
                   <NumberInput
                     label="Width"
@@ -1664,35 +1699,37 @@ export default function SimpleJob({
                 </div>
               )}
 
-              <div>
-                <NumberInput
-                  label="Seed"
-                  docKey={h('sample.seed')}
-                  value={jobConfig.config.process[0].sample.seed}
-                  onChange={value => setJobConfig(value, 'config.process[0].sample.seed')}
-                  placeholder="eg. 0"
-                  min={0}
-                  required
-                />
-                {modelArch?.additionalSections?.includes('sample.duration') && (
+              {!isLlmModel && (
+                <div>
                   <NumberInput
-                    label="Duration (seconds)"
-                    value={jobConfig.config.process[0].sample.duration ?? 120}
-                    onChange={value => setJobConfig(value, 'config.process[0].sample.duration')}
-                    placeholder="eg. 120"
-                    className="pt-2"
-                    min={1}
+                    label="Seed"
+                  docKey={h('sample.seed')}
+                    value={jobConfig.config.process[0].sample.seed}
+                    onChange={value => setJobConfig(value, 'config.process[0].sample.seed')}
+                    placeholder="eg. 0"
+                    min={0}
                     required
                   />
-                )}
-                <Checkbox
-                  label="Walk Seed"
-                  className="pt-4 pl-2"
+                  {modelArch?.additionalSections?.includes('sample.duration') && (
+                    <NumberInput
+                      label="Duration (seconds)"
+                      value={jobConfig.config.process[0].sample.duration ?? 120}
+                      onChange={value => setJobConfig(value, 'config.process[0].sample.duration')}
+                      placeholder="eg. 120"
+                      className="pt-2"
+                      min={1}
+                      required
+                    />
+                  )}
+                  <Checkbox
+                    label="Walk Seed"
+                    className="pt-4 pl-2"
                   docKey={h('sample.walk_seed')}
-                  checked={jobConfig.config.process[0].sample.walk_seed}
-                  onChange={value => setJobConfig(value, 'config.process[0].sample.walk_seed')}
-                />
-              </div>
+                    checked={jobConfig.config.process[0].sample.walk_seed}
+                    onChange={value => setJobConfig(value, 'config.process[0].sample.walk_seed')}
+                  />
+                </div>
+              )}
               <div>
                 <FormGroup label="Advanced Sampling" className="pt-2">
                   <div>
@@ -1851,8 +1888,8 @@ export default function SimpleJob({
                                 docKey={h('sample.samples.prompt')}
                                 value={sample.prompt}
                                 onChange={value => setJobConfig(value, `config.process[0].sample.samples[${i}].prompt`)}
-                                placeholder="Enter prompt"
-                                required
+                                placeholder={isLlmModel ? 'blank = LLM Prompt' : 'Enter prompt'}
+                                required={!isLlmModel}
                               />
                             )}
                           </>
@@ -1884,7 +1921,7 @@ export default function SimpleJob({
                         )}
 
                         <div className="grid w-full lg:grid-flow-col lg:auto-cols-fr gap-4 mt-2">
-                          {!isAudioModel && (
+                          {!isAudioModel && !isLlmModel && (
                             <TextInput
                               label={`Width`}
                               docKey={h('sample.samples.width')}
@@ -1914,7 +1951,7 @@ export default function SimpleJob({
                               placeholder={`${jobConfig.config.process[0].sample.width} (default)`}
                             />
                           )}
-                          {!isAudioModel && (
+                          {!isAudioModel && !isLlmModel && (
                             <TextInput
                               label={`Height`}
                               docKey={h('sample.samples.height')}
@@ -1944,34 +1981,36 @@ export default function SimpleJob({
                               placeholder={`${jobConfig.config.process[0].sample.height} (default)`}
                             />
                           )}
-                          <TextInput
-                            label={`Seed`}
+                          {!isLlmModel && (
+                            <TextInput
+                              label={`Seed`}
                             docKey={h('sample.samples.seed')}
-                            value={sample.seed ? `${sample.seed}` : ''}
-                            onChange={value => {
-                              // remove any non-numeric characters
-                              value = value.replace(/\D/g, '');
-                              if (value === '') {
-                                // remove the key from the config if empty
-                                let newConfig = objectCopy(jobConfig);
-                                if (newConfig.config.process[0].sample.samples[i]) {
-                                  delete newConfig.config.process[0].sample.samples[i].seed;
-                                  setJobConfig(
-                                    newConfig.config.process[0].sample.samples,
-                                    'config.process[0].sample.samples',
-                                  );
-                                }
-                              } else {
-                                const intValue = parseInt(value);
-                                if (!isNaN(intValue)) {
-                                  setJobConfig(intValue, `config.process[0].sample.samples[${i}].seed`);
+                              value={sample.seed ? `${sample.seed}` : ''}
+                              onChange={value => {
+                                // remove any non-numeric characters
+                                value = value.replace(/\D/g, '');
+                                if (value === '') {
+                                  // remove the key from the config if empty
+                                  let newConfig = objectCopy(jobConfig);
+                                  if (newConfig.config.process[0].sample.samples[i]) {
+                                    delete newConfig.config.process[0].sample.samples[i].seed;
+                                    setJobConfig(
+                                      newConfig.config.process[0].sample.samples,
+                                      'config.process[0].sample.samples',
+                                    );
+                                  }
                                 } else {
-                                  console.warn('Invalid seed value:', value);
+                                  const intValue = parseInt(value);
+                                  if (!isNaN(intValue)) {
+                                    setJobConfig(intValue, `config.process[0].sample.samples[${i}].seed`);
+                                  } else {
+                                    console.warn('Invalid seed value:', value);
+                                  }
                                 }
-                              }
-                            }}
-                            placeholder={`${jobConfig.config.process[0].sample.walk_seed ? jobConfig.config.process[0].sample.seed + i : jobConfig.config.process[0].sample.seed} (default)`}
-                          />
+                              }}
+                              placeholder={`${jobConfig.config.process[0].sample.walk_seed ? jobConfig.config.process[0].sample.seed + i : jobConfig.config.process[0].sample.seed} (default)`}
+                            />
+                          )}
                           <TextInput
                             label={`LoRA Scale`}
                             docKey={h('sample.samples.network_multiplier')}
@@ -2025,6 +2064,8 @@ export default function SimpleJob({
                       {modelArch?.additionalSections?.includes('sample.ctrl_img') && (
                         <SampleControlImage
                           className="mt-6 ml-4"
+                          instruction={isLlmModel ? 'Add Media' : undefined}
+                          allowAudio={isLlmModel}
                           src={sample.ctrl_img}
                           onNewImageSelected={imagePath => {
                             if (!imagePath) {

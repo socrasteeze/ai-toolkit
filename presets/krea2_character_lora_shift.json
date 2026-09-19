@@ -1,0 +1,80 @@
+{
+  "job": "extension",
+  "config": {
+    "name": "preset",
+    "process": [
+      {
+        "type": "diffusion_trainer",
+        "training_folder": "output",
+        "device": "cuda",
+        "trigger_word": null,
+        "network": {
+          "type": "lora",
+          "linear": 32,
+          "linear_alpha": 16
+        },
+        "save": {
+          "dtype": "bf16",
+          "save_every": 250,
+          "max_step_saves_to_keep": 9,
+          "save_format": "safetensors",
+          "push_to_hub": false
+        },
+        "datasets": [
+          {
+            "folder_path": "/path/to/images/folder",
+            "caption_ext": "txt",
+            "caption_dropout_rate": 0.05,
+            "resolution": [
+              1024
+            ],
+            "num_repeats": 1,
+            "buckets": true,
+            "cache_latents_to_disk": true,
+            "cache_latents": true
+          }
+        ],
+        "train": {
+          "batch_size": 1,
+          "steps": 2200,
+          "gradient_accumulation": 1,
+          "train_unet": true,
+          "train_text_encoder": false,
+          "gradient_checkpointing": true,
+          "noise_scheduler": "flowmatch",
+          "optimizer": "adamw8bit",
+          "timestep_type": "shift",
+          "content_or_style": "balanced",
+          "lr": 0.0002,
+          "dtype": "bf16",
+          "cache_text_embeddings": true,
+          "unload_text_encoder": true,
+          "loss_sync_every": 4,
+          "ui_db_poll_seconds": 2
+        },
+        "model": {
+          "name_or_path": "krea/Krea-2-Raw",
+          "arch": "krea2",
+          "quantize": true,
+          "qtype": "qfloat8",
+          "quantize_te": true,
+          "qtype_te": "qfloat8",
+          "low_vram": true
+        },
+        "sample": {
+          "sampler": "flowmatch",
+          "sample_every": 250,
+          "width": 1024,
+          "height": 1024,
+          "guidance_scale": 4,
+          "sample_steps": 30
+        }
+      }
+    ]
+  },
+  "meta": {
+    "name": "[name]",
+    "version": "1.0",
+    "description": "A/B TWIN of krea2_character_lora, identical in every value except timestep_type: shift instead of linear. It exists to settle a contested setting by measurement instead of argument (CLAUDE.md's rule for exactly this). The disagreement, one source each: LoRA Dataset Studio / RunComfy call linear the Krea-canonical choice, which is why every other Krea 2 preset here ships it; musubi-tuner's own docs/krea2.md - kohya, on the trainer that produced every Krea 2 run this fork trusts - recommends shift sampling instead, --timestep_sampling shift with --discrete_flow_shift 2.5, saying it matches the K2 inference time-shift at 1024x1024, or --timestep_sampling krea2_shift for a resolution-aware schedule per sample. This trainer's shift IS that resolution-aware schedule, not a fixed 2.5: toolkit/samplers/custom_flowmatch_sampler.py's shift branch is commented 'matches inference dynamic shifting' and reads the Krea-specific exponential mu endpoints krea2.py sets (base_shift 0.5 at 256-res to max_shift 1.15 at 1280-res, use_dynamic_shifting true, time_shift_type exponential), per sample from the actual latent size. Upstream's 2026-09-16 patch_size fix is what made its token count correct - runs before that commit computed the wrong one, so any older shift result is void. HOW TO USE IT: run this and krea2_character_lora on the SAME dataset, same seed, same step count, then compare sample grids at matched steps - likeness, prompt adherence, and whether detail holds at non-1024 aspect buckets, which is where a resolution-aware schedule should show up first if it shows up at all. Nothing else differs, so the difference is attributable. Record the result in docs/krea2_field_template_2026_09.md section 7 and, if shift wins, the other Krea 2 presets follow. UNRESOLVED and UNMEASURED as shipped: this preset is the experiment, not the recommendation - the field template that motivated it never recorded which sampling its good runs used."
+  }
+}

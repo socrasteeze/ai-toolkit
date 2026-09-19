@@ -2593,3 +2593,55 @@ practically floors at 16 GB, multiple attention backends against SDPA only, mult
 Accelerate, and exact `--resume` of optimizer/scheduler state. None of them binds on the
 operator's 5090, and none is a reason to leave a GUI, the advisory layer, or the
 LoKr/DOP/Automagic identity-bleed levers behind. Operator's call: stay on ai-toolkit.
+
+### Addendum 3, same day: porting from musubi — the attention answer is "already better than the flags suggest" (2026-09-19)
+
+Acting on Addendum 2's comparison. Two things built, both deliberately experiments rather
+than edits; the rest refused with reasons. Full decision record in
+`docs/krea2_field_template_2026_09.md` section 8.
+
+**Built 1 — `presets/krea2_character_lora_shift.json`.** A byte-identical twin of
+`krea2_character_lora` with exactly one field changed, `timestep_type: shift`, so the
+contested linear-vs-shift question can be settled on one dataset with the difference
+attributable. Note for whoever runs it: this trainer's `shift` is NOT musubi's fixed
+`--discrete_flow_shift 2.5`, it is the resolution-aware `krea2_shift` equivalent —
+`custom_flowmatch_sampler.py`'s shift branch consumes the exponential mu endpoints `krea2.py`
+declares (0.5 at 256-res → 1.15 at 1280-res, `use_dynamic_shifting`) per sample from the real
+latent size. Upstream's 2026-09-16 `patch_size` fix is what made that token count correct, so
+any shift result from before that commit is void.
+
+**Built 2 — `scripts/attn_probe.py`.** Reports which kernel the dispatcher actually picks at
+Krea 2's real attention shapes and times the alternatives. Written because the honest answer
+to "would `--flash_attn` / `--sage_attn` / `--xformers` help here" turned out to be
+code-determined, not benchmark-determined, and the code says no:
+
+- **Krea 2 already runs a cuDNN-first SDPA priority list.** `mmdit.py` wraps
+  `F.scaled_dot_product_attention` in `sdpa_kernel([CUDNN, FLASH, EFFICIENT, MATH],
+  set_priority=True)` with `enable_gqa=True`. NVIDIA's fused kernel is already first choice.
+- **A padding mask disqualifies FlashAttention.** Ragged caption batches make `mmdit.py`
+  build a `(B,1,L,L)` key-padding mask, and PyTorch's flash backend rejects arbitrary masks,
+  so those steps fall through to cuDNN/efficient no matter what any flag says. `flash_attn`'s
+  own dense API has the same limitation. Adding it would no-op precisely where attention costs
+  most.
+- **`train.attention_backend` is a silent no-op for this arch.** The setting exists
+  (`config_modules.py:402`, applied `BaseSDTrainProcess.py:1806`), but `set_attention_backend`
+  is defined on diffusers modules and on the ideogram4 transformer — not on `SingleStreamDiT`.
+  Anyone "tuning" it for Krea 2 is changing nothing.
+- **SageAttention has no backward pass.** Upstream implements forward only, so it cannot serve
+  a training step; musubi's `--sage_attn` accelerates sampling. The trainable INT8 variant
+  (SageBwd, arXiv 2603.02170) is a paper, not the pip package. Correctness fact, not a timing
+  result.
+- **xformers is the pre-SDPA workaround** whose memory-efficient kernel PyTorch absorbed as
+  `EFFICIENT_ATTENTION`, already in the priority list.
+
+**Refused, with reasons.** Multi-GPU via Accelerate (training-loop surgery, one card).
+Exact `--resume` of optimizer/scheduler state (a real gap, but upstream-loop surgery — this
+trainer resumes from latest save + metadata; recorded, not built). `--convrot_int8` (qfloat8
+already works). Adding `set_attention_backend` to Krea 2 (a new upstream touchpoint in
+`krea2/src/mmdit.py` for a knob whose best case is matching the cuDNN kernel already chosen
+first — revisit only if `attn_probe.py` shows something beating cuDNN at these shapes).
+Block swap stays as `low_vram` + `layer_offloading_transformer_percent`: same mechanism,
+coarser, floors ~16 GB vs musubi's 12, and irrelevant on 32 GB.
+
+**Not measured.** `attn_probe.py` has not been run — no GPU in the container. It compiles and
+its no-torch path is verified; every number it would produce is still unknown.

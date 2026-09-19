@@ -235,3 +235,77 @@ dataset, and nothing in the field template says which sampling its good runs use
 **Bottom line.** Switching trainers would trade a GUI, the advisor and the identity-bleed
 levers for a 12 GB floor, multi-GPU and exact resume. On a 5090 none of what musubi wins is
 binding. Take the timestep question from it; leave the rest.
+
+## 8. Porting from musubi: what was taken, what was already here, what was refused (2026-09-19)
+
+Section 7 compared the two trainers. This is what was actually done about it.
+
+### Taken
+
+**1. The timestep question, as an experiment rather than an edit.**
+`presets/krea2_character_lora_shift.json` is a byte-identical twin of
+`krea2_character_lora.json` with exactly one field changed — `timestep_type: shift`. Run both
+on one dataset with the same seed and step count and the difference is attributable. Per
+`CLAUDE.md`, a contested value is not resolved by argument; this is what resolving it by
+measurement looks like. If shift wins, the other Krea 2 presets follow and the result gets
+recorded here.
+
+Worth knowing before running it: this trainer's `shift` is **not** musubi's fixed
+`--discrete_flow_shift 2.5`. It is the resolution-aware variant — musubi's `krea2_shift` —
+because `custom_flowmatch_sampler.py`'s shift branch reads the Krea-specific exponential mu
+endpoints `krea2.py` declares (`base_shift` 0.5 at 256-res → `max_shift` 1.15 at 1280-res,
+`use_dynamic_shifting`, `time_shift_type: exponential`) and applies them per sample from the
+real latent size. Upstream's 2026-09-16 `patch_size` fix is what made its token count correct,
+so any shift result from before that commit is void.
+
+**2. The attention question, as a probe rather than a claim.** `scripts/attn_probe.py`
+reports which kernel PyTorch's dispatcher actually selects at Krea 2's real attention shapes
+(48 heads over 12 kv heads, head_dim 128, 4096 image tokens at 1024 plus text), times every
+eligible SDPA backend, and times flash_attn / xformers / sageattention at the same shapes if
+they are installed. See the finding below for why the answer was not obvious enough to assert.
+
+### Already here, and better than the flag list suggests
+
+**Attention.** Krea 2 does not run naive attention waiting to be upgraded. `mmdit.py` calls
+`F.scaled_dot_product_attention` inside an explicit `sdpa_kernel` **priority list** —
+cuDNN → flash → mem-efficient → math — with `enable_gqa=True`. cuDNN attention is NVIDIA's own
+fused kernel and is already first. Two findings follow, and both cut against adding backends:
+
+- **A padding mask disqualifies FlashAttention.** When captions in a batch have different
+  lengths, `mmdit.py` builds a `(B,1,L,L)` key-padding mask, and PyTorch's flash backend does
+  not accept an arbitrary mask — the dispatcher falls through to cuDNN or mem-efficient
+  regardless of what any flag asks for. `flash_attn_func` has the same limitation (its varlen
+  API, which Krea 2 does not use, is the way around it). So "add flash_attn" would be a no-op
+  on exactly the batches where attention costs most.
+- **`train.attention_backend` is a no-op for Krea 2.** The setting exists (TrainConfig,
+  applied in `BaseSDTrainProcess.py:1806` via `set_attention_backend`), but that setter lives
+  on diffusers modules and on the ideogram4 transformer — **not** on Krea 2's
+  `SingleStreamDiT`. Setting it for this arch changes nothing, silently. Worth knowing before
+  anyone "tunes" it.
+
+**SageAttention cannot serve a training step at all.** Upstream SageAttention implements the
+forward pass only; there is no backward. In musubi, `--sage_attn` accelerates *sample
+generation*, not the optimiser step. The trainable INT8 variant in the literature (SageBwd,
+arXiv 2603.02170) is a research result, not what `pip install sageattention` installs. This is
+a correctness fact, not a benchmark result — no timing can change it.
+
+**xformers is the pre-SDPA workaround.** Its memory-efficient kernel is what PyTorch absorbed
+into SDPA's `EFFICIENT_ATTENTION` backend, which the priority list above already reaches. On a
+current torch there is nothing left for it to add here.
+
+**Block swap.** `--blocks_to_swap N` has a counterpart in `low_vram` +
+`layer_offloading_transformer_percent` (0.35 in `krea2_lora_16gb`) + qfloat8. Coarser, and
+floors at ~16 GB against musubi's 12 GB, but the same mechanism. Not worth re-implementing for
+a machine that has 32 GB.
+
+### Refused
+
+- **Multi-GPU (Accelerate).** Large, touches the training loop, and the operator has one card.
+- **Exact `--resume` of optimizer/scheduler state.** A real gap — this trainer resumes from the
+  latest save plus metadata — but it is upstream-loop surgery, which `CLAUDE.md`'s fork
+  hygiene exists to avoid. Recorded, not built.
+- **`--convrot_int8`.** An alternative to fp8 quantization; qfloat8 already works here.
+- **Making Krea 2 honour `attention_backend`.** It would mean adding `set_attention_backend`
+  to an upstream file (`krea2/src/mmdit.py`) for a knob whose best case is matching the cuDNN
+  kernel the priority list already picks first. New upstream touchpoint, no expected gain.
+  If `attn_probe.py` ever shows a backend beating cuDNN at these shapes on this card, revisit.

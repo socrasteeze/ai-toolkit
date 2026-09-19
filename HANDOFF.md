@@ -10,6 +10,7 @@ step target rather than replacing them. Nothing reproduced on this trainer; the 
 musubi-tuner (`krea2_train_network.py`) on RunPod 4090/H100.
 
 ## Done this session
+- Third pass, same day — musubi port: `presets/krea2_character_lora_shift.json` (timestep A/B twin), `scripts/attn_probe.py` (attention-backend probe), doc section 8 recording what was taken, what was already here, and what was refused
 - `presets/krea2_character_lora.json` (new) — rank 32 / alpha 16 @ LR 2e-4, adamw8bit, bf16 + qfloat8 base, gradient checkpointing, `buckets: true` at 1024, latents + text embeds cached, 2200 steps, `save_every` 250 keeping 9
 - `docs/krea2_field_template_2026_09.md` (new) — the template verbatim, the musubi→ai-toolkit translation table, the effective-LR arithmetic, the steps comparison, four open questions
 - `ui/src/utils/stepSuggestion.ts` — corroboration block on `ARCH_HEURISTICS.krea2`, FIELD TEMPLATE paragraph on `ARCH_RECIPES.krea2`. Numbers unchanged
@@ -17,6 +18,7 @@ musubi-tuner (`krea2_train_network.py`) on RunPod 4090/H100.
 - Second pass, same day — the operator's DATASET half: doc sections 5-6 (Florence-2 `<DETAILED_CAPTION>` captioning, identity-attribute caption surgery, per-image alias triggers, `_facecrop` augmentation, checkpoint-selection method, plus a stage-by-stage gap table), preset to v1.1, `ARCH_RECIPES.krea2`'s caption note upgraded from single-source hypothesis to TWO-SOURCE, PLAN.md addendum
 
 ## Open
+0. **Run the two new things on the GPU box.** `python scripts/attn_probe.py --masked` and again without `--masked` (it has never run — no GPU in the container), and the `krea2_character_lora` vs `krea2_character_lora_shift` A/B on one dataset, same seed and steps. Both exist to replace an argument with a number; until they run, nothing is settled
 1. **CONTESTED, the live one: `timestep_type`.** Every Krea 2 preset here ships `linear` (LDS/RunComfy, "Krea-canonical"); musubi's own Krea 2 doc recommends `shift` at `discrete_flow_shift 2.5`, or its resolution-aware `krea2_shift`. This trainer already implements the latter as `timestep_type: shift` (`custom_flowmatch_sampler.py` "matches inference dynamic shifting" + krea2.py's exponential mu endpoints; upstream's 2026-09-16 `patch_size` fix made the token count right). One source each, and the field template does not record which its good runs used. Wants an A/B on one dataset — do not resolve it by argument
 2. `python testing/test_presets.py` has NOT run against the new preset — the cloud container has no torch. Run it on the Windows box (`.\.venv\Scripts\python testing\test_presets.py`)
 3. Batch size is absent from the recovered template. Everything in §3 of the doc assumes batch 1; if those were batch 2 on the H100, every passes/image figure doubles. Worth one question to the operator

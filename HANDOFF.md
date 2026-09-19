@@ -6,7 +6,7 @@
 A recovered, field-proven Krea 2 training template is ported into the fork: three presets, one source-record doc, one diagnostic, advisor notes. Nothing has been run on hardware — every number is inherited from someone else's musubi-tuner runs or from published guidance.
 
 ## Done this session
-- `presets/krea2_character_lora{,_shift,_laptop16gb}.json` — field recipe (32/16 @ 2e-4), its timestep A/B twin, and the 16 GB laptop profile
+- `presets/krea2_character_lora{,_shift,_automagic,_laptop16gb}.json` — field recipe (32/16 @ 2e-4), two one-variable A/B twins (timestep, optimizer), and the 16 GB laptop profile
 - `docs/krea2_field_template_2026_09.md` — source record, dataset-prep method, musubi comparison, port decisions (§1–8)
 - `scripts/attn_probe.py` — reports which kernel the dispatcher picks at Krea 2's attention shapes; times the alternatives
 - `ui/src/utils/stepSuggestion.ts` — krea2 step corroboration, caption note raised to two-source, timestep contest recorded. No recommended value changed
@@ -16,7 +16,7 @@ A recovered, field-proven Krea 2 training template is ported into the fork: thre
 ## Open
 1. Laptop run — `krea2_character_lora_laptop16gb` has never executed. If VRAM allows, retry at resolution 1024 for the faithful reproduction
 2. `python scripts/attn_probe.py --masked`, then again without `--masked`, on the GPU box
-3. Timestep A/B — `krea2_character_lora` vs `krea2_character_lora_shift`, same dataset, seed and steps; record the winner in the doc's §7
+3. Two A/Bs against `krea2_character_lora`, same dataset, seed and steps — `_shift` (timestep sampling; record in the doc's §7) and `_automagic` (optimizer at the author's rails; record where the LR settled, not just the output)
 4. `python testing/test_presets.py` — needs torch, never ran against the three new presets
 5. Decide whether the desktop SDXL/Illustrious presets move to effective batch 2 to match the advisor
 6. Measure batch 4 for Klein and Krea 2 on the 32 GB desktop, then flip the `DESKTOP32` cells — `ui/src/utils/batchAdvisor.ts`
@@ -26,7 +26,7 @@ A recovered, field-proven Krea 2 training template is ported into the fork: thre
 - Stay on ai-toolkit over musubi-tuner — its wins (12 GB floor, multi-GPU, exact resume, more attention backends) bind on none of this hardware
 - Ship 32/16 @ 2e-4 as a new preset over re-tuning the 32/32 @ 1e-4 ones — `alpha/rank × LR` makes them the same effective 1e-4, so it is a capacity choice, not an LR correction
 - Advisor step tiers unchanged despite the template's flat 2200 — it agrees at 70 images and runs 2.3× hot at 30
-- Timestep `linear` vs `shift` left unresolved and shipped as an A/B twin — contested, one source each
+- Timestep `linear` vs `shift`, and adamw8bit vs automagic3, both left unresolved and shipped as one-variable A/B twins — contested or unevidenced, not settleable by argument
 - No attention backend added — a padding mask disqualifies flash in the dispatcher, and Krea 2 already runs a cuDNN-first SDPA priority list
 - Laptop preset at 512 over the parent's 1024 — memory; both are real Krea 2 training resolutions, and the file says which is faithful
 - Dataset-prep port (caption surgery, alias triggers, `_facecrop`) scoped in the doc's §6 but NOT built — operator's call
@@ -37,6 +37,7 @@ A recovered, field-proven Krea 2 training template is ported into the fork: thre
 - `layer_offloading: true` rewrites `qtype` qfloat8 → torchao float8 (`toolkit/config_modules.py` ~769), so the preset text and the run disagree
 - On 16 GB Windows the failure is shared-memory spill (absurd s/it), not a clean OOM. Keep ~1.5 GB free
 - `train.cache_text_embeddings` is mutually exclusive with `diff_output_preservation` — the new presets set the former
+- `krea2_character_lora_automagic` breaks this fork's `max_lr` = launch LR pattern ON PURPOSE (author's rails, so the controller can climb). Do not "fix" it to match the other `*_automagic` presets — that would make the experiment answer itself
 - `num_repeats` only duplicates the file list; kohya/musubi repeat advice does not transfer to this step-bounded trainer
 - Never push to `upstream` — its push URL stays the literal `DISABLED`, and the remote does not survive a fresh clone. Commit identity is set per clone (`CLAUDE.md`)
 

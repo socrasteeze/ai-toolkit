@@ -1,48 +1,49 @@
 # HANDOFF
 
-**Updated:** 2026-09-19 (2nd) · **Branch:** `claude/krea2-training-template-vsqaxn` · **Base:** `main` · **Tree:** clean
+**Updated:** 2026-09-19 · **Branch:** `main` · **Base:** `f23b514` (delivery tip; this file's commit sits on top) · **Tree:** clean
 
 ## State
-A field-proven Krea 2 training template (recovered by the operator from their own musubi-tuner
-runs) is ported into the fork: one new preset, one source-record doc, advisor notes updated. No
-recommended advisor VALUE changed — the template corroborates the existing LR and the medium-tier
-step target rather than replacing them. Nothing reproduced on this trainer; the source runs were
-musubi-tuner (`krea2_train_network.py`) on RunPod 4090/H100.
+A recovered, field-proven Krea 2 training template is ported into the fork: three presets, one source-record doc, one diagnostic, advisor notes. Nothing has been run on hardware — every number is inherited from someone else's musubi-tuner runs or from published guidance.
 
 ## Done this session
-- Fourth pass, same day — 5080 laptop: `presets/krea2_character_lora_laptop16gb.json` (field recipe, 16 GB profile, 512 + layer offloading + sampling off), `docs/profiles.md` now documents two exceptions to the inherit rule, and the `layer_offloading` qfloat8 -> float8 rewrite is named in all three offload presets (closes the 2026-09-16 review's finding 5)
-- Third pass, same day — musubi port: `presets/krea2_character_lora_shift.json` (timestep A/B twin), `scripts/attn_probe.py` (attention-backend probe), doc section 8 recording what was taken, what was already here, and what was refused
-- `presets/krea2_character_lora.json` (new) — rank 32 / alpha 16 @ LR 2e-4, adamw8bit, bf16 + qfloat8 base, gradient checkpointing, `buckets: true` at 1024, latents + text embeds cached, 2200 steps, `save_every` 250 keeping 9
-- `docs/krea2_field_template_2026_09.md` (new) — the template verbatim, the musubi→ai-toolkit translation table, the effective-LR arithmetic, the steps comparison, four open questions
-- `ui/src/utils/stepSuggestion.ts` — corroboration block on `ARCH_HEURISTICS.krea2`, FIELD TEMPLATE paragraph on `ARCH_RECIPES.krea2`. Numbers unchanged
-- `ui/src/server/builtinPresets.ts`, `presets/README.md`, `FORK_NOTES.md`, `PLAN.md` — registration, row, fork-only file entries, design entry
-- Second pass, same day — the operator's DATASET half: doc sections 5-6 (Florence-2 `<DETAILED_CAPTION>` captioning, identity-attribute caption surgery, per-image alias triggers, `_facecrop` augmentation, checkpoint-selection method, plus a stage-by-stage gap table), preset to v1.1, `ARCH_RECIPES.krea2`'s caption note upgraded from single-source hypothesis to TWO-SOURCE, PLAN.md addendum
+- `presets/krea2_character_lora{,_shift,_laptop16gb}.json` — field recipe (32/16 @ 2e-4), its timestep A/B twin, and the 16 GB laptop profile
+- `docs/krea2_field_template_2026_09.md` — source record, dataset-prep method, musubi comparison, port decisions (§1–8)
+- `scripts/attn_probe.py` — reports which kernel the dispatcher picks at Krea 2's attention shapes; times the alternatives
+- `ui/src/utils/stepSuggestion.ts` — krea2 step corroboration, caption note raised to two-source, timestep contest recorded. No recommended value changed
+- `presets/krea2_lora_16gb` v1.3 / `krea2_lora_laptop16gb` v1.2 — name the `layer_offloading` float8 rewrite (closes the 2026-09-16 review's finding 5)
+- `docs/profiles.md`, `presets/README.md`, `FORK_NOTES.md`, `PLAN.md` — second exception to the inherit rule, rows, fork-only entries, four addenda
 
 ## Open
-0. **Laptop test today** — `krea2_character_lora_laptop16gb` has never run. Watch for the Windows shared-memory spill (absurd s/it rather than a clean OOM); escalation order is in the preset description. If it fits with room, try resolution 1024 for the faithful reproduction.
-0b. **Run the two other new things on the GPU box.** `python scripts/attn_probe.py --masked` and again without `--masked` (it has never run — no GPU in the container), and the `krea2_character_lora` vs `krea2_character_lora_shift` A/B on one dataset, same seed and steps. Both exist to replace an argument with a number; until they run, nothing is settled
-1. **CONTESTED, the live one: `timestep_type`.** Every Krea 2 preset here ships `linear` (LDS/RunComfy, "Krea-canonical"); musubi's own Krea 2 doc recommends `shift` at `discrete_flow_shift 2.5`, or its resolution-aware `krea2_shift`. This trainer already implements the latter as `timestep_type: shift` (`custom_flowmatch_sampler.py` "matches inference dynamic shifting" + krea2.py's exponential mu endpoints; upstream's 2026-09-16 `patch_size` fix made the token count right). One source each, and the field template does not record which its good runs used. Wants an A/B on one dataset — do not resolve it by argument
-2. `python testing/test_presets.py` has NOT run against the new preset — the cloud container has no torch. Run it on the Windows box (`.\.venv\Scripts\python testing\test_presets.py`)
-3. Batch size is absent from the recovered template. Everything in §3 of the doc assumes batch 1; if those were batch 2 on the H100, every passes/image figure doubles. Worth one question to the operator
-4. NOT BUILT, scoped only (PLAN.md addendum 2026-09-19, doc section 6): the three prep stages this fork has no tool for — caption surgery (strip identity attributes / first sentence only / cut background clauses), per-image alias-set trigger selection, and `_facecrop` headshot augmentation. Florence-2 `<DETAILED_CAPTION>` is also absent from this UI's toolchain (upstream has it only in the standalone `flux_train_ui.py`). The operator offered to send their own scripts; they are self-described as barely working and one silently wrote no caption
-5. Carried over from 2026-09-11: desktop SDXL/Illustrious effective batch 2 decision; measure batch 4 for Klein/Krea 2 on the 32 GB desktop (`batchAdvisor.ts` `DESKTOP32` cells); which Klein variant OOMs on the 16 GB laptop
+1. Laptop run — `krea2_character_lora_laptop16gb` has never executed. If VRAM allows, retry at resolution 1024 for the faithful reproduction
+2. `python scripts/attn_probe.py --masked`, then again without `--masked`, on the GPU box
+3. Timestep A/B — `krea2_character_lora` vs `krea2_character_lora_shift`, same dataset, seed and steps; record the winner in the doc's §7
+4. `python testing/test_presets.py` — needs torch, never ran against the three new presets
+5. Decide whether the desktop SDXL/Illustrious presets move to effective batch 2 to match the advisor
+6. Measure batch 4 for Klein and Krea 2 on the 32 GB desktop, then flip the `DESKTOP32` cells — `ui/src/utils/batchAdvisor.ts`
+7. Record which Klein variant OOMs on the 16 GB laptop; `LAPTOP16.flux2_klein` treats 4B and 9B alike until then
 
 ## Decisions
-- VAE question CLOSED (2026-09-19): musubi's `docs/krea2.md` specifies the Qwen-Image VAE + Qwen3-VL-4B-Instruct, identical to `arch: krea2` here. The template's "HunyuanVideo 3D causal VAE" is a carry-over from musubi's video heritage. Every step/LR transfer stands
-- Staying on ai-toolkit (2026-09-19, operator's call): musubi wins a 12 GB floor (`--blocks_to_swap`), multi-GPU, exact `--resume` and more attention backends; none bind on a 5090, and switching would cost the GUI, the advisor, LoKr/DOP/Automagic. Comparison in the doc's section 7
-- Ship 32/16 @ 2e-4 as a NEW preset rather than re-tuning the existing 32/32 @ 1e-4 ones — `alpha/rank × LR` makes them the same effective 1e-4, so this is a capacity choice, not an LR correction
-- Advisor step tiers unchanged despite the template's flat 2200 — it agrees at 70 images (2240 vs 2200) and runs 2.3× hot at 30, and a flat count across a 2.3× size range is the shape the tiering replaced
-- Recorded as an `UNVERIFIED on this trainer` preset, per the fork's usual honesty rule — the evidence is judged output, which is strong, but from a different implementation
+- Stay on ai-toolkit over musubi-tuner — its wins (12 GB floor, multi-GPU, exact resume, more attention backends) bind on none of this hardware
+- Ship 32/16 @ 2e-4 as a new preset over re-tuning the 32/32 @ 1e-4 ones — `alpha/rank × LR` makes them the same effective 1e-4, so it is a capacity choice, not an LR correction
+- Advisor step tiers unchanged despite the template's flat 2200 — it agrees at 70 images and runs 2.3× hot at 30
+- Timestep `linear` vs `shift` left unresolved and shipped as an A/B twin — contested, one source each
+- No attention backend added — a padding mask disqualifies flash in the dispatcher, and Krea 2 already runs a cuDNN-first SDPA priority list
+- Laptop preset at 512 over the parent's 1024 — memory; both are real Krea 2 training resolutions, and the file says which is faithful
+- Dataset-prep port (caption surgery, alias triggers, `_facecrop`) scoped in the doc's §6 but NOT built — operator's call
+- Fast-forward merge over squash — the commit messages carry the research provenance the docs point at
 
 ## Traps
-- `train.cache_text_embeddings: true` (this preset) is mutually exclusive with `train.diff_output_preservation`. Caption dropout still works cached — a blank embed is cached alongside (`toolkit/dataloader_mixins.py:2428`)
-- `num_repeats` only duplicates the file list; the template's 10 repeats are epoch-bounded musubi accounting and inflate the advisor's file count if copied
-- No new upstream touchpoints: every file changed here is fork-only, so the count stays 59
-- Never push to `upstream`; its push URL stays the literal `DISABLED` (CLAUDE.md). Not present in a fresh clone — re-add fetch-only before any sync
-- Commit identity is `socrasteeze <socradeez@gmail.com>`, author and committer, set per clone
+- `train.attention_backend` is a silent no-op for Krea 2 — `set_attention_backend` is not defined on `SingleStreamDiT`
+- `layer_offloading: true` rewrites `qtype` qfloat8 → torchao float8 (`toolkit/config_modules.py` ~769), so the preset text and the run disagree
+- On 16 GB Windows the failure is shared-memory spill (absurd s/it), not a clean OOM. Keep ~1.5 GB free
+- `train.cache_text_embeddings` is mutually exclusive with `diff_output_preservation` — the new presets set the former
+- `num_repeats` only duplicates the file list; kohya/musubi repeat advice does not transfer to this step-bounded trainer
+- Never push to `upstream` — its push URL stays the literal `DISABLED`, and the remote does not survive a fresh clone. Commit identity is set per clone (`CLAUDE.md`)
 
 ## Verify
-```
-cd ui && npm ci && npx tsc --noEmit && npx tsc -p tsconfig.worker.json --noEmit && npx next build && npm test
-python testing/test_presets.py          # needs torch; Windows box only
+```powershell
+cd ui; npm ci; npx tsc --noEmit; npx tsc -p tsconfig.worker.json --noEmit; npx next build; npm test
+pwsh scripts/run_fork_tests.ps1
+.\.venv\Scripts\python testing\test_presets.py
+.\.venv\Scripts\python scripts\attn_probe.py --masked
 ```

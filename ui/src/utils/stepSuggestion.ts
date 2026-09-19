@@ -46,6 +46,14 @@ const ARCH_HEURISTICS: Record<string, StepHeuristic | ((tier: SizeTier) => StepH
   //     final 32-pass checkpoint the most faithful. 36 x 32 reproduces that 1152 exactly.
   //     Caveat: that run was musubi-tuner, not this trainer — same rank 32 / alpha 32 /
   //     LR 1e-4 / adamw8bit recipe, but a different implementation.
+  //     CORROBORATED 2026-09-19 by a second, unrelated musubi-tuner operator whose recovered
+  //     template (docs/krea2_field_template_2026_09.md) ran ~2200 steps on 30-70 images: at
+  //     its 70-image end that is 31.4 passes/image against this 32, i.e. 2200 vs the 2240
+  //     this file would suggest — 2% apart, from a run judged good by its output. The same
+  //     template disagrees BELOW ~50 images, where it keeps 2200 flat (73 passes/image at 30
+  //     images, 2.3x what this tier gives). Deliberately NOT adopted: a step count held
+  //     constant across a 2.3x size range is the shape the tiering exists to replace, and it
+  //     is one operator's number against a measured exposure target.
   //   large (20/img) — the published 100-500 image Krea2 recipes converge at only ~15-20
   //     passes per image. This replaces the old flat 65, which made a 250+ image set read
   //     "cool" at 3000+ steps when it was usually already fine.
@@ -565,6 +573,16 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'Krea 2: adamw8bit, LR 1e-4, rank 32, batch 1 at 1024 — thin community evidence, treat as a starting point only. ' +
       'A documented 16GB run (36 images, musubi-tuner, not this trainer) independently landed on this same rank 32 / ' +
       'alpha 32 / LR 1e-4 / adamw8bit combination, which is the strongest corroboration these numbers have. ' +
+      'FIELD TEMPLATE (2026-09-19, docs/krea2_field_template_2026_09.md): a second musubi-tuner operator, whose ' +
+      'characters were judged good by output rather than by a guide, ran rank 16 / alpha 16 @ LR 1e-4 early and rank ' +
+      '32 / alpha 16 @ LR 2e-4 later, adamw8bit, bf16 + fp8 base, bucketed multi-aspect, 30-70 images, ~2200 steps. ' +
+      'Those two and this recipe are the SAME effective learning rate: LoRA output scales alpha/rank (lora_special.py ' +
+      'sets scale = alpha / lora_dim), so 1.0 x 1e-4, 0.5 x 2e-4 and 1.0 x 1e-4 all come to 1e-4. Three routes, one ' +
+      'number — which is why LR 1e-4 stays. Rank 32 / alpha 16 is a real alternative to the 32/32 above rather than a ' +
+      'contradiction of it: same speed, twice the capacity of rank 16 at full scale, and reported to hold a character ' +
+      'well. It ships as the krea2_character_lora preset. Do not copy its 10 repeats or its flat 2200 ' +
+      'steps — see the repeats note below, and let this panel size the run (the template agrees with it at 70 images ' +
+      'and runs 2.3x hot at 30). ' +
       'Train at 512 or 1024, not in between: match a resolution the base model was actually trained at. ' +
       'No source states an LR scheduler recommendation for this model; scheduler intentionally left unset (defaults to constant). ' +
       "Natural-language captions, describing only what should NOT be learned as a fixed trait (per Krea's own guidance). " +

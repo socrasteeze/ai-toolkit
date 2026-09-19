@@ -2458,3 +2458,60 @@ self-upgraded to 26.1.2 — on Windows pip renames the live directory's first ch
 distribution ~ip" on every install and was otherwise inert. Both directories removed after
 confirming the real `pip` 26.1.2 was present and working; pip, torch, triton and pytest all
 verified afterwards and the warning is gone.
+
+## Krea 2: a field-proven training template, ported (2026-09-19)
+
+The operator supplied a Krea 2 training template recovered from their own runs — the first
+Krea 2 evidence in this fork whose weight comes from **judged output** ("they came out
+great", multiple characters) rather than from a published guide or a single write-up. It is
+musubi-tuner (`krea2_train_network.py`) on RunPod 4090/H100, so the recipe transfers and the
+implementation does not. The template verbatim, its term-by-term translation, and the open
+questions are in `docs/krea2_field_template_2026_09.md`; this entry records the decisions.
+
+**Shipped:** `presets/krea2_character_lora.json` (rank 32 / alpha 16 @ LR 2e-4, adamw8bit,
+bf16 + qfloat8 base, gradient checkpointing, `buckets: true` at 1024, latents and text
+embeddings cached, 2200 steps, `save_every` 250 keeping 9), registered in
+`builtinPresets.ts`, rowed in `presets/README.md`, plus a corroboration block on
+`ARCH_HEURISTICS.krea2` and a FIELD TEMPLATE paragraph on `ARCH_RECIPES.krea2` in
+`stepSuggestion.ts`.
+
+**The finding that mattered.** LoRA output scales `alpha / rank`
+(`toolkit/lora_special.py:116`, `_set_runtime_scale(float(alpha) / self.lora_dim)`), so the
+quantity governing how fast the adapter moves is `alpha/rank × LR`. The template's early runs
+(16/16 @ 1e-4), its later runs (32/16 @ 2e-4) and this fork's existing recipe (32/32 @ 1e-4)
+all come to **1e-4**. Three unrelated routes to one number, which is the strongest
+corroboration the Krea 2 LR has had — and the reason nothing about the recommended LR moved.
+Rank 32 at scale 0.5 is not a competing LR, it is the same speed with twice rank 16's
+capacity; that is what the new preset ships and why it sits beside the 32/32 ones rather than
+replacing them. (Caveat written into the doc: with Adam the update magnitude is ~`lr`
+regardless of gradient scale, so `alpha/rank × lr` is the standard heuristic for effective
+step size, not an identity.)
+
+**Steps: corroborated at 70 images, deliberately NOT adopted below 50.** The template holds
+~2200 steps roughly flat across 30–70 images at batch 1 — 31.4 passes/image at 70, 73.3 at
+30. `ARCH_HEURISTICS.krea2`'s medium tier is 32 passes/image, i.e. 2240 steps at 70 images:
+2% from the template, and from an operator unrelated to the 36-image run that anchored that
+tier in the first place. Two independent musubi runs landing on ~32 passes/image is the
+second real datum this number has. Below ~50 images they diverge (2200 vs 960 at 30 images,
+2.3×) and both were reported good, which is left unresolved on purpose: a step count held
+constant across a 2.3× dataset-size range is exactly the shape the tiering replaced
+(2026-07-29), and one operator's flat number is not evidence against a measured exposure
+target. The advisor's numbers are unchanged; the disagreement is written into the comment so
+the next session does not rediscover it as a contradiction.
+
+**Repeats: the concrete example `REPEATS_NOTE` was written for.** The template documents 10
+repeats on 70 images (700 items/epoch, ~3.1 epochs at 2200 steps). Pure epoch-bounded musubi
+accounting. Copied literally as `num_repeats: 10` here the job trains identically — repeats
+only duplicate the file list — but the advisor then reads 700 files, tiers it `large`, and
+the step math moves for no reason. The preset pins `num_repeats: 1` and says so.
+
+**Open (in the doc, repeated here because it is the one that could matter).** The template
+names a HunyuanVideo 3D causal VAE; this fork's `arch: krea2` wires the Qwen-Image VAE (f8,
+16 latent channels — `extensions_built_in/diffusion_models/krea2/krea2.py`). Both cannot
+describe the same latent layout. Nothing is configurable from a preset either way, so it
+blocks nothing, but if musubi really pairs Krea 2 with a different autoencoder then the two
+trainers are not producing interchangeable latents and every transfer above is weaker than it
+looks. Not silently "fixed" on either side. Also unrecorded in the source: the batch size
+(assumed 1, musubi's default and this fork's measured Krea 2 ceiling on 16 GB — if those were
+batch 2 on the H100 every passes/image figure doubles), and 2e-4 was never A/B'd against 1e-4
+at fixed alpha/rank, since the LR moved when the alpha did.

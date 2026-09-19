@@ -1,0 +1,80 @@
+{
+  "job": "extension",
+  "config": {
+    "name": "preset",
+    "process": [
+      {
+        "type": "diffusion_trainer",
+        "training_folder": "output",
+        "device": "cuda",
+        "trigger_word": null,
+        "network": {
+          "type": "lora",
+          "linear": 32,
+          "linear_alpha": 16
+        },
+        "save": {
+          "dtype": "bf16",
+          "save_every": 250,
+          "max_step_saves_to_keep": 9,
+          "save_format": "safetensors",
+          "push_to_hub": false
+        },
+        "datasets": [
+          {
+            "folder_path": "/path/to/images/folder",
+            "caption_ext": "txt",
+            "caption_dropout_rate": 0.05,
+            "resolution": [
+              1024
+            ],
+            "num_repeats": 1,
+            "buckets": true,
+            "cache_latents_to_disk": true,
+            "cache_latents": true
+          }
+        ],
+        "train": {
+          "batch_size": 1,
+          "steps": 2200,
+          "gradient_accumulation": 1,
+          "train_unet": true,
+          "train_text_encoder": false,
+          "gradient_checkpointing": true,
+          "noise_scheduler": "flowmatch",
+          "optimizer": "adamw8bit",
+          "timestep_type": "linear",
+          "content_or_style": "balanced",
+          "lr": 0.0002,
+          "dtype": "bf16",
+          "cache_text_embeddings": true,
+          "unload_text_encoder": true,
+          "loss_sync_every": 4,
+          "ui_db_poll_seconds": 2
+        },
+        "model": {
+          "name_or_path": "krea/Krea-2-Raw",
+          "arch": "krea2",
+          "quantize": true,
+          "qtype": "qfloat8",
+          "quantize_te": true,
+          "qtype_te": "qfloat8",
+          "low_vram": true
+        },
+        "sample": {
+          "sampler": "flowmatch",
+          "sample_every": 250,
+          "width": 1024,
+          "height": 1024,
+          "guidance_scale": 4,
+          "sample_steps": 30
+        }
+      }
+    ]
+  },
+  "meta": {
+    "name": "[name]",
+    "version": "1.0",
+    "description": "Krea 2 character LoRA, ported from a FIELD-PROVEN musubi-tuner template (recovered and shared by its operator 2026-09-19; full record and the term-by-term translation in docs/krea2_field_template_2026_09.md). This is the first Krea 2 preset in this fork backed by runs whose OUTPUT was judged good, rather than by a published guide — but the runs were on musubi-tuner/krea2_train_network.py, not this trainer, so the recipe transfers and the implementation does not. Recipe: rank 32 / alpha 16 (scale 0.5) at LR 2e-4, adamw8bit, bf16 with fp8 base weights (qfloat8 here), gradient checkpointing, SDPA (this trainer's default), 30-70 images with .txt captions, multi-aspect buckets rather than forced square, ~2200 steps, latents and text embeddings cached before the run, checkpoints every 250 steps and kept (9 saves covers a 2200-step run end to end) because the operator picked the final LoRA by testing intermediates for likeness vs generalization. DOES NOT CONTRADICT the fork's other Krea 2 presets: LoRA output scales as alpha/rank x LR (lora_special.py line 116), so this file's 32/16 @ 2e-4, the template's earlier 16/16 @ 1e-4, and krea2_lora_low_vram's 32/32 @ 1e-4 are all the SAME effective 1e-4 - three independent routes to one number. What differs is rank 32's capacity at half scale, which is the reason to pick this file over the 32/32 one for a character. STEPS: 2200 was held roughly constant across 30-70 images, so per-image exposure ran 31 passes (70 images) to 73 (30 images); the in-app advisor tiers it instead (32/image on 30-149 files, 45 below 30) and reproduces the 70-image end almost exactly at 2240. Let the advisor size your steps - at 30-40 images the flat 2200 is 1.5-2.3x its target. REPEATS: the source template documents 10 repeats (70 images x 10 = 700 items/epoch). That is epoch-bounded musubi accounting and does NOT transfer - this trainer is step-bounded and num_repeats only duplicates the file list, so leave it at 1. VAE/TE are not configurable here: arch krea2 wires Qwen3-VL-4B-Instruct + the Qwen-Image VAE (extensions_built_in/diffusion_models/krea2/krea2.py). The source template names a HunyuanVideo 3D causal VAE, which is musubi's pairing - unresolved, and nothing you can set from this preset either way. cache_text_embeddings is on (the template caches embeds): it is mutually exclusive with train.diff_output_preservation, so turn it off if you need DOP for trigger bleed. Caption dropout still works cached (a blank embed is cached alongside). Sampling every 250 steps is on for likeness checks - disable it on 16GB. For a roomier/leaner card start from krea2_lora_low_vram (24GB) or krea2_lora_16gb instead; for less identity bleed, krea2_character_lokr."
+  }
+}

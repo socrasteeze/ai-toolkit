@@ -2557,3 +2557,39 @@ upstream's Qwen3-VL captioner — **no Florence-2** in this UI's toolchain; upst
 only inside the standalone `flux_train_ui.py` Gradio app), trigger words (one fixed token, no
 alias set). Not covered at all: the caption-surgery stage, per-image alias selection, and
 face-crop augmentation. Nothing was built — this addendum is the scope statement for it.
+
+### Addendum 2, same day: musubi-tuner read against this trainer (2026-09-19)
+
+Asked because every Krea 2 source this fork trusts is a musubi-tuner run. Read against
+musubi's own `docs/krea2.md` and README. Full comparison in
+`docs/krea2_field_template_2026_09.md` section 7; two outcomes matter here.
+
+**Closed: the VAE question.** musubi specifies the **Qwen-Image VAE**
+(`split_files/vae/qwen_image_vae.safetensors`) and **Qwen3-VL-4B-Instruct** for Krea 2 —
+identical to what `arch: krea2` wires. The field template's "HunyuanVideo 3D causal VAE" is a
+carry-over from musubi's own heritage (it began as a HunyuanVideo trainer). Both trainers
+encode Krea 2 latents the same way, so the step/LR transfer recorded above stands unweakened.
+That was the one open item that could have invalidated it.
+
+**Opened: `timestep_type`, and it is a real disagreement.** musubi's Krea 2 doc recommends
+`--timestep_sampling shift --discrete_flow_shift 2.5` ("matches the K2 inference time-shift at
+1024×1024") or `--timestep_sampling krea2_shift` for a resolution-aware schedule per sample.
+Every Krea 2 preset here ships `timestep_type: linear`, sourced from LDS/RunComfy calling
+linear Krea-canonical. This fork already implements musubi's option: `timestep_type: shift` in
+`toolkit/samplers/custom_flowmatch_sampler.py` is commented "matches inference dynamic
+shifting" and consumes the Krea-specific exponential mu endpoints (`base_shift` 0.5 →
+`max_shift` 1.15, `use_dynamic_shifting`) that `krea2.py` sets — so ai-toolkit `shift` is
+musubi `krea2_shift`, and upstream's 2026-09-16 `patch_size` fix is what made its token count
+correct. One source each, the field template does not record which sampling its good runs
+used, and nothing was changed: per the fork's rule on contested values this wants an A/B on
+one dataset, not a decision by argument. Recorded in `ARCH_RECIPES.krea2` in place.
+
+**Everything else agrees.** musubi's own recommended Krea 2 recipe is rank/alpha 32,
+adamw8bit, LR 1e-4, `--fp8_base --fp8_scaled`, `--gradient_checkpointing`, `--sdpa`, latents
+and TE outputs pre-cached — line for line what this fork already ships. The genuine musubi
+advantages are hardware and plumbing, not recipe: `--blocks_to_swap` (up to 26) reaching a
+12 GB floor where this fork's `low_vram` + `layer_offloading_transformer_percent` + qfloat8
+practically floors at 16 GB, multiple attention backends against SDPA only, multi-GPU via
+Accelerate, and exact `--resume` of optimizer/scheduler state. None of them binds on the
+operator's 5090, and none is a reason to leave a GUI, the advisory layer, or the
+LoKr/DOP/Automagic identity-bleed levers behind. Operator's call: stay on ai-toolkit.

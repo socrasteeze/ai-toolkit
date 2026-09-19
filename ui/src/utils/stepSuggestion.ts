@@ -632,6 +632,14 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'per param group where earlier v3s pooled per output channel and then per tensor — third-party write-ups still ' +
       'describe those older shapes, so do not trust them over the docstring in this tree. ' +
       'Timestep guidance (via LoRA Dataset Studio / RunComfy): linear timestep_type is the Krea-canonical choice. ' +
+      'CONTESTED as of 2026-09-19, one source each, and worth an A/B before trusting either: musubi-tuner\u2019s own ' +
+      'Krea 2 doc (kohya-ss) recommends shift sampling instead \u2014 --timestep_sampling shift --discrete_flow_shift 2.5, ' +
+      'which it says matches the K2 inference time-shift at 1024x1024, or --timestep_sampling krea2_shift for a ' +
+      'resolution-aware schedule per sample. This trainer already has the equivalent: timestep_type "shift" in ' +
+      'custom_flowmatch_sampler.py is commented "matches inference dynamic shifting" and picks up the Krea-specific ' +
+      'exponential mu endpoints (base_shift 0.5, max_shift 1.15, use_dynamic_shifting) that krea2.py sets, so it IS ' +
+      "musubi's krea2_shift, and upstream's 2026-09-16 patch_size fix is what made its token count correct. The " +
+      'presets still ship linear; nothing in the field template records which sampling its good runs used. ' +
       'CORROBORATION (2026-09-11 review): an independent ai-toolkit wrapper (CaptainGrock/Krea2Trainer) ships this exact ' +
       'recipe as its defaults on THIS trainer — rank 32, alpha 32, LR 1e-4, adamw8bit, batch 1, 2000 steps, caption ' +
       'dropout 0.05, LR range 1e-5..5e-4 — which is a stronger anchor than the musubi-tuner run above. A second guide ' +

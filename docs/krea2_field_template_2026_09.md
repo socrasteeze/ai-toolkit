@@ -101,12 +101,13 @@ tiers it `large`, and the step math moves under you for no reason.
 
 ## 4. Open / unresolved
 
-1. **VAE naming.** The template says HunyuanVideo 3D causal VAE; this fork's Krea 2 uses the
-   Qwen-Image VAE (f8, 16 latent channels). Both cannot describe the same tensor layout.
-   Nothing is configurable from a preset either way, so it does not block anything — but if
-   musubi genuinely pairs Krea 2 with a different autoencoder, the two trainers are not
-   producing interchangeable latents and the step/LR transfer above is weaker than it looks.
-   Unresolved; do not silently "fix" either side.
+1. ~~**VAE naming.**~~ **RESOLVED 2026-09-19** — the template is wrong and the transfer is
+   sound. musubi-tuner's own `docs/krea2.md` specifies the **Qwen-Image VAE**
+   (`split_files/vae/qwen_image_vae.safetensors`) and **Qwen3-VL-4B-Instruct** as the text
+   encoder, i.e. exactly what `arch: krea2` wires here. The "HunyuanVideo 3D causal VAE" line
+   is almost certainly a carry-over from musubi's own heritage — the repo began as a
+   HunyuanVideo trainer and still ships that VAE for the video archs. Both trainers encode
+   Krea 2 latents the same way, so every step/LR transfer in section 3 stands unweakened.
 2. **Batch size is not in the recovered template.** Everything in §3 assumes batch 1, which is
    musubi's default and what `batchAdvisor.ts` records as the measured Krea 2 ceiling on 16 GB.
    If those runs were batch 2 on the H100, every passes/image figure above doubles.
@@ -168,3 +169,69 @@ test: nobody has run the A/B against un-stripped captions on either side.
 
 Nothing above is built. This table is the scope of what a fork-side port of the prep pipeline
 would cover, and the reason it would be worth building is the middle three rows.
+
+## 7. Is musubi-tuner the better trainer? (researched 2026-09-19)
+
+Asked because every Krea 2 source this fork trusts — the 36-image run, the field template —
+is a musubi-tuner run, which raises the obvious question of whether this repo is the wrong
+tool. Read against musubi's own `docs/krea2.md` and README (kohya-ss/musubi-tuner).
+
+**Verdict: not better, differently shaped.** musubi is a CLI research trainer with a lower
+VRAM floor and more knobs; ai-toolkit is a GUI trainer with a scheduler, a dataset pipeline
+and this fork's advisory layer on top. On Krea 2 specifically the two agree on the recipe,
+which is the strongest argument that the choice is about workflow, not output.
+
+**Where they agree (and it is most of it).** musubi's own doc recommends **rank/alpha 32**
+(`--network_dim 32 --network_alpha 32`), **adamw8bit**, **LR 1e-4**, `--fp8_base --fp8_scaled`,
+`--gradient_checkpointing`, `--sdpa`, Qwen-Image VAE + Qwen3-VL-4B-Instruct, latents and text
+encoder outputs pre-cached. That is, line for line, what `presets/krea2_lora_low_vram.json`
+and `ARCH_RECIPES.krea2` already say. The field template's numbers were never in tension with
+this fork's; they were the same recipe run on the other implementation.
+
+**Where musubi is genuinely ahead.**
+
+- **VRAM floor.** `--blocks_to_swap N` (up to 26) streams DiT blocks to CPU and gets Krea 2
+  onto 12 GB. This fork's answer is `low_vram` + `layer_offloading_transformer_percent`
+  (0.35 in `krea2_lora_16gb`) + qfloat8, which is the same idea with coarser control and a
+  practical floor of 16 GB. If a 12 GB card ever has to train Krea 2, musubi is the tool.
+- **Attention backends.** `--flash_attn`, `--sage_attn`, `--xformers`, `--split_attn` against
+  SDPA only here. The field template used SDPA, so this bought those runs nothing.
+- **Multi-GPU** via Accelerate. No equivalent here.
+- **Exact resume.** `--resume` restores optimizer and scheduler state to the step. This
+  trainer resumes from the latest save plus metadata, which is not the same guarantee.
+- **`--convrot_int8`** as an fp8 alternative, and `--compile`.
+- **Reach.** Video archs (HunyuanVideo, Wan 2.1/2.2, FramePack), which this repo does not
+  cover in the same depth.
+
+**Where this fork is ahead.**
+
+- **The GUI, the job queue and sampling** — which is the operator's stated reason for being
+  here, and not a small one: musubi ships no official GUI (the Gradio front-ends are
+  third-party forks), and its sampling during training needs `--text_encoder` kept resident.
+- **The advisory layer this fork built**: step suggestion tiered by dataset size, the
+  effective-batch gate, the machine-aware batch plan, and ~40 presets with provenance. musubi
+  gives you flags and a TOML; nothing tells you 2200 steps is 2.3× hot for 30 images.
+- **LoKr, Differential Output Preservation, regularization datasets, Automagic v3** — the
+  levers for exactly the identity-bleed problem these character LoRAs hit.
+- **Dataset tooling in-app** (pre-flight, captioning, prep panel) versus assembling a TOML.
+- **Stability posture.** musubi's README calls itself experimental, under active development,
+  with breaking changes, and "not intended for production use".
+
+**The one setting worth re-examining because of this.** musubi's Krea 2 doc recommends
+`--timestep_sampling shift --discrete_flow_shift 2.5` as the baseline ("matches the K2
+inference time-shift at 1024×1024"), or `--timestep_sampling krea2_shift` for a
+resolution-aware schedule. Every Krea 2 preset here ships `timestep_type: linear`, sourced
+from LoRA Dataset Studio / RunComfy calling linear "Krea-canonical". This fork already
+implements the other side: `timestep_type: shift` in
+`toolkit/samplers/custom_flowmatch_sampler.py` is commented "matches inference dynamic
+shifting" and reads the Krea-specific exponential mu endpoints
+(`base_shift` 0.5 → `max_shift` 1.15, `use_dynamic_shifting: true`) that
+`extensions_built_in/diffusion_models/krea2/krea2.py` sets — i.e. ai-toolkit's `shift` IS
+musubi's resolution-aware `krea2_shift`, and upstream's 2026-09-16 `patch_size` fix is what
+made it compute the right token count. So the two trainers' defaults disagree on a setting
+both support, with one source each. **Not resolved here** — it wants an A/B on the same
+dataset, and nothing in the field template says which sampling its good runs used.
+
+**Bottom line.** Switching trainers would trade a GUI, the advisor and the identity-bleed
+levers for a 12 GB floor, multi-GPU and exact resume. On a 5090 none of what musubi wins is
+binding. Take the timestep question from it; leave the rest.

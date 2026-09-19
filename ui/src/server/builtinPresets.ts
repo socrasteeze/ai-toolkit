@@ -29,6 +29,7 @@ export const BUILTIN_PRESET_NAMES = new Set<string>([
   'illustriousxl_style_lora',
   'krea2_character_lokr',
   'krea2_character_lora',
+  'krea2_character_lora_laptop16gb',
   'krea2_character_lora_shift',
   'krea2_concept_lora',
   'krea2_lora_16gb',

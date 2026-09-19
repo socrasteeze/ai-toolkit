@@ -1,0 +1,85 @@
+{
+  "job": "extension",
+  "config": {
+    "name": "preset",
+    "process": [
+      {
+        "type": "diffusion_trainer",
+        "training_folder": "output",
+        "device": "cuda",
+        "trigger_word": null,
+        "network": {
+          "type": "lora",
+          "linear": 32,
+          "linear_alpha": 16
+        },
+        "save": {
+          "dtype": "bf16",
+          "save_every": 250,
+          "max_step_saves_to_keep": 9,
+          "save_format": "safetensors",
+          "push_to_hub": false
+        },
+        "datasets": [
+          {
+            "folder_path": "/path/to/images/folder",
+            "caption_ext": "txt",
+            "caption_dropout_rate": 0.05,
+            "resolution": [
+              512
+            ],
+            "num_repeats": 1,
+            "buckets": true,
+            "cache_latents_to_disk": true,
+            "cache_latents": true
+          }
+        ],
+        "train": {
+          "batch_size": 1,
+          "steps": 2200,
+          "gradient_accumulation": 1,
+          "train_unet": true,
+          "train_text_encoder": false,
+          "gradient_checkpointing": true,
+          "noise_scheduler": "flowmatch",
+          "optimizer": "adamw8bit",
+          "timestep_type": "linear",
+          "content_or_style": "balanced",
+          "lr": 0.0002,
+          "dtype": "bf16",
+          "cache_text_embeddings": true,
+          "unload_text_encoder": true,
+          "loss_sync_every": 4,
+          "ui_db_poll_seconds": 2,
+          "disable_sampling": true
+        },
+        "model": {
+          "name_or_path": "krea/Krea-2-Raw",
+          "arch": "krea2",
+          "quantize": true,
+          "qtype": "qfloat8",
+          "quantize_te": true,
+          "qtype_te": "qfloat8",
+          "low_vram": true,
+          "compile": false,
+          "layer_offloading": true,
+          "layer_offloading_text_encoder_percent": 1,
+          "layer_offloading_transformer_percent": 0.35
+        },
+        "sample": {
+          "sampler": "flowmatch",
+          "sample_every": 250,
+          "width": 768,
+          "height": 768,
+          "guidance_scale": 4,
+          "sample_steps": 30
+        }
+      }
+    ]
+  },
+  "meta": {
+    "name": "[name]",
+    "version": "1.0",
+    "description": "The field-proven Krea 2 character recipe (krea2_character_lora) in the 16GB laptop memory profile - RTX 5080 Laptop class, native Windows, large system-RAM pool. See docs/profiles.md. TRAINING MATH IS INHERITED UNCHANGED from the parent: rank 32 / alpha 16 (scale 0.5) at LR 2e-4, adamw8bit, bf16, linear timesteps, batch 1 x accum 1, 2200 steps, caption dropout 0.05, latents AND text embeddings cached. Checkpoints are interchangeable with the parent; only memory and IO behaviour differ. FOUR DELTAS, all memory/IO. (1) RESOLUTION 512, not the parent's 1024 - the one delta that is NOT purely a memory profile, and it is called out rather than buried: 512 is a resolution Krea 2 was actually trained at (256/512/1024, never 768), so it is a legitimate training resolution and not a downgrade of the recipe, but it is a different one from what the field runs used. If you have headroom, 1024 is the faithful reproduction - try it second, with sampling off, and watch VRAM. (2) layer_offloading on: 100% of the text encoder and 35% of the transformer stream from system RAM. (3) Sampling DISABLED by default - on this class of card sampling, not the training loop, is the VRAM peak; the sample block is pre-set to 768 so re-enabling it does not immediately spike. This costs you the mid-run likeness previews the parent recipe depends on, so the intended workflow here is: train with sampling off, then test the kept checkpoints afterwards. (4) Nothing else - num_workers already defaults to 2 and pin_memory to false in config_modules.py, so neither needs setting. KNOW THIS BEFORE YOU READ THE VRAM: layer_offloading silently rewrites qtype qfloat8 -> torchao float8 and qtype_te likewise (config_modules.py ~769-772). The preset still says qfloat8; the run will not be using it. That is upstream behaviour, not a preset bug. IF YOU OOM, in order: confirm sampling is off, then drop cache_latents to false (keeping cache_latents_to_disk) to trade RAM-served latents back for disk reads, then raise layer_offloading_transformer_percent above 0.35. The real 16GB failure mode on Windows is NOT a clean OOM - upstream #1007 reports a config grazing the ceiling falling into shared-memory spill and running 21 -> 303 s/it instead of erroring, so if a step time goes absurd, you are spilling, not compute-bound. Rule of thumb: keep ~1.5GB of VRAM free. UNMEASURED on 16GB hardware - no Krea 2 run in this fork has been made at this profile, and the field runs it inherits from were 4090/H100. Treat the headroom as inferred. Disk: max_step_saves_to_keep 9 is deliberate (checkpoint testing is the point of this recipe) but budget for 9 rank-32 Krea 2 LoRAs. For the A/B on timestep sampling see krea2_character_lora_shift; for the older automagic3-based 16GB recipe see krea2_lora_laptop16gb."
+  }
+}

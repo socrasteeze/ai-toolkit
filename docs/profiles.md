@@ -55,15 +55,23 @@ Second machine: RTX 5080 Laptop (16 GB, ~15.9 GB usable), Core Ultra 9 275HX,
 `illustriousxl_character_lora_laptop16gb`, `krea2_lora_laptop16gb`
 (added 2026-07-29; parent is `krea2_lora_16gb`, which already targeted 16 GB —
 the laptop variant adds RAM-served latents, 768 preview sampling and the
-sqlite poll throttle, and changes no recipe value).
+sqlite poll throttle, and changes no recipe value), and
+`krea2_character_lora_laptop16gb` (added 2026-09-19; parent is the field-proven
+`krea2_character_lora`). That last one carries a SECOND deliberate exception to the
+inherit-everything rule below: **resolution 512 against its parent's 1024**. Both are
+resolutions Krea 2 was actually trained at, so it is a different legitimate recipe
+rather than a degraded one — but it is not the resolution the field runs used, and the
+preset says so in place. 1024 is the faithful reproduction if the card holds it.
 
-**Every recipe value is inherited unchanged from the parent preset, with ONE exception:
+**Every recipe value is inherited unchanged from the parent preset, with TWO exceptions:
 effective batch on the SDXL-family presets** (lever 4 below — `sdxl_character_lora_laptop16gb`
 and `illustriousxl_character_lora_laptop16gb` run batch 1 + `gradient_accumulation: 2` where
 their desktop parents are effective batch 1). That exception is deliberate: it moves those
 presets INTO agreement with the advisor, which recommends batch 2 for SDXL/SD1.5/Illustrious/
 Pony. Corrected 2026-09-11 — the unqualified claim contradicted lever 4 in this same
-document. Otherwise these files change only how a run fits in memory and how it feeds the GPU.
+document. **The second exception is `krea2_character_lora_laptop16gb`'s 512 resolution**
+(2026-09-19), described above. Otherwise these files change only how a run fits in memory
+and how it feeds the GPU.
 LoRA weights stay interchangeable with the desktop profiles; note that resuming across the two
 SDXL-family profiles changes effective batch mid-run, so exposure per step changes with it.
 The four levers:

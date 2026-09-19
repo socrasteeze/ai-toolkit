@@ -2645,3 +2645,47 @@ coarser, floors ~16 GB vs musubi's 12, and irrelevant on 32 GB.
 
 **Not measured.** `attn_probe.py` has not been run — no GPU in the container. It compiles and
 its no-torch path is verified; every number it would produce is still unknown.
+
+### Addendum 4, same day: the 5080 laptop gets the field recipe (2026-09-19)
+
+Operator is testing on the RTX 5080 Laptop today. `krea2_lora_laptop16gb` already existed and
+is still the right file for the automagic3 recipe, but the field-proven recipe shipped in
+Addendum 1 had no laptop profile — its parent runs 1024 with sampling on and no offloading,
+which is a 16 GB OOM or, worse on Windows, a shared-memory spill.
+
+**Shipped: `presets/krea2_character_lora_laptop16gb.json`.** Training math inherited unchanged
+(rank 32 / alpha 16 @ LR 2e-4, adamw8bit, linear, batch 1 × accum 1 — which is what
+`batchAdvisor.ts`'s `LAPTOP16.krea2` cell measures as the ceiling anyway — 2200 steps, latents
+and text embeds cached), so checkpoints stay interchangeable with the desktop parent. Four
+deltas, all memory/IO except one:
+
+1. **Resolution 512, not 1024.** The one deviation that is not purely a memory profile, so it
+   is called out in the preset, in `docs/profiles.md` (which now documents TWO exceptions to
+   the inherit-everything rule, not one), and in `presets/README.md`. Both 512 and 1024 are
+   resolutions Krea 2 was actually trained at, so this is a different legitimate recipe rather
+   than a degraded one — but it is not what the field runs used, and 1024 is the faithful
+   reproduction if the card holds it.
+2. `layer_offloading`: 100% of the TE, 35% of the transformer.
+3. Sampling disabled, sample block pre-set to 768 so re-enabling it does not immediately
+   spike. The cost is real and stated: this recipe's whole selection method is testing
+   intermediate checkpoints, so the intended workflow becomes train-then-test rather than
+   watching previews.
+4. Nothing else — `num_workers` already defaults to 2 and `pin_memory` to false in
+   `config_modules.py`, so the 2026-09-16 proposal to set them explicitly is a no-op and was
+   not taken.
+
+**Closed from the 2026-09-16 review, finding 5 (docs drift).** `layer_offloading: true`
+silently rewrites `qtype` qfloat8 → torchao float8 and `qtype_te` likewise
+(`config_modules.py` ~769-772). The two existing offload presets claimed qfloat8 and trained
+on float8 without saying so; that sentence is now in `krea2_lora_16gb` (v1.3) and
+`krea2_lora_laptop16gb` (v1.2) as well as the new file.
+
+**Carried into the new preset's description rather than left in PLAN:** the Windows
+16 GB failure mode is not a clean OOM. Upstream #1007 reports a config grazing the ceiling
+falling into shared-memory spill at 21 → 303 s/it instead of erroring, so an absurd step time
+means spilling, not compute. Keep ~1.5 GB free. OOM escalation order is stated in-file:
+sampling off → `cache_latents` false (keep `cache_latents_to_disk`) → raise
+`layer_offloading_transformer_percent`.
+
+**Still unmeasured.** No Krea 2 run in this fork has been made at this profile; the field runs
+it inherits from were 4090/H100. Headroom is inferred, and the preset says so.

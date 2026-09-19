@@ -2776,3 +2776,30 @@ item for an author-rail automagic variant.
 `krea2_character_lora` (adamw8bit, linear) · `_shift` (timestep sampling) · `_automagic`
 (optimizer). Same dataset, same seed, same 2200 steps, and each difference is attributable.
 Nothing is measured; the preset is the experiment, not the recommendation.
+
+### Addendum 7, same day: the advisor's LR chip was wrong for automagic, and "Apply all" made it one click (2026-09-19)
+
+Found by answering an operator question — would the advisor suggest different settings
+depending on the optimizer selected? Partly: `suggestBatch()` already reads
+`train.optimizer` and `optimizer_params.fused` and routes fused automagic onto the
+`batch_size` route (effective 1 on a 16 GB card, since accumulation is a hard error).
+`getArchRecipe()` did not read the optimizer at all.
+
+**Why that mattered more than it looks.** Every `ARCH_RECIPES` entry's `lrSetting` is an
+adamw-family rate. Automagic takes an LR as a LAUNCH POINT its controller then walks away
+from. So with `krea2_character_lora_automagic` loaded — launch 1e-6, the author's shape — the
+panel offered "LR 0.0001 (now 0.000001)" and **"Apply all" would have set the launch 100×
+high in one click**, destroying the very experiment the preset exists to run.
+
+**Fixed by withdrawal, not by re-pointing.** `getArchRecipe()` takes an optional `optimizer`
+argument; under any `automagic*` it filters the `.lr` setting out and prepends
+`AUTOMAGIC_LR_NOTE`. Rank, alpha, batch and scheduler pass through untouched — they are
+optimizer-independent. The chip is not re-pointed at an automagic-appropriate number because
+there is no agreed one: this fork's `*_automagic` presets launch at their arch's adamw LR and
+rail `max_lr` to it (downward-only), while `krea2_character_lora_automagic` uses the author's
+1e-6 with room to climb. Neither is measured, and per `CLAUDE.md` a contested value is not
+resolved by quietly picking one. The note says both shapes exist and points at the presets.
+
+Five contract tests added (78 total): the chip is dropped, detection is case-insensitive
+across every automagic variant, the non-LR settings are identical to the adamw recipe, a
+non-automagic optimizer changes nothing, and the inherited-recipe prefix note still leads.

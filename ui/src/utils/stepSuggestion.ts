@@ -871,22 +871,57 @@ const illustriousOrPonyRecipe = (modelPath: string, tier: SizeTier): ArchRecipe 
   return null;
 };
 
+// The LR chip is wrong for a self-adapting optimizer, and wrong in an expensive way
+// (2026-09-19). Every ARCH_RECIPES entry's lrSetting is an adamw-family rate; automagic
+// takes an LR as a LAUNCH POINT its controller then walks away from, so applying the
+// adamw number sets a start 100x above the author's default and silently overwrites a
+// preset that deliberately chose otherwise. "Apply all" made that one click. So under an
+// automagic optimizer the LR chip is withdrawn rather than re-pointed: which launch LR is
+// right is genuinely contested in this fork (the *_automagic presets rail max_lr at a 1e-4
+// launch; krea2_character_lora_automagic uses the author's 1e-6 with room to climb), and
+// per CLAUDE.md a contested value is not resolved by quietly picking one.
+const isAutomagic = (optimizer: string | undefined | null): boolean =>
+  typeof optimizer === 'string' && optimizer.toLowerCase().startsWith('automagic');
+
+const AUTOMAGIC_LR_NOTE =
+  'LR CHIP WITHDRAWN because this job uses an automagic optimizer, and the number above it would have been an ' +
+  'adamw-family rate. For automagic the LR is a LAUNCH POINT the controller adapts away from, not the rate you train ' +
+  'at, so applying the adamw figure is not a smaller mistake than applying the wrong rank. Two shapes are documented ' +
+  "in this fork and they disagree: the *_automagic presets launch at their arch's adamw LR and rail max_lr to it, so " +
+  'the controller can only descend (a deliberate shared-machine ceiling, and half a controller); ' +
+  "krea2_character_lora_automagic uses the author's own defaults instead — launch 1e-6, min_lr 1e-8, max_lr 1e-3, " +
+  'weight_decay 0.0 — so the vote can move it in both directions. Neither is measured. Pick from a preset rather than ' +
+  'from this panel, and watch where the LR settles in the first ~8 steps (the polarity_history warmup). ' +
+  'Every other suggestion below still applies: rank, alpha and batch are optimizer-independent. ';
+
+// Drops the LR chip and explains why, for an automagic optimizer only. Rank/alpha/batch/
+// scheduler are optimizer-independent and pass through untouched.
+const withOptimizer = (recipe: ArchRecipe, optimizer: string | undefined | null): ArchRecipe => {
+  if (!isAutomagic(optimizer)) return recipe;
+  return {
+    ...recipe,
+    settings: recipe.settings.filter(s => !s.path.endsWith('.lr')),
+    notes: AUTOMAGIC_LR_NOTE + recipe.notes,
+  };
+};
+
 export const getArchRecipe = (
   arch: string | undefined | null,
   itemCount: number = 0,
   modelPath: string = '',
+  optimizer: string | undefined | null = null,
 ): ArchRecipe | null => {
   if (!arch) return null;
   const tier = getSizeTier(itemCount);
 
   if (arch === 'sdxl' || arch.startsWith('sdxl')) {
     const special = illustriousOrPonyRecipe(modelPath, tier);
-    if (special) return special;
+    if (special) return withOptimizer(special, optimizer);
   }
 
   const found = lookupByArch<RecipeByTier | null>(ARCH_RECIPES, arch, null);
   if (!found.value) return null;
-  const recipe = found.value(tier);
+  const recipe = withOptimizer(found.value(tier), optimizer);
   if (found.source !== 'prefix') return recipe;
 
   // Fork note (2026-08-29): a prefix hit used to return the base family's recipe and

@@ -286,3 +286,42 @@ test('presets/README.md quotes the batch-4 file thresholds the code actually com
     assert.equal(Number(value), minItemsForBatch(4, arch), `README threshold for ${arch} drifted from the code`);
   }
 });
+
+// --- optimizer-aware recipe (2026-09-19) -------------------------------------------
+// The LR chip is an adamw-family rate. Under automagic the LR is a launch point the
+// controller adapts away from, so applying it overwrites a preset that chose otherwise —
+// and "Apply all" made that one click. The chip is withdrawn, not re-pointed: which
+// launch LR is right is contested in this fork and is not resolved here.
+test('automagic optimizers drop the LR chip and say why', () => {
+  const plain = getArchRecipe('krea2', 50, '');
+  const auto = getArchRecipe('krea2', 50, '', 'automagic3');
+  assert.ok(plain.settings.some(s => s.path.endsWith('.lr')), 'adamw recipe still offers an LR');
+  assert.equal(auto.settings.some(s => s.path.endsWith('.lr')), false, 'automagic recipe offers no LR');
+  assert.match(auto.notes, /LR CHIP WITHDRAWN/);
+});
+
+test('automagic detection is case-insensitive and covers every automagic variant', () => {
+  for (const opt of ['automagic', 'automagic2', 'automagic3', 'Automagic3', 'AUTOMAGIC']) {
+    const r = getArchRecipe('krea2', 50, '', opt);
+    assert.equal(r.settings.some(s => s.path.endsWith('.lr')), false, `${opt} should drop the LR chip`);
+  }
+});
+
+test('rank, alpha and batch are optimizer-independent and survive the filter', () => {
+  const plain = getArchRecipe('krea2', 50, '');
+  const auto = getArchRecipe('krea2', 50, '', 'automagic3');
+  const paths = r => r.settings.map(s => s.path).filter(p => !p.endsWith('.lr'));
+  assert.deepEqual(paths(auto), paths(plain));
+});
+
+test('a non-automagic optimizer changes nothing at all', () => {
+  const plain = getArchRecipe('krea2', 50, '');
+  for (const opt of [null, undefined, '', 'adamw8bit', 'adafactor', 'prodigy']) {
+    assert.deepEqual(getArchRecipe('krea2', 50, '', opt), plain);
+  }
+});
+
+test('the inherited-recipe prefix note still leads for a prefix-matched arch under automagic', () => {
+  const r = getArchRecipe('flux2', 50, '', 'automagic3');
+  if (r?.inheritedFrom) assert.match(r.notes, /^INHERITED FROM/);
+});

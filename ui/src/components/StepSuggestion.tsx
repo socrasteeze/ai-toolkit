@@ -400,7 +400,10 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
   }, [merged, resolutions]);
 
   const modelPath = process.model.name_or_path || '';
-  const recipe = useMemo(() => getArchRecipe(arch, itemCount, modelPath), [arch, itemCount, modelPath]);
+  const recipe = useMemo(
+    () => getArchRecipe(arch, itemCount, modelPath, optimizer),
+    [arch, itemCount, modelPath, optimizer],
+  );
   const hasAnalysis = Object.keys(analyses).length > 0;
   // analyses that came back missing (fetch failed) for a dataset we did count
   const failedAnalyses = useMemo(

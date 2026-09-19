@@ -37,6 +37,7 @@ A recovered, field-proven Krea 2 training template is ported into the fork: thre
 - `layer_offloading: true` rewrites `qtype` qfloat8 → torchao float8 (`toolkit/config_modules.py` ~769), so the preset text and the run disagree
 - On 16 GB Windows the failure is shared-memory spill (absurd s/it), not a clean OOM. Keep ~1.5 GB free
 - `train.cache_text_embeddings` is mutually exclusive with `diff_output_preservation` — the new presets set the former
+- The advisor's LR chip is an adamw rate and is now withdrawn under `automagic*` — if you re-add one, it will clobber an automagic preset's launch LR on "Apply all"
 - `krea2_character_lora_automagic` breaks this fork's `max_lr` = launch LR pattern ON PURPOSE (author's rails, so the controller can climb). Do not "fix" it to match the other `*_automagic` presets — that would make the experiment answer itself
 - `num_repeats` only duplicates the file list; kohya/musubi repeat advice does not transfer to this step-bounded trainer
 - Never push to `upstream` — its push URL stays the literal `DISABLED`, and the remote does not survive a fresh clone. Commit identity is set per clone (`CLAUDE.md`)

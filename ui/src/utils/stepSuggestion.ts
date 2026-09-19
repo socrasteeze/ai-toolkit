@@ -509,6 +509,26 @@ const EFFECTIVE_BATCH_NOTE =
   'hard-errors on accumulation, so there batch_size is the only route — and on 16GB, where you cannot raise it, the ' +
   'honest options are effective batch 1 or optimizer_params.fused: false (which gives up fused\'s low-VRAM benefit). ';
 
+// Shared and arch-independent (2026-09-19). Written because the automagic notes below run long enough to imply the
+// optimizer is a memory decision. On a LoRA it is not, and the arithmetic settles it rather than another opinion.
+// Worked for Krea 2 rank 32 from KREA2_MMDIT_CONFIG and the layer shapes in mmdit.py: the LoRA is 107M params, 0.88%
+// of the 12.2B DiT-block params it rides on. adamw8bit keeps two 8-bit moments = 2 B/param = 205 MiB; automagic3 keeps
+// an H/8-byte packed sign window (1 B/param at the default H=8) plus an Adafactor-style factored second moment whose
+// row+col vectors are negligible, so ~102 MiB; fp32 adamw would be 819 MiB. The whole spread is ~100 MiB on a card
+// holding 11.3 GiB of float8 base weights. Optimizer choice is a QUALITY decision here, not a VRAM one.
+const OPTIMIZER_MEMORY_NOTE =
+  'OPTIMIZER MEMORY IS NOT YOUR 16GB PROBLEM, and it is worth saying before the automagic paragraphs above tempt you to ' +
+  'treat it as one. A LoRA trains ~0.5-1% of the base model, so its optimizer state is ~0.5-1% of the base too: on Krea 2 ' +
+  'at rank 32 that is 107M trainable params, and the state is ~205 MiB for adamw8bit (two 8-bit moments), ~102 MiB for ' +
+  'automagic3 (a 1-byte packed sign window per element at the default polarity_history 8, plus a factored second moment ' +
+  'whose row/col vectors round to nothing), against 819 MiB if you ran fp32 adamw. The whole choice is worth ~100 MiB ' +
+  'beside 11.3 GiB of float8 base weights. What actually sets your VRAM is the base model, how much of it layer_offloading ' +
+  'streams to system RAM, activations (gradient_checkpointing), and sampling. So pick the optimizer on training behaviour, ' +
+  'not on memory — with ONE real exception, and it is a 16GB exception: fused automagic frees each gradient the moment ' +
+  'autograd finishes with it, which is a genuine saving, but it also forbids gradient_accumulation, and on a card that ' +
+  'cannot raise batch_size accumulation is your only route to an effective batch above 1. That trade, not the state size, ' +
+  'is the decision. ';
+
 const ARCH_RECIPES: Record<string, RecipeByTier> = {
   // Vanilla SDXL checkpoints only (not Illustrious/Pony — those are detected
   // separately via checkpoint name/path, see illustriousOrPonyRecipe below).
@@ -620,7 +640,8 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'DOWNWARD, which is half a controller. A high start is survivable without rails — clip_threshold 1.0 is a trust region ' +
       'on every update, and v3 merely prints a note and walks a too-high LR down, where v1 hard-forced it to 1e-6. ' +
       'The second real dial, which has no UI field and is not otherwise documented here: polarity_history (H, default 8, ' +
-      'range 2-64, H/8 bytes of state per element). Longer windows make the two vote events rarer and more decisive, so ' +
+      'range 2-64, H/8 bytes of state per element). Re-read 2026-09-19: upstream\u2019s own docstring says "default 4" in ' +
+      'two places while the signature is 8 \u2014 the signature wins, so 8 is correct, but do not trust that docstring line. Longer windows make the two vote events rarer and more decisive, so ' +
       'detection sharpens — at the cost of memory, an H-step warmup/reaction lag, and fewer voters per step. ' +
       'Automagic fuses its step into the backward pass by default, so it requires ' +
       'gradient_accumulation (and the legacy gradient_accumulation_steps) at 1 — reach a larger effective batch by raising ' +
@@ -663,7 +684,8 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'which is why this recipe sits at 32 for character work and the concept preset drops alpha instead of rank. ' +
       'BATCH BY CARD from the same guide: 1 on 8GB, 2 on 12GB, and this fork gates 4 on file count (>=45 here). ' +
       REPEATS_NOTE +
-      EFFECTIVE_BATCH_NOTE,
+      EFFECTIVE_BATCH_NOTE +
+      OPTIMIZER_MEMORY_NOTE,
   }),
   zimage: tier => ({
     settings: [
@@ -726,7 +748,8 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'DATASET SIZE: BFL says 20-50 images; character guides go as low as 10 (with heavy repeats, see below). No ' +
       'published upper bound — the advisor damps steps/image itself above ~65 files. ' +
       REPEATS_NOTE +
-      EFFECTIVE_BATCH_NOTE,
+      EFFECTIVE_BATCH_NOTE +
+      OPTIMIZER_MEMORY_NOTE,
   }),
   flux2_klein_9b: tier => ({
     settings: [
@@ -763,7 +786,8 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'DATASET SIZE: BFL says 20-50 images; character guides go as low as 10 (with heavy repeats, see below). No ' +
       'published upper bound — the advisor damps steps/image itself above ~65 files. ' +
       REPEATS_NOTE +
-      EFFECTIVE_BATCH_NOTE,
+      EFFECTIVE_BATCH_NOTE +
+      OPTIMIZER_MEMORY_NOTE,
   }),
   // Anima 2B (native upstream arch since ostris#860): unusually well-sourced — the numbers below are the model
   // author's own published recipe (Circlestone Labs finetuning tips + his diffusion-pipe
@@ -798,7 +822,8 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'Never train the LLM adapter (default off): ' +
       'it shapes all text conditioning and degrades easily. Anima is a base model with no aesthetic tuning to overcome — ' +
       '"a light touch is all you need". Danbooru-style tag captions work well (anime-focused base). ' +
-      EFFECTIVE_BATCH_NOTE,
+      EFFECTIVE_BATCH_NOTE +
+      OPTIMIZER_MEMORY_NOTE,
   }),
 };
 ARCH_RECIPES.flex = ARCH_RECIPES.flux;

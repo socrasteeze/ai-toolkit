@@ -2689,3 +2689,51 @@ sampling off → `cache_latents` false (keep `cache_latents_to_disk`) → raise
 
 **Still unmeasured.** No Krea 2 run in this fork has been made at this profile; the field runs
 it inherits from were 4090/H100. Headroom is inferred, and the preset says so.
+
+### Addendum 5, same day: automagic3 vs adamw8bit — no new evidence, and on a LoRA it is not a memory question (2026-09-19)
+
+Operator asked whether there is updated comparative data, and whether the optimizer matters on a
+16 GB card with 96 GB of system RAM. Two separate answers.
+
+**Comparative data: still none.** Searched 2026-09-19; nothing has appeared since the
+2026-09-16 review's finding that no controlled 2026 comparison of adamw8bit vs Prodigy vs
+automagic3 exists. Upstream's automagic3 still opens with "experimental and under active
+development; expect breaking changes and bugs", the most recent public discussion found is a
+May-2026 automagic **v2** loading issue, and third-party write-ups still describe older v3
+internals (per-output-channel or per-tensor LR pooling) that the pinned source replaced with
+one pooled LR per param group. The advisor's existing "still low-confidence per arch" wording
+stands unchanged, and this fork's single measured automagic3 data point remains Krea 2.
+
+**Memory: settled by arithmetic, and it is not close.** Derived from `KREA2_MMDIT_CONFIG` and
+the layer shapes in `krea2/src/mmdit.py` (8 linears per `SingleStreamBlock` — wq/wk/wv/gate/wo
+plus SwiGLU gate/up/down at `mlpdim` = `int(2*6144/3)*4` = 16384 — times 28 blocks):
+
+| | rank 16 | rank 32 |
+|---|---|---|
+| LoRA trainable params | 53.7M (0.44%) | 107.3M (0.88%) |
+| adamw8bit state (2 B/param) | 102 MiB | 205 MiB |
+| automagic3 state (~1 B/param at H=8 + factored v) | 51 MiB | 102 MiB |
+| fp32 adamw state (8 B/param) | 410 MiB | 819 MiB |
+| bf16 gradients | 102 MiB | 205 MiB |
+
+Against 11.3 GiB of float8 DiT-block weights (7.4 GiB resident at
+`layer_offloading_transformer_percent` 0.35), the entire optimizer choice is worth ~100 MiB.
+automagic3's per-element state is read from the source: an `H/8`-byte packed sign window (1 B
+at the default H=8) plus Adafactor-style `exp_avg_sq_row`/`_col` vectors, no fp32 master copy —
+updates are computed in fp32 and stochastically rounded on write-back.
+
+**So the optimizer is a quality decision, with exactly one memory-shaped exception, and it is a
+16 GB one.** Fused automagic frees each gradient the moment autograd finishes with it — a real
+saving — but it forbids `gradient_accumulation`, and on a card that cannot raise `batch_size`
+accumulation is the only route to an effective batch above 1. That trade, not the state size,
+is the decision. Recorded in-app as a new shared const `OPTIMIZER_MEMORY_NOTE`, appended to the
+same four recipes as `REPEATS_NOTE` and `EFFECTIVE_BATCH_NOTE`.
+
+**And 96 GB of system RAM buys nothing for the optimizer.** It buys the layer-offloading pool
+and RAM-served latents (`cache_latents` alongside `cache_latents_to_disk`), both of which the
+16 GB presets already use.
+
+**Correction to upstream's own docs, worth knowing before tuning:** automagic3's docstring says
+`polarity_history` is "default 4" in two places (lines 22 and 116) while the constructor
+signature is `polarity_history: int = 8`. The signature wins. This fork's notes already said 8
+and were right; the docstring line is the wrong one.

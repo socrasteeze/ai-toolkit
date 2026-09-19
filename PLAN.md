@@ -2737,3 +2737,42 @@ and RAM-served latents (`cache_latents` alongside `cache_latents_to_disk`), both
 `polarity_history` is "default 4" in two places (lines 22 and 116) while the constructor
 signature is `polarity_history: int = 8`. The signature wins. This fork's notes already said 8
 and were right; the docstring line is the wrong one.
+
+### Addendum 6, same day: "automagic at 1/1 should be similar" — half right, and now testable (2026-09-19)
+
+Operator's reasoning: the field runs were effective batch 1 anyway, and automagic self-adjusts
+its LR, so automagic3 at 1/1 ought to land near the same place. Assessed rather than accepted,
+then turned into `presets/krea2_character_lora_automagic.json`.
+
+**The batch half is right, and it is the whole reason this is worth testing.** Fused
+automagic's one structural cost is that it steps every micro-batch and `config_modules.py`
+(~486) hard-errors on `gradient_accumulation` > 1. At accumulation 1 that constraint does not
+bite. Effective batch is identical to the field recipe's, so it is not a confound. 1/1 is
+precisely the configuration where automagic is free.
+
+**The LR half does not follow.** Three reasons, none of them fatal to the hypothesis but all of
+them reasons it is a hypothesis:
+
+1. *Auto-adjusting is not solving for adamw's LR.* The controller moves one pooled LR per param
+   group by `lr *= exp(vote)`, with votes only from the two perfectly decisive sign-window
+   states. It anchors a level from the model's own overshoot signature; it has no knowledge of,
+   and no reason to converge on, the rate a different optimizer was hand-set to.
+2. *automagic3 is not adamw with a schedule on top.* It keeps an Adafactor-style FACTORED
+   second moment (`exp_avg_sq_row`/`_col`) where adamw8bit keeps full per-element m and v, and
+   it stochastically rounds updates on write-back. The update dynamics differ, not just the LR.
+3. *The target is a product, not a number.* The field recipe's effective rate is
+   `alpha/rank × LR` = 0.5 × 2e-4 = 1e-4. Whether the controller settles near that is exactly
+   the unknown, and no published or local evidence bears on it.
+
+**The rails had to break this fork's own pattern for the test to mean anything.** Every other
+`*_automagic` preset here sets `max_lr` equal to its own launch LR — a deliberate
+shared-machine ceiling, and a controller that can only adapt downward. Shipping that shape here
+would have made the experiment answer itself: a controller that cannot climb cannot demonstrate
+that it finds the right LR. So this twin uses the author's own shape (launch 1e-6, `min_lr`
+1e-8, `max_lr` 1e-3, `weight_decay` 0.0), which also closes the 2026-09-11 "offered not built"
+item for an author-rail automagic variant.
+
+**Three twins now share one parent**, differing in exactly one thing each:
+`krea2_character_lora` (adamw8bit, linear) · `_shift` (timestep sampling) · `_automagic`
+(optimizer). Same dataset, same seed, same 2200 steps, and each difference is attributable.
+Nothing is measured; the preset is the experiment, not the recommendation.

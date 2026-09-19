@@ -1,0 +1,85 @@
+{
+  "job": "extension",
+  "config": {
+    "name": "preset",
+    "process": [
+      {
+        "type": "diffusion_trainer",
+        "training_folder": "output",
+        "device": "cuda",
+        "trigger_word": null,
+        "network": {
+          "type": "lora",
+          "linear": 32,
+          "linear_alpha": 16
+        },
+        "save": {
+          "dtype": "bf16",
+          "save_every": 250,
+          "max_step_saves_to_keep": 9,
+          "save_format": "safetensors",
+          "push_to_hub": false
+        },
+        "datasets": [
+          {
+            "folder_path": "/path/to/images/folder",
+            "caption_ext": "txt",
+            "caption_dropout_rate": 0.05,
+            "resolution": [
+              1024
+            ],
+            "num_repeats": 1,
+            "buckets": true,
+            "cache_latents_to_disk": true,
+            "cache_latents": true
+          }
+        ],
+        "train": {
+          "batch_size": 1,
+          "steps": 2200,
+          "gradient_accumulation": 1,
+          "train_unet": true,
+          "train_text_encoder": false,
+          "gradient_checkpointing": true,
+          "noise_scheduler": "flowmatch",
+          "optimizer": "automagic3",
+          "timestep_type": "linear",
+          "content_or_style": "balanced",
+          "lr": 1e-06,
+          "dtype": "bf16",
+          "cache_text_embeddings": true,
+          "unload_text_encoder": true,
+          "loss_sync_every": 4,
+          "ui_db_poll_seconds": 2,
+          "optimizer_params": {
+            "weight_decay": 0.0,
+            "min_lr": 1e-08,
+            "max_lr": 0.001
+          }
+        },
+        "model": {
+          "name_or_path": "krea/Krea-2-Raw",
+          "arch": "krea2",
+          "quantize": true,
+          "qtype": "qfloat8",
+          "quantize_te": true,
+          "qtype_te": "qfloat8",
+          "low_vram": true
+        },
+        "sample": {
+          "sampler": "flowmatch",
+          "sample_every": 250,
+          "width": 1024,
+          "height": 1024,
+          "guidance_scale": 4,
+          "sample_steps": 30
+        }
+      }
+    ]
+  },
+  "meta": {
+    "name": "[name]",
+    "version": "1.0",
+    "description": "THIRD A/B TWIN of krea2_character_lora. Identical in every training value - rank 32 / alpha 16, linear timesteps, batch 1 x accum 1, 2200 steps, same caching and save policy - except the optimizer: automagic3 instead of adamw8bit. It exists to test one specific hypothesis, stated by the operator 2026-09-19: since the field runs were effective batch 1 anyway, and since automagic self-adjusts its LR, automagic3 at 1/1 should land somewhere similar. WHY THE HYPOTHESIS IS PLAUSIBLE: at 1/1 the optimizers are genuinely comparable. Fused automagic's one hard constraint - it steps every micro-batch and config_modules.py hard-errors on gradient_accumulation > 1 - simply does not bite at accumulation 1, so this is the ONE configuration where automagic costs nothing structurally. Effective batch is identical, so it is not a confound. WHY IT MIGHT STILL NOT HOLD, and what this preset is really testing: (1) 'auto-adjusts' is not the same as 'finds the adamw LR'. The controller moves ONE pooled LR per param group by lr *= exp(vote), where votes come only from the two perfectly decisive sign-window states; it anchors a level, it does not solve for another optimizer's fixed LR. (2) automagic3 is not adamw with a schedule bolted on - it keeps an Adafactor-style FACTORED second moment (exp_avg_sq_row/_col) where adamw8bit keeps a full per-element m and v, and it stochastically rounds updates on write-back. Different update dynamics, not just a different LR. (3) The field recipe's effective rate is alpha/rank x LR = 0.5 x 2e-4 = 1e-4; whether the controller settles near that is precisely the unknown. RAILS DELIBERATELY DIFFERENT FROM THIS FORK'S OTHER automagic PRESETS, and this is the important part: every other *_automagic preset here sets max_lr equal to its own launch LR, so the controller can only ever adapt DOWNWARD - a shared-machine ceiling, and half a controller. Railing it that way here would make the experiment answer itself: a controller that cannot climb cannot demonstrate that it finds the right LR. So this preset uses the author's own shape instead - launch 1e-6, min_lr 1e-8, max_lr 1e-3, weight_decay 0.0 - which is what the automagic3 signature defaults to and what lets the vote actually work in both directions. Expect the LR to climb for the first polarity_history (8) steps' warmup and then settle; watch it rather than the loss. HOW TO READ THE RESULT: run this and krea2_character_lora on the SAME dataset, same seed, same 2200 steps, then compare the kept checkpoints on likeness and generalization exactly as the field operator did. If automagic lands close, the operator's hypothesis holds and this fork gains its second measured automagic3 data point. If it does not, the interesting number is where the controller settled - record it either way. UNMEASURED AND EXPERIMENTAL: upstream's automagic3 still opens 'experimental and under active development; expect breaking changes and bugs', was rewritten repeatedly Jun-Aug 2026, and no controlled comparison against adamw8bit exists anywhere as of 2026-09-19. This preset is the experiment, not a recommendation. For 16GB use the laptop twin's memory profile (layer_offloading, 512, sampling off) on top of this."
+  }
+}

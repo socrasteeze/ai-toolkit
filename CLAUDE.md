@@ -62,7 +62,9 @@ decisions in §9).
 ## Fork hygiene rules (apply to any future change)
 
 1. New functionality goes in new files. Upstream files should only ever get small,
-   easy-to-reapply insertions. As of 2026-09-12 that is **59 files**. It jumped from 26 to 57 on
+   easy-to-reapply insertions. As of 2026-09-19 that is **60 files** (59 on 2026-09-12, then
+   60 when upstream's per-job notes feature added a 19th Next-15-param-type route handler,
+   `jobs/[jobID]/notes/route.ts` — see `FORK_NOTES.md`'s 2026-09-19 (2nd) sync row). It jumped from 26 to 57 on
    2026-08-13 (a Next 15 route/page `params` type fix — see FORK_NOTES.md — touched 16 App
    Router route handlers plus `ui/src/app/jobs/[jobID]/page.tsx`), reached 58, and came back down
    to 57 on 2026-08-29 when upstream independently adopted the fork's `r"""` fix to

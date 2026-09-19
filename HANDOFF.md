@@ -1,6 +1,6 @@
 # HANDOFF
 
-**Updated:** 2026-09-19 · **Branch:** `claude/krea2-training-template-vsqaxn` · **Base:** `main` · **Tree:** clean
+**Updated:** 2026-09-19 (2nd) · **Branch:** `claude/krea2-training-template-vsqaxn` · **Base:** `main` · **Tree:** clean
 
 ## State
 A field-proven Krea 2 training template (recovered by the operator from their own musubi-tuner
@@ -14,12 +14,14 @@ musubi-tuner (`krea2_train_network.py`) on RunPod 4090/H100.
 - `docs/krea2_field_template_2026_09.md` (new) — the template verbatim, the musubi→ai-toolkit translation table, the effective-LR arithmetic, the steps comparison, four open questions
 - `ui/src/utils/stepSuggestion.ts` — corroboration block on `ARCH_HEURISTICS.krea2`, FIELD TEMPLATE paragraph on `ARCH_RECIPES.krea2`. Numbers unchanged
 - `ui/src/server/builtinPresets.ts`, `presets/README.md`, `FORK_NOTES.md`, `PLAN.md` — registration, row, fork-only file entries, design entry
+- Second pass, same day — the operator's DATASET half: doc sections 5-6 (Florence-2 `<DETAILED_CAPTION>` captioning, identity-attribute caption surgery, per-image alias triggers, `_facecrop` augmentation, checkpoint-selection method, plus a stage-by-stage gap table), preset to v1.1, `ARCH_RECIPES.krea2`'s caption note upgraded from single-source hypothesis to TWO-SOURCE, PLAN.md addendum
 
 ## Open
 1. The VAE discrepancy: the template names a HunyuanVideo 3D causal VAE, this fork's `arch: krea2` wires the Qwen-Image VAE (f8/16ch). Not configurable either way, so it blocks nothing — but if musubi really uses a different autoencoder, latents are not interchangeable and the whole transfer is weaker. Ask the operator or read musubi's `krea2_train_network.py`
 2. `python testing/test_presets.py` has NOT run against the new preset — the cloud container has no torch. Run it on the Windows box (`.\.venv\Scripts\python testing\test_presets.py`)
 3. Batch size is absent from the recovered template. Everything in §3 of the doc assumes batch 1; if those were batch 2 on the H100, every passes/image figure doubles. Worth one question to the operator
-4. Carried over from 2026-09-11: desktop SDXL/Illustrious effective batch 2 decision; measure batch 4 for Klein/Krea 2 on the 32 GB desktop (`batchAdvisor.ts` `DESKTOP32` cells); which Klein variant OOMs on the 16 GB laptop
+4. NOT BUILT, scoped only (PLAN.md addendum 2026-09-19, doc section 6): the three prep stages this fork has no tool for — caption surgery (strip identity attributes / first sentence only / cut background clauses), per-image alias-set trigger selection, and `_facecrop` headshot augmentation. Florence-2 `<DETAILED_CAPTION>` is also absent from this UI's toolchain (upstream has it only in the standalone `flux_train_ui.py`). The operator offered to send their own scripts; they are self-described as barely working and one silently wrote no caption
+5. Carried over from 2026-09-11: desktop SDXL/Illustrious effective batch 2 decision; measure batch 4 for Klein/Krea 2 on the 32 GB desktop (`batchAdvisor.ts` `DESKTOP32` cells); which Klein variant OOMs on the 16 GB laptop
 
 ## Decisions
 - Ship 32/16 @ 2e-4 as a NEW preset rather than re-tuning the existing 32/32 @ 1e-4 ones — `alpha/rank × LR` makes them the same effective 1e-4, so this is a capacity choice, not an LR correction

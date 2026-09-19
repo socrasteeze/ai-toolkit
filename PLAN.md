@@ -2515,3 +2515,45 @@ looks. Not silently "fixed" on either side. Also unrecorded in the source: the b
 (assumed 1, musubi's default and this fork's measured Krea 2 ceiling on 16 GB — if those were
 batch 2 on the H100 every passes/image figure doubles), and 2e-4 was never A/B'd against 1e-4
 at fixed alpha/rank, since the LR moved when the alpha did.
+
+### Addendum, same day: the dataset half, and the three stages this fork has no tool for (2026-09-19)
+
+The operator's second account covers how the dataset that fed the template above was built.
+Recorded in `docs/krea2_field_template_2026_09.md` sections 5–6, summarised into
+`presets/krea2_character_lora.json` v1.1, and used to upgrade one existing advisor claim.
+
+**The one advisor claim that moved.** `ARCH_RECIPES.krea2` already advised keeping invariant
+identity attributes out of captions, explicitly flagged as "a plausible hypothesis from the
+16GB run's control grid, not a demonstrated fix — its author never re-ran to confirm it". The
+field operator did exactly that deliberately and systematically: Florence-2 large
+`<DETAILED_CAPTION>` (128 tokens, 3 beams), then eye colour, hair colour, skin tone and the
+generic `woman`/`girl`/`female` nouns stripped, everything after the first sentence discarded,
+background clauses cut. Stated intent: force those traits into the identity token. Two
+unrelated operators now arrive at the same practice, so the note is **TWO-SOURCE** rather than
+a single unconfirmed hypothesis. It is still not a controlled test — no A/B against
+un-stripped captions exists on either side, and that is said in place.
+
+**Two techniques with no equivalent here.** (1) A per-character *alias set* sampled per image
+(`dojacat` / `doja cat`), not one fixed trigger token on every caption. (2) `_facecrop`
+headshot copies added to the dataset — largest Haar-detected face, generous margin, written
+only when meaningfully different from the original, caption inherited then stripped of
+clothing/body/pose and ending `close up portrait`, with existing crops skipped so the pass
+cannot crop its own crops. Note `scripts/smart_prep.py` is NOT this: it crops whole images to
+buckets (U2Net, head-first anchor), replacing an image rather than adding a headshot.
+
+**Checkpoint selection is part of the recipe, not an afterthought.** Intermediates were tested
+across portraits, angles, expressions, action/environment changes and varying LoRA strengths,
+then picked on likeness vs generalization — the last checkpoint was explicitly not assumed
+best. That is what `save_every: 250` + `max_step_saves_to_keep: 9` in the preset exists for,
+and it reframes ~2200 steps as where the good checkpoint tended to fall rather than a target
+to hit exactly.
+
+**Gap table (doc section 6), for whoever builds the prep port.** Already covered:
+caption-sidecar validation (`scripts/preflight.py` errors on a missing `.txt` — precisely the
+silent failure that put caption-less images into one of these runs, and it is already caught
+if the check is run), bucketing (native), dataset zip (`ui/src/app/api/zip/route.ts`).
+Partly covered: captioning (WD14 tags via `scripts/auto_caption.py`, natural language via
+upstream's Qwen3-VL captioner — **no Florence-2** in this UI's toolchain; upstream ships it
+only inside the standalone `flux_train_ui.py` Gradio app), trigger words (one fixed token, no
+alias set). Not covered at all: the caption-surgery stage, per-image alias selection, and
+face-crop augmentation. Nothing was built — this addendum is the scope statement for it.

@@ -594,8 +594,16 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       '(hard error), so it cannot be combined with the cache-embeds memory strategy — and it costs roughly a second ' +
       'forward pass per step, which matters on 16GB. Secondary and cheaper: keep invariant identity attributes out of ' +
       'captions (describe what varies — clothing, pose, framing, light — and let the trigger carry the face), since ' +
-      'the identity can otherwise bind to a description you reuse in other prompts. That last point is a plausible ' +
-      "hypothesis from the 16GB run's control grid, not a demonstrated fix — its author never re-ran to confirm it. " +
+      'the identity can otherwise bind to a description you reuse in other prompts. TWO-SOURCE as of 2026-09-19, and no ' +
+      'longer just a hypothesis from the 16GB control grid (whose author never re-ran to confirm it): the field-template ' +
+      'operator did exactly this on purpose across every character — Florence-2 <DETAILED_CAPTION> captions, then eye ' +
+      'colour, hair colour, skin tone and the generic woman/girl/female nouns stripped out, everything after the first ' +
+      'sentence discarded, background clauses cut, and ONE randomly chosen alias from that character\u2019s trigger set ' +
+      'prepended per image (e.g. "dojacat" / "doja cat"). Results were judged good. Still not a controlled test — no ' +
+      'A/B against un-stripped captions exists on either side — but two independent operators now arrive at the same ' +
+      'practice. Same operator also fed FACE-CROP copies of each image into the set (largest detected face, generous ' +
+      'headshot margin, caption re-written to drop clothing/pose and end with "close up portrait"), which is a dataset ' +
+      'lever this fork has no tool for; scripts/smart_prep.py crops whole images to buckets, it does not add crops. ' +
       'Turbo variants need the training adapter (set automatically when the arch is selected); keep low_vram on unless you have 48GB+. ' +
       'Alternative: Automagic v3 (self-adapting per-group LR, no scheduler needed) — used by the community 16GB config this ' +
       "fork ships as a preset. Its LR is a launch point the controller adapts away from (author's doc); if you use it, bound " +

@@ -113,3 +113,58 @@ tiers it `large`, and the step math moves under you for no reason.
 3. **2e-4 vs 1e-4 was never A/B'd** at fixed alpha/rank by the operator — the LR moved when
    the alpha did. Treat the row-three arithmetic as the explanation, not as a measurement.
 4. **Nothing reproduced on this trainer.** No Krea 2 run in this fork has been made at 32/16.
+
+## 5. Dataset prep and checkpoint selection (second comment, same operator, 2026-09-19)
+
+The first comment was the trainer config. The second is the half that produced the dataset it
+consumed — and on this operator's own account the prep was ad-hoc ("the scripts barely
+worked"), with at least one image trained caption-less because a script failed silently and
+nobody caught it. Recorded as method, not as a validated pipeline.
+
+**Captioning.** `microsoft/Florence-2-large`, task token `<DETAILED_CAPTION>`,
+`max_new_tokens=128`, `num_beams=3`. Then a caption surgery pass:
+
+- **Identity attributes deliberately removed** — eye colour, hair colour, skin tone, and the
+  generic `woman` / `girl` / `female` nouns. Stated intent: force those traits into the
+  identity token instead of letting the caption carry them.
+- **Boilerplate and background removed** — the cleanup script keeps only the **first
+  sentence** and cuts clauses starting with things like "in the background".
+- **One randomly chosen alias per image** from that character's alias set, prepended as the
+  identity trigger (`dojacat, doja cat`; `miranda cosgrove, miranda`) — a trigger *set*
+  sampled per image, not one fixed token on every caption.
+
+**Face-crop augmentation.** OpenCV Haar frontal-face detection finds the largest face, applies
+generous headshot margins, and writes a `_facecrop` copy **only when the crop differs
+meaningfully from the original**. The copy inherits the original's caption, which is then
+rewritten to drop clothing/body/pose detail that is no longer visible, with
+`close up portrait` appended. Existing `_facecrop` files are skipped on later passes so the
+pipeline cannot crop its own crops. Finally every directory whose name contains `_dataset` is
+zipped for upload to RunPod.
+
+**Checkpoint selection.** Explicitly *not* "take the last one". Intermediates were tested
+across portraits, varied angles, expressions, action and environment changes, **and varied
+LoRA strengths**, then picked on likeness vs generalization. This is what
+`save_every: 250` + `max_step_saves_to_keep: 9` in `presets/krea2_character_lora.json` exists
+to support, and it is the reason the ~2200 step count should be read as "where the good
+checkpoint tended to be", not as a target to land exactly on.
+
+**What this corroborates.** `ARCH_RECIPES.krea2` already advised keeping invariant identity
+attributes out of captions, flagged as a plausible hypothesis from the 36-image run's control
+grid that its author never re-ran. A second, unrelated operator doing precisely that on
+purpose — and reporting good likeness — makes it two-source. It is still not a controlled
+test: nobody has run the A/B against un-stripped captions on either side.
+
+## 6. What this fork already has, and what it does not
+
+| Pipeline stage | In this fork | Gap |
+|---|---|---|
+| Missing / empty caption detection | **Yes** — `scripts/preflight.py` errors on an image with no `.txt` sidecar, warns on an empty one; wired into the UI as the Dataset Tools pre-flight panel (advisory-only by decision) | None. This is exactly the silent failure the operator hit, and it is already caught — but only if the check is run |
+| Auto-captioning | **Partly** — `scripts/auto_caption.py` (WD14 tagger, comma-separated tags) and upstream's captioner extension (Qwen3-VL, Qwen2.5/3-Omni, Ideogram4) | **No Florence-2 `<DETAILED_CAPTION>`** in the fork's toolchain. Upstream ships it only inside `flux_train_ui.py`, a standalone Gradio app that is not part of this UI. Natural-language detail captions currently mean Qwen3-VL here, not Florence-2 |
+| Trigger word on captions | **Partly** — `auto_caption.py --trigger-word WORD` prepends one fixed token | **No alias set, no per-image random selection** |
+| Identity-attribute stripping / boilerplate + background removal / first-sentence truncation | **No** | Whole caption-surgery stage is absent. The advisor recommends the practice; nothing implements it |
+| Face-crop augmentation (`_facecrop` copies, caption rewrite, skip-existing) | **No** — `scripts/smart_prep.py` does subject-aware crop-to-bucket of whole images (U2Net, head-first anchor), which is a different operation: it *replaces* an image, it does not *add* a headshot copy | Whole stage absent |
+| Multi-aspect bucketing | **Yes** — native, `datasets[].buckets` defaults true. No pre-cropping needed | None; `smart_prep.py` is for extreme aspect ratios only |
+| Zip a dataset folder | **Yes** — `ui/src/app/api/zip/route.ts` | None |
+
+Nothing above is built. This table is the scope of what a fork-side port of the prep pipeline
+would cover, and the reason it would be worth building is the middle three rows.

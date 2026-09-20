@@ -1,14 +1,13 @@
 'use client';
 import { useMemo } from 'react';
 import {
-  modelArchs,
   ModelArch,
-  groupedModelOptions,
   quantizationOptions,
   defaultQtype,
   jobTypeOptions,
   SampleTags,
 } from './options';
+import { useModelArchs } from '@/extensions/modelArchs';
 import { defaultCompileOptions, defaultDatasetConfig } from './jobConfig';
 import { GroupedSelectOption, JobConfig, SelectOption } from '@/types';
 import { objectCopy, tagsToObj, objToTags } from '@/utils/basic';
@@ -73,9 +72,10 @@ export default function SimpleJob({
   const helpMode = useHelpMode();
   const h = (key: string) => (helpMode ? key : null);
 
+  const { archs: modelArchs, groupedModelOptions } = useModelArchs();
   const modelArch = useMemo(() => {
     return modelArchs.find(a => a.name === jobConfig.config.process[0].model.arch) as ModelArch;
-  }, [jobConfig.config.process[0].model.arch]);
+  }, [modelArchs, jobConfig.config.process[0].model.arch]);
 
   const jobType = useMemo(() => {
     return jobTypeOptions.find(j => j.value === jobConfig.config.process[0].type);
@@ -298,7 +298,7 @@ export default function SimpleJob({
               docKey={h('model.arch')}
               value={jobConfig.config.process[0].model.arch}
               onChange={value => {
-                handleModelArchChange(jobConfig.config.process[0].model.arch, value, jobConfig, setJobConfig);
+                handleModelArchChange(modelArchs, jobConfig.config.process[0].model.arch, value, jobConfig, setJobConfig);
               }}
               options={groupedModelOptions}
             />

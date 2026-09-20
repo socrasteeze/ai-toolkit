@@ -2803,3 +2803,51 @@ resolved by quietly picking one. The note says both shapes exist and points at t
 Five contract tests added (78 total): the chip is dropped, detection is case-insensitive
 across every automagic variant, the non-LR settings are identical to the adamw recipe, a
 non-automagic optimizer changes nothing, and the inherited-recipe prefix note still leads.
+
+### Addendum 8: caption surgery built — `scripts/clean_captions.py` (2026-09-20)
+
+The middle row of the prep gap table (doc section 6) and the one stage the advisor had been
+recommending since before there was any tool for it. Built on request after the 2026-09-19
+"docs only" call was revisited for this stage specifically.
+
+**What it does.** Removes eye colour, hair colour, skin tone, generic gendered nouns and
+Florence-2 lead-ins from `.txt` sidecars, driven by curated module-level term lists that are
+meant to be read and extended (`--extra`, `--extra-regex`) rather than trusted. Shape is
+detected per file: comma-separated short parts are `tags` (WD14 / what `auto_caption.py`
+writes) and matched terms drop as whole tags; anything else is `prose` and matched phrases are
+cut with their connectors, then the sentence is repaired. `--aggressive` adds the two
+destructive steps the source pipeline also used — first-sentence truncation and
+background-clause removal — off by default because they discard composition and setting that
+is legitimately variable.
+
+**The design decision worth recording.** Gendered nouns DELETE in tag mode and SUBSTITUTE in
+prose. In a tag list the noun is a standalone token; in a sentence it is the subject, and
+deleting it yields "A wearing a red dress". So prose replaces it via `--subject`, and passing
+the trigger word is the point: `dojacat wearing a red dress` is exactly how the field
+pipeline's captions ended up reading. `--subject ""` disables substitution entirely.
+
+**Two bugs the tests caught before the script ever ran on a dataset**, both now pinned:
+
+1. *Orphaned modifiers.* "with blue eyes and long blonde hair" removed only the matched
+   colour words, leaving "and long" — worse prose than the attribute it deleted. Prose
+   patterns now absorb the leading connector and any hair style/length adjective that only
+   modifies a colour being removed.
+2. *Trigger casing.* `tidy()` upper-cases a sentence opener, so a substituted `dojacat` came
+   back as `Dojacat` — not the token that was trained. Casing is restored after tidying when
+   the substituted subject lands first.
+
+**Safety, in the order it matters.** Dry run is the default and prints every before/after.
+`--apply` writes and keeps a `.txt.bak` unless `--no-backup`; `--restore` puts them all back.
+A caption that would come out empty or punctuation-only is SKIPPED and reported, never
+written — that is precisely the failure that put caption-less images into the source
+pipeline's own runs, and this script must not be a second cause of it.
+
+**Portability.** `qol_common` (which reaches `toolkit/`, which imports `huggingface_hub`) is
+imported lazily inside `main()`. Everything above it is pure text, so the logic imports, tests
+and runs `--help` on any interpreter — which is why `testing/test_clean_captions.py` (21
+tests) runs in a container with no torch, unlike `test_qol_scripts.py`. Added to
+`scripts/run_fork_tests.ps1`.
+
+**Still not built** (doc section 6): per-image alias selection from a per-character alias set
+— `--subject` applies one fixed token, not a random pick per image — and `_facecrop`
+augmentation.

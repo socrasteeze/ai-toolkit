@@ -162,13 +162,17 @@ test: nobody has run the A/B against un-stripped captions on either side.
 | Missing / empty caption detection | **Yes** — `scripts/preflight.py` errors on an image with no `.txt` sidecar, warns on an empty one; wired into the UI as the Dataset Tools pre-flight panel (advisory-only by decision) | None. This is exactly the silent failure the operator hit, and it is already caught — but only if the check is run |
 | Auto-captioning | **Partly** — `scripts/auto_caption.py` (WD14 tagger, comma-separated tags) and upstream's captioner extension (Qwen3-VL, Qwen2.5/3-Omni, Ideogram4) | **No Florence-2 `<DETAILED_CAPTION>`** in the fork's toolchain. Upstream ships it only inside `flux_train_ui.py`, a standalone Gradio app that is not part of this UI. Natural-language detail captions currently mean Qwen3-VL here, not Florence-2 |
 | Trigger word on captions | **Partly** — `auto_caption.py --trigger-word WORD` prepends one fixed token | **No alias set, no per-image random selection** |
-| Identity-attribute stripping / boilerplate + background removal / first-sentence truncation | **No** | Whole caption-surgery stage is absent. The advisor recommends the practice; nothing implements it |
+| Identity-attribute stripping / boilerplate + background removal / first-sentence truncation | **Yes, since 2026-09-20** — `scripts/clean_captions.py` | Built. Curated term lists for eye colour, hair colour, skin tone, generic gendered nouns and Florence-2 lead-ins; tag and prose modes detected per file; `--aggressive` adds first-sentence truncation and background-clause cutting. Dry run by default, `.txt.bak` backups, `--restore`, and a caption that would come out empty is skipped rather than written |
 | Face-crop augmentation (`_facecrop` copies, caption rewrite, skip-existing) | **No** — `scripts/smart_prep.py` does subject-aware crop-to-bucket of whole images (U2Net, head-first anchor), which is a different operation: it *replaces* an image, it does not *add* a headshot copy | Whole stage absent |
 | Multi-aspect bucketing | **Yes** — native, `datasets[].buckets` defaults true. No pre-cropping needed | None; `smart_prep.py` is for extreme aspect ratios only |
 | Zip a dataset folder | **Yes** — `ui/src/app/api/zip/route.ts` | None |
 
-Nothing above is built. This table is the scope of what a fork-side port of the prep pipeline
-would cover, and the reason it would be worth building is the middle three rows.
+**Updated 2026-09-20:** the caption-surgery row is now built (`scripts/clean_captions.py`,
+21 contract tests in `testing/test_clean_captions.py`). The two stages still absent are
+per-image alias selection from a per-character alias set, and `_facecrop` augmentation.
+`clean_captions.py`'s `--subject` covers part of the alias intent — it substitutes the
+generic subject noun with a token you choose, so a caption reads `dojacat wearing a red
+dress` — but it applies ONE fixed token, not a random pick per image from a set.
 
 ## 7. Is musubi-tuner the better trainer? (researched 2026-09-19)
 

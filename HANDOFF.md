@@ -6,6 +6,7 @@
 A recovered, field-proven Krea 2 training template is ported into the fork: three presets, one source-record doc, one diagnostic, advisor notes. Nothing has been run on hardware — every number is inherited from someone else's musubi-tuner runs or from published guidance.
 
 ## Done this session
+- `scripts/clean_captions.py` (new) — caption surgery: identity-attribute stripping, tag/prose modes, dry-run default, `.txt.bak` + `--restore`, never writes an empty caption. 21 tests in `testing/test_clean_captions.py`, wired into the runner
 - `presets/krea2_character_lora{,_shift,_automagic,_laptop16gb}.json` — field recipe (32/16 @ 2e-4), two one-variable A/B twins (timestep, optimizer), and the 16 GB laptop profile
 - `docs/krea2_field_template_2026_09.md` — source record, dataset-prep method, musubi comparison, port decisions (§1–8)
 - `scripts/attn_probe.py` — reports which kernel the dispatcher picks at Krea 2's attention shapes; times the alternatives
@@ -17,10 +18,10 @@ A recovered, field-proven Krea 2 training template is ported into the fork: thre
 1. Laptop run — `krea2_character_lora_laptop16gb` has never executed. If VRAM allows, retry at resolution 1024 for the faithful reproduction
 2. `python scripts/attn_probe.py --masked`, then again without `--masked`, on the GPU box
 3. Two A/Bs against `krea2_character_lora`, same dataset, seed and steps — `_shift` (timestep sampling; record in the doc's §7) and `_automagic` (optimizer at the author's rails; record where the LR settled, not just the output)
-4. `python testing/test_presets.py` — needs torch, never ran against the three new presets
-5. Decide whether the desktop SDXL/Illustrious presets move to effective batch 2 to match the advisor
-6. Measure batch 4 for Klein and Krea 2 on the 32 GB desktop, then flip the `DESKTOP32` cells — `ui/src/utils/batchAdvisor.ts`
-7. Record which Klein variant OOMs on the 16 GB laptop; `LAPTOP16.flux2_klein` treats 4B and 9B alike until then
+4. `python testing/test_presets.py` — needs torch, never ran against the four new presets
+5. Caption surgery is built; the two prep stages still absent are per-image alias selection from a set and `_facecrop` augmentation (doc section 6)
+7. Decide whether the desktop SDXL/Illustrious presets move to effective batch 2 to match the advisor
+6. `batchAdvisor.ts` cells still unmeasured: batch 4 for Klein/Krea 2 on the 32 GB desktop (`DESKTOP32`), and which Klein variant OOMs on the laptop (`LAPTOP16.flux2_klein` treats 4B and 9B alike)
 
 ## Decisions
 - Stay on ai-toolkit over musubi-tuner — its wins (12 GB floor, multi-GPU, exact resume, more attention backends) bind on none of this hardware

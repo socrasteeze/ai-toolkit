@@ -61,6 +61,7 @@ $pySuites = @(
     @{ name = 'test_ideogram4_prompt';  torch = $false },
     @{ name = 'test_lora_compile_scalars'; torch = $true },
     @{ name = 'test_qol_scripts';       torch = $false },
+    @{ name = 'test_clean_captions';    torch = $false },
     @{ name = 'test_presets';           torch = $true  }
 )
 foreach ($suite in $pySuites) {

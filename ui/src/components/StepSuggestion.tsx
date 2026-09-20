@@ -14,7 +14,8 @@ import { weightedBatchSize } from '@/utils/advisorBatch';
 import { suggestBatch, tierForVramMb, TIER_LABEL, MachineTier } from '@/utils/batchAdvisor';
 import useGPUInfo from '@/hooks/useGPUInfo';
 import { defaultDatasetConfig } from '@/app/jobs/new/jobConfig';
-import { modelArchs } from '@/app/jobs/new/options';
+import { useModelArchs } from '@/extensions/modelArchs';
+import { ModelArch } from '@/app/jobs/new/options';
 import useSettings from '@/hooks/useSettings';
 
 type Props = {
@@ -201,7 +202,8 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
 
   // Everything below is per-IMAGE math (steps per file, exposures per image, bucket
   // grids). For a video or audio arch it is the wrong unit and used to render anyway.
-  const archGroup = useMemo(() => modelArchs.find(a => a.name === arch)?.group, [arch]);
+  const { archs: modelArchs } = useModelArchs();
+  const archGroup = useMemo(() => modelArchs.find((a: ModelArch) => a.name === arch)?.group, [modelArchs, arch]);
   const unsupportedModality = archGroup === 'video' || archGroup === 'audio';
 
   const datasetInputs = useMemo(() => {

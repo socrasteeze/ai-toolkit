@@ -2851,3 +2851,20 @@ tests) runs in a container with no torch, unlike `test_qol_scripts.py`. Added to
 **Still not built** (doc section 6): per-image alias selection from a per-character alias set
 — `--subject` applies one fixed token, not a random pick per image — and `_facecrop`
 augmentation.
+
+## Upstream sync: Qwen Image 2.1 + model-UI plugin refactor (2026-09-20)
+
+5 incoming commits. Two changes: a new Qwen Image 2.1 diffusion model
+(`extensions_built_in/diffusion_models/qwen_image_2/`), and a refactor moving every
+model's UI card out of the 1828-line `options.tsx` monolith into per-plugin `ui.tsx`
+files, loaded at runtime by a new `ui/src/extensions/modelArchs.ts` registry
+(`useModelArchs()` hook, async, backed by `/api/model_archs`). `options.tsx` itself has
+no fork-side edits and is not a touchpoint, so it wasn't at risk — but its static
+`modelArchs` export disappeared, which broke the fork's `StepSuggestion.tsx` (not caught
+by the merge itself, only by `tsc`). Fixed by switching `StepSuggestion.tsx` to
+`useModelArchs()`, matching how `SimpleJob.tsx` already consumes it. One real merge
+conflict, in `SimpleJob.tsx` — both sides added an independent line at the top of the
+component (fork's `useHelpMode()` vs upstream's new `useModelArchs()` call); kept both.
+Fork surface unchanged at 60 touchpoints. Full validation (tsc/build/78 Node tests/37
+Python tests/verify_fork.py) all green. See FORK_NOTES.md's changelog table and its
+`StepSuggestion.tsx` note for detail.

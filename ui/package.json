@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test": "node --import ./tests/register.mjs --test \"tests/*.test.mjs\"",
     "dev": "concurrently -k -n WORKER,UI \"ts-node-dev --project tsconfig.worker.json --respawn --watch cron --transpile-only cron/worker.ts\" \"ts-node-dev --project tsconfig.worker.json --respawn --watch cron --transpile-only cron/fileServer.ts dev --port 3000\"",
     "build": "tsc -p tsconfig.worker.json && next build",
     "start": "concurrently --restart-tries -1 --restart-after 1000 -n WORKER,UI \"node dist/cron/worker.js\" \"node dist/cron/fileServer.js start --port 8675\"",
@@ -10,7 +11,6 @@
     "db_build_start": "npm run update_db && npm run build && npm run start",
     "build_and_start": "npm run install_deps && npm run db_build_start",
     "lint": "next lint",
-    "test": "node --import ./tests/register.mjs --test \"tests/*.test.mjs\"",
     "update_db": "npx prisma generate && npx prisma db push",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,css,scss}\"",
     "check_extensions": "tsc -p ../tsconfig.json"

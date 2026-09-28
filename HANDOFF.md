@@ -1,11 +1,14 @@
 # HANDOFF
 
-**Updated:** 2026-09-19 · **Branch:** `main` · **Base:** `f23b514` (delivery tip; this file's commit sits on top) · **Tree:** clean
+**Updated:** 2026-09-28 · **Branch:** `main` · **Base:** `c99cf67` (upstream sync merge; this file's commit sits on top) · **Tree:** clean
 
 ## State
 A recovered, field-proven Krea 2 training template is ported into the fork: three presets, one source-record doc, one diagnostic, advisor notes. Nothing has been run on hardware — every number is inherited from someone else's musubi-tuner runs or from published guidance.
 
-## Done this session
+## Done this session (2026-09-28)
+- Upstream sync: 1 commit (`ecee894`, `UniversalTable` rows keyed by id). Clean merge, fork surface still 60 files, tsc/build/78 contract tests green. Logged in `FORK_NOTES.md`
+
+## Done 2026-09-19
 - `scripts/clean_captions.py` (new) — caption surgery: identity-attribute stripping, tag/prose modes, dry-run default, `.txt.bak` + `--restore`, never writes an empty caption. 21 tests in `testing/test_clean_captions.py`, wired into the runner
 - `presets/krea2_character_lora{,_shift,_automagic,_laptop16gb}.json` — field recipe (32/16 @ 2e-4), two one-variable A/B twins (timestep, optimizer), and the 16 GB laptop profile
 - `docs/krea2_field_template_2026_09.md` — source record, dataset-prep method, musubi comparison, port decisions (§1–8)

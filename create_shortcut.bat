@@ -1,20 +1,18 @@
 @echo off
 setlocal
 rem Fork addition (see FORK_NOTES.md). Creates a desktop shortcut that launches
-rem start-detached.bat using the project's favicon as its icon, instead of a
+rem start-rebuild.bat using the project's favicon as its icon, instead of a
 rem bare .bat file.
 rem
-rem The target is start-detached.bat, not start.bat, so a double-click leaves
-rem no console on screen. Setup still runs visibly on a first run or a rebuild;
-rem only the server is hidden. stop.bat stops it either way.
-rem
-rem WindowStyle 7 is minimized, not hidden. A .bat target always spawns a
-rem console host, and 1 put it on screen for the life of the launcher. Windows
-rem offers no style that suppresses it.
+rem The target is start-rebuild.bat (2026-09-28), so a double-click always
+rem fast-forwards from origin, rebuilds, and starts the UI. It runs in a normal
+rem window (WindowStyle 1): the server stays in that console, and the script
+rem can stop on a dirty tree, a failed fetch, or the 30s requirements prompt,
+rem all of which need to be seen. stop.bat stops it.
 
 set "ROOT=%~dp0"
 set "ICON=%ROOT%ui\src\app\favicon.ico"
-set "TARGET=%ROOT%start-detached.bat"
+set "TARGET=%ROOT%start-rebuild.bat"
 
 if not exist "%ICON%" (
     echo Could not find icon at "%ICON%"
@@ -34,8 +32,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     "$s.TargetPath = '%TARGET%';" ^
     "$s.WorkingDirectory = '%ROOT%';" ^
     "$s.IconLocation = '%ICON%';" ^
-    "$s.WindowStyle = 7;" ^
-    "$s.Description = 'Launch AI Toolkit UI';" ^
+    "$s.WindowStyle = 1;" ^
+    "$s.Description = 'Update, rebuild and launch AI Toolkit UI';" ^
     "$s.Save()"
 
 if errorlevel 1 (

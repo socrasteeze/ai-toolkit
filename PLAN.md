@@ -2868,3 +2868,9 @@ component (fork's `useHelpMode()` vs upstream's new `useModelArchs()` call); kep
 Fork surface unchanged at 60 touchpoints. Full validation (tsc/build/78 Node tests/37
 Python tests/verify_fork.py) all green. See FORK_NOTES.md's changelog table and its
 `StepSuggestion.tsx` note for detail.
+
+## Launcher: shortcut -> start-rebuild.bat, path-scoped stop (2026-09-28)
+
+Operator asked for the desktop shortcut to run `start-rebuild.bat` and for stop to touch only AI Toolkit processes. `create_shortcut.bat` now targets `start-rebuild.bat` with WindowStyle 1 (`start-detached.bat` still exists, it is just no longer on the shortcut).
+
+The stop matcher moved to `scripts/stop_aitk.ps1`, shared by `stop.bat` and `start-rebuild.bat`. It fixes two defects: `stop.bat all` matched only `python.exe`, but Windows training runs as `pythonw.exe`, so it never stopped training; and the `cron/worker.js` and bare `run.py` patterns were not scoped to this checkout. Matching rules are in `FORK_NOTES.md`.

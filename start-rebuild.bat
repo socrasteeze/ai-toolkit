@@ -107,10 +107,10 @@ if defined REQS_CHANGED (
     echo.
 )
 
-rem --- 3. stop a running server (same matcher as stop.bat) -----------------
+rem --- 3. stop a running server (same script as stop.bat) ------------------
 echo.
 echo Stopping any running AI Toolkit server (UI port 8675 + cron worker)...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$port=8675; $ids=@(); $ids += (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue).OwningProcess; $ids += (Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -and (($_.CommandLine -match ('--port ' + $port)) -or ($_.CommandLine -match 'cron[\\/]+worker\.js') -or (($_.CommandLine -match 'concurrently') -and ($_.CommandLine -match [string]$port))) }).ProcessId; $ids = $ids | Where-Object { $_ } | Select-Object -Unique; if (-not $ids) { Write-Host '  Nothing running.' } else { foreach ($id in $ids) { try { Stop-Process -Id $id -Force -ErrorAction Stop; Write-Host ('  stopped node PID ' + $id) } catch { Write-Host ('  could not stop PID ' + $id + ' : ' + $_.Exception.Message) } } ; Start-Sleep -Seconds 2 }"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\stop_aitk.ps1"
 
 rem --- 4. reinstall + rebuild + launch -------------------------------------
 cd /d "%~dp0ui"

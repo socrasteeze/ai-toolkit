@@ -21,7 +21,7 @@ A recovered, field-proven Krea 2 training template is ported into the fork: thre
 1. Laptop run — `krea2_character_lora_laptop16gb` has never executed. If VRAM allows, retry at resolution 1024 for the faithful reproduction
 2. `python scripts/attn_probe.py --masked`, then again without `--masked`, on the GPU box
 3. Two A/Bs against `krea2_character_lora`, same dataset, seed and steps — `_shift` (timestep sampling; record in the doc's §7) and `_automagic` (optimizer at the author's rails; record where the LR settled, not just the output)
-4. `python testing/test_presets.py` — needs torch, never ran against the four new presets
+4. ~~`python testing/test_presets.py` — needs torch, never ran against the four new presets~~ Closed — the test globs every `presets/*.json`, and `run_fork_tests.ps1` ran it on the `.venv` in the 2026-09-22 and 2026-09-23 syncs (`FORK_NOTES.md`; the 09-22 run also fixed its arch-registry parser, `09865fd`). Direct run 2026-10-01: 5/5 tests OK over 32 presets, the four `krea2_character_lora*` included
 5. Caption surgery is built; the two prep stages still absent are per-image alias selection from a set and `_facecrop` augmentation (doc section 6)
 7. Decide whether the desktop SDXL/Illustrious presets move to effective batch 2 to match the advisor
 6. `batchAdvisor.ts` cells still unmeasured: batch 4 for Klein/Krea 2 on the 32 GB desktop (`DESKTOP32`), and which Klein variant OOMs on the laptop (`LAPTOP16.flux2_klein` treats 4B and 9B alike)

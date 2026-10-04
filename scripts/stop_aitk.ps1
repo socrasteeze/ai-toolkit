@@ -8,6 +8,9 @@
 # The concurrently process can: it runs from <repo>\ui\node_modules\. So we find
 # that process and stop its whole tree. Fallback for an orphaned file server: the
 # port-8675 listener, but only if it is node running dist\cron\fileServer.js.
+# Fallback for an orphaned cron worker (its concurrently parent gone): node running
+# dist\cron\worker.js that has THIS checkout's prisma query engine DLL loaded. That
+# loaded DLL is what makes `npm ci` in start-rebuild.bat fail with EPERM.
 # Training runs pythonw.exe on Windows (see ui/cron/actions/startJob.ts), launched
 # as <repo>\run.py with an absolute path, so it is matched on that path.
 param([switch]$All)
@@ -53,8 +56,15 @@ $servers = @($procs | Where-Object {
     $listenIds -contains $_.ProcessId -and $_.Name -eq 'node.exe' -and $_.CommandLine -match 'dist[\\/]cron[\\/]fileServer\.js'
 })
 $foreign = @($listenIds | Where-Object { $servers.ProcessId -notcontains $_ -and $_ })
+$engineDll = (Join-Path $root 'ui\node_modules\.prisma\client\query_engine-windows.dll.node').ToLower()
+$workers = @($procs | Where-Object {
+    $_.Name -eq 'node.exe' -and $_.CommandLine -match 'dist[\\/]cron[\\/]worker\.js'
+} | Where-Object {
+    $id = $_.ProcessId
+    try { @((Get-Process -Id $id -ErrorAction Stop).Modules | Where-Object { $_.FileName.ToLower() -eq $engineDll }).Count -gt 0 } catch { $false }
+})
 
-$stopped = Stop-Tree ($supervisors + $servers) 'server'
+$stopped = Stop-Tree ($supervisors + $servers + $workers) 'server'
 if ($stopped -eq 0) { Write-Host '  No AI Toolkit UI server from this checkout is running.' }
 foreach ($id in $foreign) {
     Write-Host ("  NOTE: port $port is held by PID $id, which is not AI Toolkit - left alone.")

@@ -17,6 +17,13 @@ Tuned for the full RTX 5090: bf16, no quantization (Anima 2B / Klein 4B / SDXL),
 batch size sized to use most of the 32 GB. Use when the machine is dedicated to
 the run.
 
+Krea 2 on the 5090: `krea2_character_lora_5090` (added 2026-10-11) is the one Krea 2
+preset here that runs the 12B transformer **unquantized** (bf16, ~26 GB of weights) at
+1024 only, rank 32/32 @ 1e-4 adamw8bit, EMA 0.98, 1800 steps for ~30 images (community
+table: 20 ~1500 / 30 ~1800 / 50 ~2500 / 100 ~3500). Its values are community-reported,
+not fork-measured, and the 32 GB fit is unverified - if it OOMs, re-enable `quantize`
+(qfloat8) or layer offloading first.
+
 ## `background` (default for Anima/SDXL)
 
 Deliberately leaves headroom for concurrent desktop use: batch 1 with gradient

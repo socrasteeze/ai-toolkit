@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiClient } from '@/utils/api';
 import { JobConfig } from '@/types';
-import { suggestSteps, exposureGauge, analyzeBuckets, resolutionAdvice, getArchRecipe } from '@/utils/stepSuggestion';
+import { suggestSteps, exposureGauge, analyzeBuckets, resolutionAdvice, getArchRecipe, StepTable } from '@/utils/stepSuggestion';
 import { weightedBatchSize } from '@/utils/advisorBatch';
 import { suggestBatch, tierForVramMb, TIER_LABEL, MachineTier } from '@/utils/batchAdvisor';
 import useGPUInfo from '@/hooks/useGPUInfo';
@@ -188,6 +188,8 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
   const defaultBatchSize = process.train.batch_size;
   const gradAccum = process.train.gradient_accumulation;
   const currentSteps = process.train.steps;
+  // per-preset step table carried in the job config by applyPreset (fork addition 2026-10-11)
+  const stepTable = ((jobConfig as any).meta?.step_table ?? null) as StepTable | null;
   const optimizer = process.train.optimizer;
   const optimizerFused = ((process.train.optimizer_params || {}) as { fused?: boolean }).fused;
 
@@ -287,8 +289,8 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
   );
 
   const suggestion = useMemo(() => {
-    return suggestSteps({ itemCount, arch, batchSize: advisorBatchSize, gradientAccumulation: gradAccum });
-  }, [itemCount, arch, advisorBatchSize, gradAccum]);
+    return suggestSteps({ itemCount, arch, batchSize: advisorBatchSize, gradientAccumulation: gradAccum, stepTable });
+  }, [itemCount, arch, advisorBatchSize, gradAccum, stepTable]);
 
   // Machine-aware batch plan: min(dataset gate, VRAM cell), routed as batch_size on the
   // desktop and gradient_accumulation on 16/24 GB, with steps re-derived at that effective
@@ -300,9 +302,15 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
   const planSteps = useMemo(
     () =>
       batchPlan && batchPlan.fits
-        ? suggestSteps({ itemCount, arch, batchSize: batchPlan.batchSize, gradientAccumulation: batchPlan.gradAccum })
+        ? suggestSteps({
+            itemCount,
+            arch,
+            batchSize: batchPlan.batchSize,
+            gradientAccumulation: batchPlan.gradAccum,
+            stepTable,
+          })
         : null,
-    [batchPlan, itemCount, arch],
+    [batchPlan, itemCount, arch, stepTable],
   );
   const planApplied =
     !!batchPlan &&
@@ -367,6 +375,7 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
       steps: currentSteps,
       batchSize: advisorBatchSize,
       gradientAccumulation: gradAccum,
+      stepTable,
     });
   }, [itemCount, arch, currentSteps, advisorBatchSize, gradAccum]);
 
@@ -458,12 +467,14 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
           <span
             className="ml-1 text-gray-500"
             title={
-              suggestion.heuristicSource === 'default'
+              suggestion.heuristicSource === 'preset'
+                ? "From the loaded preset's step table (meta.step_table), not the model-type heuristic."
+                : suggestion.heuristicSource === 'default'
                 ? `No ${arch}-specific exposure data — this is the generic default.`
                 : `Exposure target inherited from the model family — nothing ${arch}-specific researched.`
             }
           >
-            ({suggestion.heuristicSource === 'default' ? 'generic default' : 'inherited target'})
+            ({suggestion.heuristicSource === 'preset' ? 'preset step table' : suggestion.heuristicSource === 'default' ? 'generic default' : 'inherited target'})
           </span>
         )}
         {currentSteps !== suggestion.suggested ? (

@@ -169,12 +169,69 @@ export const getHeuristicLookup = (
 export const getHeuristic = (arch: string | undefined | null, itemCount: number = 0): StepHeuristic =>
   getHeuristicLookup(arch, itemCount).value;
 
+// --- per-preset step table (fork addition 2026-10-11) ----------------------------------------
+//
+// A preset may carry `meta.step_table` = { arch, points: [[images, steps], ...], max_steps? }.
+// applyPreset() deep-merges the preset over the defaults, so `meta` rides along in the job
+// config and the panel reads it from there. When present AND its arch matches the form's arch
+// (so switching model type drops it), the table replaces the arch heuristic for the suggestion
+// and the exposure gauge: linear interpolation between points, the first point's steps below
+// the range (small sets are not trained less), the last segment's slope above it, capped at
+// max_steps (default 6000). Values are steps at effective batch 1; a larger effective batch
+// divides them. Every preset without a table is untouched. Only krea2_character_lora_5090 ships
+// one. The batch ceiling (maxHealthyBatch / batchAdvisor) stays arch-based on purpose.
+export interface StepTable {
+  arch?: string;
+  points: [number, number][];
+  max_steps?: number;
+}
+
+const DEFAULT_TABLE_MAX_STEPS = 6000;
+
+/** Normalized, sorted points, or null when the table is absent, malformed or for another arch. */
+export const activeStepTable = (
+  table: StepTable | undefined | null,
+  arch: string | undefined | null,
+): StepTable | null => {
+  if (!table || !Array.isArray(table.points)) return null;
+  if (table.arch && (!arch || baseArch(table.arch) !== baseArch(arch))) return null;
+  const points = table.points
+    .filter(p => Array.isArray(p) && p.length >= 2 && Number(p[0]) > 0 && Number(p[1]) > 0)
+    .map(p => [Number(p[0]), Number(p[1])] as [number, number])
+    .sort((a, b) => a[0] - b[0]);
+  if (points.length === 0) return null;
+  return { ...table, points };
+};
+
+/** Steps at effective batch 1 for this many items, from an already-active table. */
+export const stepsFromTable = (table: StepTable, itemCount: number): number => {
+  const pts = table.points;
+  const cap = table.max_steps ?? DEFAULT_TABLE_MAX_STEPS;
+  if (itemCount <= pts[0][0] || pts.length === 1) return Math.min(cap, pts[0][1]);
+  for (let i = 1; i < pts.length; i += 1) {
+    const [x0, y0] = pts[i - 1];
+    const [x1, y1] = pts[i];
+    if (itemCount <= x1) return Math.min(cap, y0 + ((itemCount - x0) / (x1 - x0)) * (y1 - y0));
+  }
+  const [x0, y0] = pts[pts.length - 2];
+  const [x1, y1] = pts[pts.length - 1];
+  return Math.min(cap, y1 + ((itemCount - x1) * (y1 - y0)) / (x1 - x0));
+};
+
+const tableHeuristic = (table: StepTable, itemCount: number): StepHeuristic => ({
+  stepsPerItem: stepsFromTable(table, itemCount) / itemCount,
+  minSteps: 100,
+  maxSteps: table.max_steps ?? DEFAULT_TABLE_MAX_STEPS,
+});
+
 export interface StepSuggestionInput {
   // total training files across selected datasets, with each dataset's num_repeats applied
   itemCount: number;
   arch: string | undefined | null;
   batchSize: number;
   gradientAccumulation: number;
+  // optional per-preset table (job config meta.step_table); see StepTable
+  stepTable?: StepTable | null;
 }
 
 export interface StepSuggestionResult {
@@ -190,7 +247,7 @@ export interface StepSuggestionResult {
   // true when the requested effective batch is above that ceiling
   overBatched: boolean;
   // where the exposure target came from: this arch, a family prefix, or the generic default
-  heuristicSource: LookupSource;
+  heuristicSource: LookupSource | 'preset';
 }
 
 const roundTo50 = (n: number) => Math.max(50, Math.round(n / 50) * 50);
@@ -251,8 +308,9 @@ export const suggestSteps = (input: StepSuggestionInput): StepSuggestionResult |
   const batchSize = Math.max(1, input.batchSize || 1);
   const gradAccum = Math.max(1, input.gradientAccumulation || 1);
   const effectiveBatch = batchSize * gradAccum;
+  const table = activeStepTable(input.stepTable, arch);
   const lookup = getHeuristicLookup(arch, itemCount);
-  const heuristic = lookup.value;
+  const heuristic = table ? tableHeuristic(table, itemCount) : lookup.value;
 
   const clamp = (n: number) => Math.min(heuristic.maxSteps, Math.max(heuristic.minSteps, n));
   const raw = (itemCount * heuristic.stepsPerItem) / effectiveBatch;
@@ -279,8 +337,9 @@ export const suggestSteps = (input: StepSuggestionInput): StepSuggestionResult |
 
   // Say where the target came from when it is not this arch's own number — a generic
   // 75/file for an arch nobody has researched must not read like a researched value.
-  const provenance =
-    lookup.source === 'default'
+  const provenance = table
+    ? " (from this preset's step table, meta.step_table)"
+    : lookup.source === 'default'
       ? ` (generic default — no ${arch || 'arch'}-specific exposure data)`
       : lookup.source === 'prefix'
         ? ` (target inherited from '${lookup.key}' — nothing ${arch}-specific researched)`
@@ -309,7 +368,7 @@ export const suggestSteps = (input: StepSuggestionInput): StepSuggestionResult |
     explanation,
     batchCeiling,
     overBatched,
-    heuristicSource: lookup.source,
+    heuristicSource: table ? 'preset' : lookup.source,
   };
 };
 
@@ -348,11 +407,13 @@ export const exposureGauge = (input: {
   steps: number;
   batchSize: number;
   gradientAccumulation: number;
+  stepTable?: StepTable | null;
 }): ExposureGauge | null => {
   const { itemCount, arch, steps } = input;
   if (!itemCount || itemCount <= 0 || !steps || steps <= 0) return null;
   const effectiveBatch = Math.max(1, input.batchSize || 1) * Math.max(1, input.gradientAccumulation || 1);
-  const heuristic = getHeuristic(arch, itemCount);
+  const table = activeStepTable(input.stepTable, arch);
+  const heuristic = table ? tableHeuristic(table, itemCount) : getHeuristic(arch, itemCount);
   const target = heuristic.stepsPerItem;
   const exposures = (steps * effectiveBatch) / itemCount;
   const ratio = exposures / target;

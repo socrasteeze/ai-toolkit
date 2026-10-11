@@ -462,7 +462,7 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
           ↻
         </button>{' '}
         → suggested ~{suggestion.suggested} steps ({suggestion.low}–{suggestion.high}) · ≈
-        {suggestion.epochsEquivalent} passes over the data
+        {Math.ceil(suggestion.epochsEquivalent)} passes over the data
         {suggestion.heuristicSource !== 'arch' && (
           <span
             className="ml-1 text-gray-500"
@@ -510,7 +510,7 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
       {gauge && (
         <div className="pt-1">
           <span className={bandColor[gauge.band]}>
-            {gauge.exposures} exposures/image — {gauge.label}
+            {Math.ceil(gauge.exposures)} exposures/image — {gauge.label}
           </span>{' '}
           ({currentSteps} steps · eff. batch {formatBatchSize(advisorBatchSize * Math.max(1, gradAccum || 1))} ·{' '}
           {itemCount} files)

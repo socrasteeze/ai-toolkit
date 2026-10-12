@@ -73,6 +73,28 @@
   "meta": {
     "name": "[name]",
     "version": "1.2",
-    "description": "Character LoRA on FLUX.2 Klein 9B (gated on HF - accept the licence). VRAM: the 9B is ~29 GB in fp16 and ~15 GB at fp8, so a single 24 GB card (3090/4090/A5000) with quantization on is the published recommendation - the old \"~32-48 GB\" claim in this description was wrong. Reviewed 2026-09-11 against BFL's own Klein training docs: rank 16 and LR 1e-4 are the published defaults (rank 32 for complex or abstract concepts), 20-50 images is the published working dataset size, and \"start at 1500 steps\" is the published starting point, with Klein LoRAs reported to peak between 1000 and 1750 steps - so steps here drop from 2500 to 1500 and the step advisor now ceilings Klein at 2500 instead of inheriting FLUX.1's 3000. Recipe is the 4B preset unchanged except arch and repo; the BFL guidance above does not split 4B from 9B, so none of these numbers are 9B-MEASURED - but they are no longer a FLUX.1 extrapolation either. The sigmoid timestep type is the only value with no published Klein source. Effective batch 1: raise to 4 only at >=40 files (advisor names the ceiling for your set). Speed (2026-08-29): latents are served from RAM after the first pass (cache_latents + cache_latents_to_disk — disk-only caching re-read every latent every step), loss_sync_every 4, ui_db_poll_seconds 2. Training math unchanged."
+    "description": "Character LoRA on FLUX.2 Klein 9B (gated on HF - accept the licence). VRAM: the 9B is ~29 GB in fp16 and ~15 GB at fp8, so a single 24 GB card (3090/4090/A5000) with quantization on is the published recommendation - the old \"~32-48 GB\" claim in this description was wrong. Reviewed 2026-09-11 against BFL's own Klein training docs: rank 16 and LR 1e-4 are the published defaults (rank 32 for complex or abstract concepts), 20-50 images is the published working dataset size, and \"start at 1500 steps\" is the published starting point, with Klein LoRAs reported to peak between 1000 and 1750 steps - so steps here drop from 2500 to 1500 and the step advisor now ceilings Klein at 2500 instead of inheriting FLUX.1's 3000. Recipe is the 4B preset unchanged except arch and repo; the BFL guidance above does not split 4B from 9B, so none of these numbers are 9B-MEASURED - but they are no longer a FLUX.1 extrapolation either. The sigmoid timestep type is the only value with no published Klein source. Effective batch 1: raise to 4 only at >=40 files (advisor names the ceiling for your set). Speed (2026-08-29): latents are served from RAM after the first pass (cache_latents + cache_latents_to_disk — disk-only caching re-read every latent every step), loss_sync_every 4, ui_db_poll_seconds 2. Training math unchanged. STEP TABLE (meta.step_table, added 2026-10-12): 17 images ~1020, 20 images ~1200, 30 images ~1800, 40 images ~2400, 42+ capped at 2500. Source: the fork's Klein rule (60 steps/image, 1000 floor, 2500 cap - BFL's 1000-1750 peak report), identical to k9b_laptop_char_lora's table; no +20/image tail because the cap binds at ~42 images. Values are steps at effective batch 1 - the Step Suggestion panel and exposure gauge use this table while the preset is loaded and divide by your effective batch (batch_size x gradient_accumulation); below the first row the first row's steps apply.",
+    "step_table": {
+      "arch": "flux2_klein_9b",
+      "points": [
+        [
+          17,
+          1020
+        ],
+        [
+          20,
+          1200
+        ],
+        [
+          30,
+          1800
+        ],
+        [
+          40,
+          2400
+        ]
+      ],
+      "max_steps": 2500
+    }
   }
 }

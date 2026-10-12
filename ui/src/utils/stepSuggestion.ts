@@ -178,8 +178,8 @@ export const getHeuristic = (arch: string | undefined | null, itemCount: number 
 // and the exposure gauge: linear interpolation between points, the first point's steps below
 // the range (small sets are not trained less), the last segment's slope above it, capped at
 // max_steps (default 6000). Values are steps at effective batch 1; a larger effective batch
-// divides them. Every preset without a table is untouched. krea2_5090_char_lora and
-// k9b_laptop_char_lora ship one. The batch ceiling (maxHealthyBatch / batchAdvisor) stays arch-based on purpose.
+// divides them. Every preset without a table is untouched. Since 2026-10-12 every Anima,
+// illxl, Klein 4B/9B and Krea 2 preset ships one (pinned by ui/tests/presetStepTables.test.mjs). The batch ceiling (maxHealthyBatch / batchAdvisor) stays arch-based on purpose.
 export interface StepTable {
   arch?: string;
   points: [number, number][];

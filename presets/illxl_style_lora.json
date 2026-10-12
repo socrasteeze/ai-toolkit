@@ -70,6 +70,32 @@
   "meta": {
     "name": "[name]",
     "version": "1.1",
-    "description": "Style LoRA on IllustriousXL (SDXL arch). Higher caption dropout and the 'style' timestep weighting bias learning toward look/aesthetic over subject identity. Speed (2026-08-29): latents are served from RAM after the first pass (cache_latents + cache_latents_to_disk — disk-only caching re-read every latent every step), loss_sync_every 4, ui_db_poll_seconds 2. Training math unchanged."
+    "description": "Style LoRA on IllustriousXL (SDXL arch). Higher caption dropout and the 'style' timestep weighting bias learning toward look/aesthetic over subject identity. Speed (2026-08-29): latents are served from RAM after the first pass (cache_latents + cache_latents_to_disk — disk-only caching re-read every latent every step), loss_sync_every 4, ui_db_poll_seconds 2. Training math unchanged. STEP TABLE (meta.step_table, added 2026-10-12): 20 images ~2000, 30 images ~3000, 50 images ~5000, 100 images ~6000, then +20/image above 100 (200 images ~6000), capped at 6000. Source: the fork's per-arch advisor value exposure target for sdxl (steps/image incl. the size damping, i.e. what the exposure gauge calls on-target - before the arch's own maxSteps ceiling) at 20/30/50/100 images, floored at 1500, then +20 steps/image above 100, capped at 6000. Values are steps at effective batch 1 - the Step Suggestion panel and exposure gauge use this table while the preset is loaded and divide by your effective batch (batch_size x gradient_accumulation); below the first row the first row's steps apply.",
+    "step_table": {
+      "arch": "sdxl",
+      "points": [
+        [
+          20,
+          2000
+        ],
+        [
+          30,
+          3000
+        ],
+        [
+          50,
+          5000
+        ],
+        [
+          100,
+          6000
+        ],
+        [
+          200,
+          6000
+        ]
+      ],
+      "max_steps": 6000
+    }
   }
 }

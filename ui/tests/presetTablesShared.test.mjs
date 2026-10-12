@@ -9,7 +9,7 @@ import { suggestSteps, exposureGauge, tableCapCount } from '../src/utils/stepSug
 const dir = path.resolve(import.meta.dirname, '..', '..', 'presets');
 const fam = a => (a.startsWith('flux2_klein') ? 'klein' : a === 'sdxl' ? 'sdxl' : a.split(':')[0]);
 const all = readdirSync(dir)
-  .filter(f => /^(anima|illxl|k4b|k9b|krea2)_.*\.json$/.test(f))
+  .filter(f => /^(anima|illxl|sdxl|k4b|k9b|krea2)_.*\.json$/.test(f))
   .map(f => ({ name: f, j: JSON.parse(readFileSync(path.join(dir, f), 'utf8')) }));
 const EXPECT = { krea2: [3000, 75], anima: [3000, 40], sdxl: [3000, 50], klein: [2500, 42] };
 
@@ -49,3 +49,13 @@ for (const { name, j } of all) {
     assert.equal(before.pastOptimalSize, false);
   });
 }
+
+test('Illustrious/SDXL evidence table: same on illxl_* and sdxl_*, 1600/2000/2500/3000 at 20/30/40/50', () => {
+  const fs2 = readdirSync(dir).filter(f => /^(illxl|sdxl)_.*\.json$/.test(f));
+  assert.ok(fs2.length >= 8);
+  for (const f of fs2) {
+    const t = JSON.parse(readFileSync(path.join(dir, f), 'utf8')).meta.step_table;
+    assert.deepEqual(t.points, [[20,1600],[30,2000],[40,2500],[50,3000]], f);
+    assert.equal(t.max_steps, 3000, f);
+  }
+});

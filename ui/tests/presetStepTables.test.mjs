@@ -8,7 +8,7 @@ import { suggestSteps, exposureGauge, stepsFromTable, activeStepTable } from '..
 // per-preset dataset-size table (meta.step_table) and the Step Suggestion panel uses it.
 const dir = path.resolve(import.meta.dirname, '..', '..', 'presets');
 const presets = readdirSync(dir)
-  .filter(f => f.endsWith('.json') && /^(anima|illxl|k4b|k9b|krea2)_/.test(f))
+  .filter(f => f.endsWith('.json') && /^(anima|illxl|sdxl|k4b|k9b|krea2)_/.test(f))
   .map(f => ({ name: f.replace(/\.json$/, ''), json: JSON.parse(readFileSync(path.join(dir, f), 'utf8')) }));
 
 test('the covered families are all present', () => {

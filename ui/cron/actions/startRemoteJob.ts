@@ -28,6 +28,7 @@ import { Job } from '@prisma/client';
 import prisma from '../prisma';
 import { getTrainingFolder } from '../paths';
 import { splitPeerGpu } from '../gpuIds';
+import { assertPeerDatasetsSupported } from './peerDatasetGuard';
 import { getPeer, Peer } from '../peers';
 import { PeerError, peerDownloadFile, peerJson, peerUploadFiles } from '../remoteClient';
 import {
@@ -353,6 +354,9 @@ export default async function startRemoteJob(job: Job): Promise<void> {
 
     // Stage every dataset and repoint it at the peer's copy.
     const datasets = Array.isArray(process0.datasets) ? process0.datasets : [];
+    // Only one plain folder per dataset is staged: refuse folder_path lists and dataset_path
+    // (multi-folder / pooled datasets) before copying anything, like control_path below.
+    assertPeerDatasetsSupported(datasets);
     for (let i = 0; i < datasets.length; i++) {
       const localFolder = datasets[i]?.folder_path;
       if (typeof localFolder !== 'string' || localFolder.trim() === '') {

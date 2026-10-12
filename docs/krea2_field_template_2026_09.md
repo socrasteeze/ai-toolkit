@@ -1,6 +1,6 @@
 # Krea 2: a field-proven musubi-tuner template (recovered 2026-09-19)
 
-Fork-only document. This is the *source record* for `presets/krea2_character_lora.json` and
+Fork-only document. This is the *source record* for `presets/krea2_char_lora.json` and
 for the Krea 2 corroboration notes in `ui/src/utils/stepSuggestion.ts`. It exists because
 every other Krea 2 number in this fork traces back to published guidance or to one 36-image
 write-up; this one traces back to a set of runs whose **output** the operator judged good
@@ -145,7 +145,7 @@ zipped for upload to RunPod.
 **Checkpoint selection.** Explicitly *not* "take the last one". Intermediates were tested
 across portraits, varied angles, expressions, action and environment changes, **and varied
 LoRA strengths**, then picked on likeness vs generalization. This is what
-`save_every: 250` + `max_step_saves_to_keep: 9` in `presets/krea2_character_lora.json` exists
+`save_every: 250` + `max_step_saves_to_keep: 9` in `presets/krea2_char_lora.json` exists
 to support, and it is the reason the ~2200 step count should be read as "where the good
 checkpoint tended to be", not as a target to land exactly on.
 
@@ -188,7 +188,7 @@ which is the strongest argument that the choice is about workflow, not output.
 **Where they agree (and it is most of it).** musubi's own doc recommends **rank/alpha 32**
 (`--network_dim 32 --network_alpha 32`), **adamw8bit**, **LR 1e-4**, `--fp8_base --fp8_scaled`,
 `--gradient_checkpointing`, `--sdpa`, Qwen-Image VAE + Qwen3-VL-4B-Instruct, latents and text
-encoder outputs pre-cached. That is, line for line, what `presets/krea2_lora_low_vram.json`
+encoder outputs pre-cached. That is, line for line, what `presets/krea2_24gb_gen_lora.json`
 and `ARCH_RECIPES.krea2` already say. The field template's numbers were never in tension with
 this fork's; they were the same recipe run on the other implementation.
 
@@ -196,7 +196,7 @@ this fork's; they were the same recipe run on the other implementation.
 
 - **VRAM floor.** `--blocks_to_swap N` (up to 26) streams DiT blocks to CPU and gets Krea 2
   onto 12 GB. This fork's answer is `low_vram` + `layer_offloading_transformer_percent`
-  (0.35 in `krea2_lora_16gb`) + qfloat8, which is the same idea with coarser control and a
+  (0.35 in `krea2_16gb_automagic_char_lora`) + qfloat8, which is the same idea with coarser control and a
   practical floor of 16 GB. If a 12 GB card ever has to train Krea 2, musubi is the tool.
 - **Attention backends.** `--flash_attn`, `--sage_attn`, `--xformers`, `--split_attn` against
   SDPA only here. The field template used SDPA, so this bought those runs nothing.
@@ -247,8 +247,8 @@ Section 7 compared the two trainers. This is what was actually done about it.
 ### Taken
 
 **1. The timestep question, as an experiment rather than an edit.**
-`presets/krea2_character_lora_shift.json` is a byte-identical twin of
-`krea2_character_lora.json` with exactly one field changed — `timestep_type: shift`. Run both
+`presets/krea2_shift_char_lora.json` is a byte-identical twin of
+`krea2_char_lora.json` with exactly one field changed — `timestep_type: shift`. Run both
 on one dataset with the same seed and step count and the difference is attributable. Per
 `CLAUDE.md`, a contested value is not resolved by argument; this is what resolving it by
 measurement looks like. If shift wins, the other Krea 2 presets follow and the result gets
@@ -298,7 +298,7 @@ into SDPA's `EFFICIENT_ATTENTION` backend, which the priority list above already
 current torch there is nothing left for it to add here.
 
 **Block swap.** `--blocks_to_swap N` has a counterpart in `low_vram` +
-`layer_offloading_transformer_percent` (0.35 in `krea2_lora_16gb`) + qfloat8. Coarser, and
+`layer_offloading_transformer_percent` (0.35 in `krea2_16gb_automagic_char_lora`) + qfloat8. Coarser, and
 floors at ~16 GB against musubi's 12 GB, but the same mechanism. Not worth re-implementing for
 a machine that has 32 GB.
 

@@ -14,7 +14,7 @@
 #     UI's step suggestion divides by effective batch, drops under its step
 #     floor and gets clamped back up, inflating real per-image exposure
 #     2-3x past target (PLAN.md 2026-08-24). Use batch 2 (or the background
-#     preset) on smaller sets. Matches presets/anima_lora_5090_fast.json v2.0;
+#     preset) on smaller sets. Matches presets/anima_5090_fast_gen_lora.json v2.0;
 #     this file said 2 until 2026-08-29 and had drifted from the preset.
 #   - loss_sync_every 4 (fork key) — defer the per-step CUDA sync; loss
 #     display/logs update every 4 steps, training math unchanged.

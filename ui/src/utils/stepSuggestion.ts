@@ -178,8 +178,8 @@ export const getHeuristic = (arch: string | undefined | null, itemCount: number 
 // and the exposure gauge: linear interpolation between points, the first point's steps below
 // the range (small sets are not trained less), the last segment's slope above it, capped at
 // max_steps (default 6000). Values are steps at effective batch 1; a larger effective batch
-// divides them. Every preset without a table is untouched. krea2_character_lora_5090 and
-// k9b_laptop_lora ship one. The batch ceiling (maxHealthyBatch / batchAdvisor) stays arch-based on purpose.
+// divides them. Every preset without a table is untouched. krea2_5090_char_lora and
+// k9b_laptop_char_lora ship one. The batch ceiling (maxHealthyBatch / batchAdvisor) stays arch-based on purpose.
 export interface StepTable {
   arch?: string;
   points: [number, number][];
@@ -661,7 +661,7 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'sets scale = alpha / lora_dim), so 1.0 x 1e-4, 0.5 x 2e-4 and 1.0 x 1e-4 all come to 1e-4. Three routes, one ' +
       'number — which is why LR 1e-4 stays. Rank 32 / alpha 16 is a real alternative to the 32/32 above rather than a ' +
       'contradiction of it: same speed, twice the capacity of rank 16 at full scale, and reported to hold a character ' +
-      'well. It ships as the krea2_character_lora preset. Do not copy its 10 repeats or its flat 2200 ' +
+      'well. It ships as the krea2_char_lora preset. Do not copy its 10 repeats or its flat 2200 ' +
       'steps — see the repeats note below, and let this panel size the run (the template agrees with it at 70 images ' +
       'and runs 2.3x hot at 30). ' +
       'Train at 512 or 1024, not in between: match a resolution the base model was actually trained at. ' +
@@ -735,7 +735,7 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'contradicts the resolution rule above — prefer 512/1024). Mind the direction: in LyCORIS factorization a LOWER ' +
       'factor means a LARGER network (factor 4 on a 1024-dim layer gives a 256x256 block, factor 16 gives 64x64), so ' +
       'factor 4 is the heavy end. LoKr also wants a lower LR than LoRA — 5e-5 rather than 1e-4, and an adaptive ' +
-      'controller railed at min 5e-5 / max 1e-4 (Fizgig). Shipped as the krea2_character_lokr preset at factor 8 / ' +
+      'controller railed at min 5e-5 / max 1e-4 (Fizgig). Shipped as the krea2_char_lokr preset at factor 8 / ' +
       'LR 5e-5. Unverified in this fork: no measured LoKr run here. ' +
       "DATASET SIZE: Krea's own hosted LoRA service states a 3-IMAGE MINIMUM and says a clean, repetitive set beats a " +
       'large mixed one; the community LoKr recipe wants ~20 (up to 40 if the images are weaker) with 2-5 full-body ' +
@@ -939,7 +939,7 @@ const illustriousOrPonyRecipe = (modelPath: string, tier: SizeTier): ArchRecipe 
 // preset that deliberately chose otherwise. "Apply all" made that one click. So under an
 // automagic optimizer the LR chip is withdrawn rather than re-pointed: which launch LR is
 // right is genuinely contested in this fork (the *_automagic presets rail max_lr at a 1e-4
-// launch; krea2_character_lora_automagic uses the author's 1e-6 with room to climb), and
+// launch; krea2_automagic_char_lora uses the author's 1e-6 with room to climb), and
 // per CLAUDE.md a contested value is not resolved by quietly picking one.
 const isAutomagic = (optimizer: string | undefined | null): boolean =>
   typeof optimizer === 'string' && optimizer.toLowerCase().startsWith('automagic');
@@ -950,7 +950,7 @@ const AUTOMAGIC_LR_NOTE =
   'at, so applying the adamw figure is not a smaller mistake than applying the wrong rank. Two shapes are documented ' +
   "in this fork and they disagree: the *_automagic presets launch at their arch's adamw LR and rail max_lr to it, so " +
   'the controller can only descend (a deliberate shared-machine ceiling, and half a controller); ' +
-  "krea2_character_lora_automagic uses the author's own defaults instead — launch 1e-6, min_lr 1e-8, max_lr 1e-3, " +
+  "krea2_automagic_char_lora uses the author's own defaults instead — launch 1e-6, min_lr 1e-8, max_lr 1e-3, " +
   'weight_decay 0.0 — so the vote can move it in both directions. Neither is measured. Pick from a preset rather than ' +
   'from this panel, and watch where the LR settles in the first ~8 steps (the polarity_history warmup). ' +
   'Every other suggestion below still applies: rank, alpha and batch are optimizer-independent. ';

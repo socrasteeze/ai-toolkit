@@ -26,7 +26,7 @@ example, both converging on a **linear+Conv2d LoRA at ratio 4:2:2:1 — 128/64/6
 (character/concept/slider) stay linear-only 16/16; LoKr stays linear-only.
 
 ATK's response (this update, user decision): **adopt the recipe but fold the magnitude
-in half** — `flux2_klein_style_lora.json` now ships **64/32 linear + 32/16 conv** (the
+in half** — `k4b_style_lora.json` now ships **64/32 linear + 32/16 conv** (the
 same 4:2:2:1 ratio at half scale). 128 was judged too heavy for a 4B model; 64 keeps the
 sweep's Conv2d insight at saner dims. So the two sides now agree on *shape* (linear+conv,
 ratio, alpha philosophy) and disagree only on *scale* (ATK 64 vs LDS 128) — a deliberate,
@@ -115,7 +115,7 @@ counterpart (LDS is hardwired batch 1). Style dropout differs (0.05 vs 0.1).
 
 Both sides derive from Ostris' canonical `train_lora_flux_24gb.yaml`: rank
 16/16, sigmoid timesteps, adamw8bit, lr 1e-4, qfloat8. LDS ships EMA 0.99 (in
-the canonical yaml, "recommended to leave on"); ATK's `flux_lora_24gb.json`
+the canonical yaml, "recommended to leave on"); ATK's `flux_24gb_gen_lora.json`
 had dropped it — **fixed in this sync** (fidelity to the mirrored source, not a
 contested value). The ATK *advisor's* flux row (medium 32/16, constant) is a
 different, alpha-below-rank school — reported, untouched.
@@ -123,8 +123,8 @@ different, alpha-below-rank school — reported, untouched.
 ### Krea 2 — ALIGNED (both flagged low-confidence)
 
 LDS char/style 32/32 + linear timestep + adamw8bit + qfloat8/low_vram ==
-ATK `krea2_lora_low_vram.json` exactly; advisor medium/large 32/32 agrees.
-`krea2_lora_16gb.json` (automagic3, 512 res, layer offloading) is a 16 GB
+ATK `krea2_24gb_gen_lora.json` exactly; advisor medium/large 32/32 agrees.
+`krea2_16gb_automagic_char_lora.json` (automagic3, 512 res, layer offloading) is a 16 GB
 hardware profile, not a recipe conflict. Both sides carry an explicit
 low-confidence flag on Krea numbers (thin sources, model ~6 weeks old at
 research time). LDS's Krea *concept* 32/16-linear is an LDS extrapolation (no
@@ -137,7 +137,7 @@ Compatible, still FLUX.1-proxy "unverified".
 
 Style: as of 2026-07-19 LDS bases it on a claimed-verified source (Herbst 64-run
 sweep + BFL's official Klein example) — a linear+Conv2d LoRA at ratio 4:2:2:1,
-**128/64/64/32**, alpha = rank/2, weighted timesteps. ATK's `flux2_klein_style_lora.json`
+**128/64/64/32**, alpha = rank/2, weighted timesteps. ATK's `k4b_style_lora.json`
 adopts the same recipe **folded to half scale: 64/32 linear + 32/16 conv** (128 judged
 too heavy for 4B — see the 2026-07-21 update at the top). The size-tiered advisor stays
 linear-only (kind-agnostic) and its notes point at the style preset for the conv recipe.
@@ -189,11 +189,11 @@ synced into the advisor notes. LDS concept 16/8-weighted synced as a preset.
 ## 5. What was synced into ATK with this report
 
 - New presets (LDS-derived, provenance + flags in each `meta.description`):
-  `zimage_character_lora.json`, `zimage_style_lora.json`,
-  `zimage_concept_lora.json`, `flux2_klein_character_lora.json`,
-  `flux2_klein_style_lora.json`, `krea2_concept_lora.json`,
+  `zimage_char_lora.json`, `zimage_style_lora.json`,
+  `zimage_concept_lora.json`, `k4b_char_lora.json`,
+  `k4b_style_lora.json`, `krea2_concept_lora.json`,
   `sdxl_concept_lora.json`.
-- `flux_lora_24gb.json`: EMA 0.99 restored (canonical-yaml fidelity).
+- `flux_24gb_gen_lora.json`: EMA 0.99 restored (canonical-yaml fidelity).
 - `stepSuggestion.ts`: timestep-guidance sentences appended to the zimage,
   krea2 and flux2_klein notes (numbers untouched).
 - Base models in the new presets match what LDS launches:

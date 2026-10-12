@@ -5,10 +5,10 @@ import path from 'node:path';
 import { suggestSteps, exposureGauge, activeStepTable } from '../src/utils/stepSuggestion.ts';
 import { suggestBatch } from '../src/utils/batchAdvisor.ts';
 
-// Pins k9b_laptop_lora (2026-10-12): community-derived 16 GB memory
+// Pins k9b_laptop_char_lora (2026-10-12): community-derived 16 GB memory
 // profile at 1024 on top of the unchanged 9B character recipe, and its step table = the
 // fork's existing 9B rule (60/image, 1000-2500).
-const file = path.resolve(import.meta.dirname, '..', '..', 'presets', 'k9b_laptop_lora.json');
+const file = path.resolve(import.meta.dirname, '..', '..', 'presets', 'k9b_laptop_char_lora.json');
 const preset = JSON.parse(readFileSync(file, 'utf8'));
 const p = preset.config.process[0];
 const table = preset.meta.step_table;
@@ -92,11 +92,11 @@ test('laptop batch plan: Klein still OOM without offloading, inferred batch 1 wi
   assert.equal(desk.vramCeiling, 2, 'desktop cell unchanged');
 });
 
-const lokrFile = path.resolve(import.meta.dirname, '..', '..', 'presets', 'k9b_laptop_lokr.json');
+const lokrFile = path.resolve(import.meta.dirname, '..', '..', 'presets', 'k9b_laptop_char_lokr.json');
 const lokr = JSON.parse(readFileSync(lokrFile, 'utf8'));
 const k = lokr.config.process[0];
 
-test('k9b_laptop_lokr: LoKr network, LR 5e-5, otherwise the LoRA laptop setup', () => {
+test('k9b_laptop_char_lokr: LoKr network, LR 5e-5, otherwise the LoRA laptop setup', () => {
   assert.deepEqual(k.network, { type: 'lokr', linear: 32, linear_alpha: 32, conv: 16, conv_alpha: 16, lokr_full_rank: true, lokr_factor: 8 });
   assert.equal(k.train.lr, 5e-5);
   assert.equal(k.train.optimizer, 'adamw8bit');
@@ -115,7 +115,7 @@ test('k9b_laptop_lokr: LoKr network, LR 5e-5, otherwise the LoRA laptop setup', 
   assert.match(d, /Sysmem Fallback/);
 });
 
-test('k9b_laptop_lokr step table drives the panel like the LoRA twin', () => {
+test('k9b_laptop_char_lokr step table drives the panel like the LoRA twin', () => {
   for (const [n, want] of [[20, 1200], [30, 1800], [60, 2500]]) {
     const r = suggestSteps({ itemCount: n, arch: 'flux2_klein_9b', batchSize: 1, gradientAccumulation: 1, stepTable: lokr.meta.step_table });
     assert.equal(r.suggested, want);

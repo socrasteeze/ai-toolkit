@@ -147,7 +147,7 @@ New/changed fork files:
 | `ui/src/app/api/datasets/analyze/route.ts` | New. `POST { datasetName }` → `{ imageCount, dimensionCounts, missingCaptions, unreadable }` |
 | `ui/src/utils/stepSuggestion.ts` | Extend. Adds `ArchRecipe` table (optimizer/LR/rank/batch/resolution + notes per arch), `exposureGauge()` (per-arch bands), `analyzeBuckets()` (bucket distribution + thin-bucket warnings from the histogram, client-side so it reacts to batch/resolution changes without refetching) |
 | `ui/src/components/StepSuggestion.tsx` | Extend. Existing step line stays; adds an "Analyze dataset" expander with the gauge, bucket table + warnings, resolution advice, caption coverage, and the arch recipe with Apply buttons |
-| `presets/sdxl_character_lora.json`, `presets/sdxl_style_lora.json`, `presets/krea2_lora_low_vram.json` | New starter presets alongside the existing IllustriousXL/FLUX ones |
+| `presets/sdxl_char_lora.json`, `presets/sdxl_style_lora.json`, `presets/krea2_24gb_gen_lora.json` | New starter presets alongside the existing IllustriousXL/FLUX ones |
 
 Data flow: the analyze API does only I/O (count + dimensions + caption files) and is cached
 per dataset like the count API. All interpretation (bucketing per selected resolution,
@@ -259,7 +259,7 @@ what actually changed in code.
 
 The sibling LDS fork ships fifteen researched built-in presets; a full cross-check
 (`docs/preset_alignment_2026_07.md`, canonical copy in the LDS repo) found the two
-codebases aligned on FLUX.1 (both from Ostris' canonical yaml — flux_lora_24gb.json
+codebases aligned on FLUX.1 (both from Ostris' canonical yaml — flux_24gb_gen_lora.json
 v1.1 restores its EMA 0.99) and Krea 2 (32/32 + linear), diverging on SDXL character
 alpha (LDS 32/16 half-alpha vs our 32/32 + conv — two sourced schools, left as-is),
 and complementary elsewhere. Synced ADDITIVELY from LDS: seven presets for the
@@ -297,8 +297,8 @@ touching anything Anima. Summary of what Phase 4 added:
   recipe added to ARCH_RECIPES in `ui/src/utils/stepSuggestion.ts` (fork file). The
   Anima recipe is the model author's own published numbers (rank 32, adamw 2e-5,
   batch 1 + accum 4, adapter frozen) — highest confidence of any arch.
-- `config/examples/train_lora_anima_2b.yaml`, `presets/anima_lora_performance.json`,
-  `presets/anima_lora_background.json` (background = author's config + low_vram,
+- `config/examples/train_lora_anima_2b.yaml`, `presets/anima_performance_gen_lora.json`,
+  `presets/anima_background_gen_lora.json` (background = author's config + low_vram,
   default for shared-GPU use per spec Workstream C).
 - Default LoRA targeting mirrors sd-scripts: target class `Block` only + configs set
   `network_kwargs.ignore_if_contains: ["adaln_modulation"]`. The LLM adapter is never
@@ -801,7 +801,7 @@ the mount line; only its position changed.
   Klein notes get the LR-sensitivity findings (text only, numbers unchanged), and
   Anima/Illustrious recipes deliberately untouched** — per the advisor's honesty rule,
   no data means no recommendation.
-- `presets/krea2_lora_16gb.json` → v1.1: added `min_lr: 1e-6` / `max_lr: 1e-4` to
+- `presets/krea2_16gb_automagic_char_lora.json` → v1.1: added `min_lr: 1e-6` / `max_lr: 1e-4` to
   `optimizer_params` (ceiling = the preset's own start LR so the controller only adapts
   downward, matching the conservative 16GB intent; floor = the optimizer's default
   launch LR). The source config predates the runaway fix and rode pure overflow-guard
@@ -878,7 +878,7 @@ Rare call sites (model load, sample, save) stay unthrottled; the legacy
 `diffusion_trainer`. This also shrinks the SQLITE_BUSY contention window with
 the UI's own writers documented in the 2026-07-17 WORKER-crash investigation.
 
-**Change 3 — the 5090 FAST profile** (`presets/anima_lora_5090_fast.json` v1.0 +
+**Change 3 — the 5090 FAST profile** (`presets/anima_5090_fast_gen_lora.json` v1.0 +
 `config/examples/train_lora_anima_2b_5090_fast.yaml`): the performance preset
 plus every lever above — `gradient_checkpointing: false` (expected single
 biggest win on a 2B model; the recompute tax buys VRAM a 32GB card doesn't
@@ -928,7 +928,7 @@ optimizer is selected:
   shows LR-bound status: green "✓ LR bounded: min – max" when `optimizer_params` carries
   min_lr/max_lr, otherwise an orange "Unbounded" warning with a "Bound it (min 1e-6 ·
   max = LR)" apply button that writes both keys via setJobConfig (mirroring the
-  krea2_lora_16gb v1.1 preset values; max = the user's current LR so the controller only
+  krea2_16gb_automagic_char_lora v1.1 preset values; max = the user's current LR so the controller only
   adapts downward).
 
 Verified: tsc clean, production rebuild clean. (The hint reads
@@ -974,10 +974,10 @@ read/written defensively since it has no UI field of its own).
 **Preset audit** (re-derived directly, not from a stale prior summary — the real preset
 count is 17 JSON files, not the higher number an earlier draft of this task assumed;
 several named "…laptop16gb" presets referenced in that draft do not exist in this repo
-and were not fabricated to satisfy it): only `krea2_lora_16gb.json` uses an Automagic
+and were not fabricated to satisfy it): only `krea2_16gb_automagic_char_lora.json` uses an Automagic
 optimizer (`automagic3`, `gradient_accumulation: 1`, bounded `min_lr`/`max_lr`) — it does
 not trip the guard. Exactly one preset uses `gradient_accumulation > 1` at all —
-`anima_lora_background.json` (batch 1 + accum 4, optimizer `adamw`) — also on a
+`anima_background_gen_lora.json` (batch 1 + accum 4, optimizer `adamw`) — also on a
 non-Automagic optimizer, so it doesn't trip either, but its description now notes that
 swapping it to Automagic requires accumulation back to 1. **Net: zero shipped presets
 trip the guard; check any future Automagic preset against it before shipping.** The
@@ -994,18 +994,18 @@ constructed-TrainConfig cases (fused automagic3 + accumulation → raises;
 
 **Follow-up, same day — preset audit re-run after a concurrent merge:** the "Add a 16GB
 laptop preset tier" commit landed while this work was in progress, adding
-`anima_lora_laptop16gb.json`, `flux_lora_laptop16gb.json`,
-`illxl_laptop_lora.json`, and `sdxl_laptop_lora.json`
+`anima_laptop_gen_lora.json`, `flux_laptop_gen_lora.json`,
+`illxl_laptop_char_lora.json`, and `sdxl_laptop_char_lora.json`
 (21 JSON presets total now). These are exactly three of the four "…laptop16gb" files an
 earlier draft of the Automagic task had predicted but which didn't exist at audit time
 above — re-running the audit against the merged set: still zero use an Automagic
 optimizer (all four are `adamw`/`adamw8bit`), but three of the four now join
-`anima_lora_background.json` in the batch-1 + `gradient_accumulation: 4` pattern
-(`anima_lora_laptop16gb`, `illxl_laptop_lora`,
-`sdxl_laptop_lora` — `flux_lora_laptop16gb` uses accumulation 1, not
+`anima_background_gen_lora.json` in the batch-1 + `gradient_accumulation: 4` pattern
+(`anima_laptop_gen_lora`, `illxl_laptop_char_lora`,
+`sdxl_laptop_char_lora` — `flux_laptop_gen_lora` uses accumulation 1, not
 affected). **Net finding unchanged: zero of the 21 shipped presets trip the guard.** All
 three gained the same one-sentence Automagic caveat already added to
-`anima_lora_background.json`'s description. Re-verified: all 21 presets parse through
+`anima_background_gen_lora.json`'s description. Re-verified: all 21 presets parse through
 `TrainConfig`; `tsc --noEmit` and `next build` still clean.
 
 ## Launcher QoL: drop start.bat auto-open, add create_shortcut.bat (2026-07-20)
@@ -1029,7 +1029,7 @@ claimed-verified source (Calvin Herbst 64-run sweep + Black Forest Labs' officia
 training example): a linear+Conv2d LoRA at ratio 4:2:2:1, **128/64/64/32**, alpha =
 rank/2, weighted timesteps (other Klein kinds stay linear-only 16/16; LoKr stays
 linear-only). 128 linear was judged too heavy for a 4B model, so ATK adopts the same
-recipe **folded to half scale**: `flux2_klein_style_lora.json` now ships **64/32 linear +
+recipe **folded to half scale**: `k4b_style_lora.json` now ships **64/32 linear +
 32/16 conv**. Agreement on shape/ratio/alpha philosophy; deliberate, documented
 disagreement on scale (the preset's `meta.description` says how to reproduce LDS's 128
 exactly). The size-tiered advisor (`stepSuggestion.ts`) is kind-agnostic — its numbers are
@@ -1132,9 +1132,9 @@ datasets/sample prompts — they're recipes, not lists to union), but `config.pr
 entirely, discarding every default inside `process[0]`. Datasets were re-merged against
 `defaultDatasetConfig` afterwards; `process[0]` never was.
 
-**Blast radius: 20 of the 21 shipped presets.** Only `krea2_lora_16gb` set
+**Blast radius: 20 of the 21 shipped presets.** Only `krea2_16gb_automagic_char_lora` set
 `optimizer_params` explicitly, so it was the single preset that loaded. Reproduced live on
-the untouched built-in `anima_lora_background`, so this long predates the laptop tier —
+the untouched built-in `anima_background_gen_lora`, so this long predates the laptop tier —
 the laptop presets just happened to be what the user loaded first.
 
 **Fix:** re-merge `process[0]` against `defaultJobConfig`'s `process[0]` right after the
@@ -1159,7 +1159,7 @@ Core Ultra 9 275HX, 96 GB system RAM, native Windows. Every hardware-tuned numbe
 this repo up to now was calibrated for the 32 GB desktop 5090 — `docs/profiles.md`
 says so explicitly ("batch size sized to use most of the 32 GB"). On half the VRAM the
 `performance`/`background` split collapses: `background` *is* the performance option,
-and there was no tier below it for any arch except Krea 2 (`krea2_lora_16gb`).
+and there was no tier below it for any arch except Krea 2 (`krea2_16gb_automagic_char_lora`).
 
 Four new fork-only presets, all suffixed `_laptop16gb`: anima, flux, sdxl character,
 illustrious character. Chosen because these are the four archs where the existing
@@ -1190,7 +1190,7 @@ buttons stay safe. Revisit if a third machine makes this a recurring footgun.
 **Status: unmeasured.** Authored and validated statically only — no training run has been
 made on the 16 GB machine, so no VRAM figure in `docs/profiles.md`'s new section is a
 measurement on this hardware (the 14.1 GB peak it reasons from is the 5090 gate-C number).
-FLUX.1-dev is flagged as the highest-risk of the four: 12B params, and `flux_lora_24gb` is
+FLUX.1-dev is flagged as the highest-risk of the four: 12B params, and `flux_24gb_gen_lora` is
 named for a 24 GB card. Each preset documents its own OOM fallback order.
 
 Also fixed in the same pass: the four new names were added to `BUILTIN_PRESET_NAMES`
@@ -1228,9 +1228,9 @@ suggestion and the gauge disagreeing because only one of them accounted for the 
 - `stepSuggestion.ts`: `batchSetting(4)` → `2` for `sdxl`, `sd15`, and the Illustrious
   branch of `illustriousOrPonyRecipe`; Anima's `rec('grad accum 4', …, 4)` → `2`. Pony was
   already 2, and the flux/krea2/zimage/klein/anima batch-1 recipes were already ≤2.
-- Presets (6 of 21 were above the cap): `anima_lora_performance` and `anima_lora_5090_fast`
-  batch 4→2; `anima_lora_background`, `anima_lora_laptop16gb`,
-  `illxl_laptop_lora`, `sdxl_laptop_lora` accumulation
+- Presets (6 of 21 were above the cap): `anima_performance_gen_lora` and `anima_5090_fast_gen_lora`
+  batch 4→2; `anima_background_gen_lora`, `anima_laptop_gen_lora`,
+  `illxl_laptop_char_lora`, `sdxl_laptop_char_lora` accumulation
   4→2. `config/examples/train_lora_anima_2b_5090_fast.yaml` batch 4→2 with its header.
 - **Deliberate deviation from the Anima author's published recipe**, which specifies
   effective batch 4 and is otherwise the highest-confidence source in this fork. Only the
@@ -1276,7 +1276,7 @@ checked against this codebase before adopting anything:
 
 On the critical reply: two of its four points misread the source (it trains on RAW, and it
 explicitly declines to claim a fix), and its resolution point doesn't implicate us since
-`krea2_lora_16gb` already used 512. Its bleed claim is half right and worth encoding: trigger
+`krea2_16gb_automagic_char_lora` already used 512. Its bleed claim is half right and worth encoding: trigger
 bleed *is* structurally normal (a LoRA shifts weights globally and cannot scope itself to a
 token), so the write-up's "I did it to myself in the captions" was over-attributed — though
 its control grid (near control bled, distant controls stayed clean) is real evidence that
@@ -1301,9 +1301,9 @@ DOP and regularization images — exist in ai-toolkit and not in musubi.
   under-reports. Tiering moves that ratio from 0.15 to 0.5 but doesn't fix it; raising the
   ceiling needs its own evidence.
 
-**Change 2 — new `presets/krea2_lora_laptop16gb.json`**, the missing krea2 entry in the
+**Change 2 — new `presets/krea2_laptop_automagic_char_lora.json`**, the missing krea2 entry in the
 laptop tier. Follows the established pattern exactly: every recipe value inherited unchanged
-from `krea2_lora_16gb` (so checkpoints stay interchangeable), varying only memory/IO —
+from `krea2_16gb_automagic_char_lora` (so checkpoints stay interchangeable), varying only memory/IO —
 `cache_latents` alongside `cache_latents_to_disk`, preview sampling 1024 -> 768,
 `ui_db_poll_seconds: 2`. Registered in `BUILTIN_PRESET_NAMES`. Effective batch stays 1, within
 the cap set the same day. Resolution deliberately stays 512.
@@ -1665,18 +1665,18 @@ Anima's `large`-tier suggestion therefore reproduces the model author's publishe
 batch 4 exactly; below that tier the deviation and its reason are still stated in the notes.
 Pony, flux, krea2, zimage and klein recipes were already batch 1-2 and are unchanged.
 
-**Presets.** `anima_lora_performance` (v3.0) and `anima_lora_5090_fast` (v2.0) — the two 32 GB
+**Presets.** `anima_performance_gen_lora` (v3.0) and `anima_5090_fast_gen_lora` (v2.0) — the two 32 GB
 desktop profiles, i.e. exactly the high-VRAM tier this change exists for — move to batch 4 /
 accum 1, with the >=32 file requirement and the fallback preset named in their descriptions.
 The laptop and background profiles stay at effective batch 2 deliberately: they are the
 low-VRAM tier, and batch 4 would not fit regardless of dataset size.
 
 **Also delivered in this pass** (same session, separate concerns):
-- `presets/k9b_lora.json / presets/k9b_style_lora.json (then lux2_klein_9b_{character,style}_lora, renamed 2026-10-12)` — the 9B tier existed only as two
+- `presets/k9b_char_lora.json / presets/k9b_style_lora.json (then lux2_klein_9b_{character,style}_lora, renamed 2026-10-12)` — the 9B tier existed only as two
   hand-edit instructions buried in the 4B preset's description. Now real presets.
-- `presets/{flux2_klein_character_lora,illxl_lora,anima_lora}_automagic.json`
+- `presets/{k4b_char_lora,illxl_char_lora,anima_lora}_automagic.json`
   — automagic3 variants carrying the `min_lr`/`max_lr` rail pattern proven on
-  `krea2_lora_16gb` (`max_lr` = the preset's own launch LR, so the controller only adapts
+  `krea2_16gb_automagic_char_lora` (`max_lr` = the preset's own launch LR, so the controller only adapts
   downward). All three pin `gradient_accumulation: 1`: fused Automagic steps every micro-batch
   and `TrainConfig` hard-errors on the combination. Flagged UNVERIFIED per arch — the
   2026-07-19 finding still holds, Krea 2 remains the only arch with a measured automagic3 run,
@@ -1818,10 +1818,10 @@ latents) was documented as essential — disk-only caching drops `_encoded_laten
 `cleanup_latent()` and re-does `safetensors.load_file` + uint8→float rehydration per item
 per step in `get_latent()` (`toolkit/dataloader_mixins.py` ~1859-1906) — yet 21 of 27 presets
 set only `cache_latents_to_disk`; the laptop tier had the fast path and the desktop presets
-did not, and `krea2_lora_16gb` cached nowhere (VAE re-encode every epoch). `loss_sync_every`
+did not, and `krea2_16gb_automagic_char_lora` cached nowhere (VAE re-encode every epoch). `loss_sync_every`
 was in one preset; `ui_db_poll_seconds` in six, so the UI trainer opened five sqlite
 connections per step (`DiffusionTrainer.py` ~372-386: one write + four reads, each a fresh
-`sqlite3.connect`) for every other job. **Change:** every preset except `anima_lora_5090_fast`
+`sqlite3.connect`) for every other job. **Change:** every preset except `anima_5090_fast_gen_lora`
 (already had all three) now sets `cache_latents: true` (+ `cache_latents_to_disk` where it
 was off), `loss_sync_every: 4`, `ui_db_poll_seconds: 2`; versions bumped, descriptions say so.
 Config defaults stay upstream's, so hand-written configs are untouched. All 27 presets parse
@@ -1836,7 +1836,7 @@ buffer every second and re-sliced a 150 KB string per stdout chunk — now a chu
 probes ran on the GPU list's 5 s cadence with up to a 6 s timeout per offline peer — now
 ≥30 s client-side and a 30 s server TTL (POST still invalidates).
 
-**`torch.compile` on the 5090 — NOT measured.** A bench series (`anima_lora_5090_fast`
+**`torch.compile` on the 5090 — NOT measured.** A bench series (`anima_5090_fast_gen_lora`
 baseline vs `compile: true` + `block_compile: true`, 20-image set, 200 steps) was started
 and stopped at the operator's request before the pre-warm finished; no row was written and
 `docs/speed_benchmarks.md` still does not exist. No compile preset ships until it is
@@ -1945,7 +1945,7 @@ cron worker's runtime paths, a real training run, and the Dataset Tools CLIs end
 
 **Filed, not done:** the remaining config-only levers each need one measured run before a
 preset ships them (AIO.47: fused AdamW on the non-quantized anima presets via
-`optimizer_params`, `gradient_checkpointing: false` on `anima_lora_performance`,
+`optimizer_params`, `gradient_checkpointing: false` on `anima_performance_gen_lora`,
 `layer_offloading_transformer_percent` < 1 on the krea2 offload presets,
 `cache_text_embeddings` on non-anima presets, sample/save cadence, explicit `num_workers`);
 the one remaining unconditional per-step host sync (`additional_model_loss.item()`,
@@ -2010,7 +2010,7 @@ on this model — two characters in one image keep their own faces instead of av
 is the same failure the Krea 2 notes currently answer with Differential Output Preservation
 and regularization datasets, and LoKr is a cheaper first attempt than either. The trainer
 supports it natively (`network.type: lokr` + `lokr_factor`, `toolkit/models/lokr.py`), so
-`presets/krea2_character_lokr.json` ships it: `krea2_lora_low_vram` unchanged except
+`presets/krea2_char_lokr.json` ships it: `krea2_24gb_gen_lora` unchanged except
 `type: lokr`, `lokr_full_rank: true`, `lokr_factor: 8`, and LR 5e-5.
 
 Two things recorded rather than resolved:
@@ -2142,8 +2142,8 @@ effective batch with `batch_size`, 16 GB laptop/background reaches it with
 
 | Profile | batch x accum | low_vram |
 |---|---|---|
-| `anima_lora_performance`, `anima_lora_5090_fast` (32 GB desktop) | 4 x 1 | false |
-| `anima_lora_background`, `anima_lora_laptop16gb`, `sdxl_laptop_lora`, `illxl_laptop_lora` (16 GB) | 1 x 2 | true |
+| `anima_performance_gen_lora`, `anima_5090_fast_gen_lora` (32 GB desktop) | 4 x 1 | false |
+| `anima_background_gen_lora`, `anima_laptop_gen_lora`, `sdxl_laptop_char_lora`, `illxl_laptop_char_lora` (16 GB) | 1 x 2 | true |
 | everything else | 1 x 1 | mostly true |
 
 Why they are not interchangeable, from the source rather than from theory:
@@ -2169,7 +2169,7 @@ Written up as a shared `EFFECTIVE_BATCH_NOTE` in `stepSuggestion.ts` (alongside
 
 **Two things said "raise batch size instead" where that is not available**, and are now fixed:
 
-1. `presets/anima_lora_automagic.json` (v1.2) opened by describing itself as "batch 1 + grad
+1. `presets/anima_automagic_gen_lora.json` (v1.2) opened by describing itself as "batch 1 + grad
    accumulation 2 (same effective batch as performance)" — copied from its `background` parent —
    while the file pins `gradient_accumulation: 1`, because fused Automagic cannot accumulate. It
    trains at **effective batch 1, half its parent**, and the description now says so, with the
@@ -2178,10 +2178,10 @@ Written up as a shared `EFFECTIVE_BATCH_NOTE` in `stepSuggestion.ts` (alongside
 2. `OptimizerHint`'s "Bound it" sibling tooltip and the Krea 2 automagic note both advised
    reaching effective batch by raising batch size with no caveat. Both now name the 16 GB case.
 
-**Found, NOT changed — needs the operator's call:** `flux_lora_laptop16gb` is effective batch 1
+**Found, NOT changed — needs the operator's call:** `flux_laptop_gen_lora` is effective batch 1
 while the other three `*_laptop16gb` presets are effective batch 2. Either it is an oversight
 (accumulation is nearly free in VRAM, so the laptop tier could carry 1x2 here too) or it is
-deliberate fidelity to `flux_lora_24gb`, whose recipe is effective batch 1. Note the related
+deliberate fidelity to `flux_24gb_gen_lora`, whose recipe is effective batch 1. Note the related
 documentation drift: `presets/README.md` and `docs/profiles.md` say the laptop presets inherit
 the parent recipe unchanged and only change memory/IO behaviour, but the SDXL, Illustrious and
 Anima laptop presets all raise effective batch 1 -> 2 versus their desktop parents, which is a
@@ -2190,7 +2190,7 @@ recipe change by the advisor's own accounting.
 ### Addendum 4: the effective-batch question resolved — presets right, docs wrong (2026-09-11)
 
 Verdict: the presets are correct and two documentation sentences were wrong, including
-`flux_lora_laptop16gb`, which I had flagged as a possible oversight. It is not one.
+`flux_laptop_gen_lora`, which I had flagged as a possible oversight. It is not one.
 
 The deciding evidence is the advisor's own per-arch batch recommendation, which every preset
 already matches:
@@ -2202,7 +2202,7 @@ already matches:
 | Krea 2, Klein, Z-Image, Qwen | batch 1 | 1 | 1 |
 | Anima | batch 1 (author 4) | 4 | 2, documented deviation |
 
-So `flux_lora_laptop16gb` sits at effective batch 1 because the advisor recommends batch 1 for
+So `flux_laptop_gen_lora` sits at effective batch 1 because the advisor recommends batch 1 for
 FLUX — it agrees with its own arch recipe. The SDXL-family laptop presets sit at 2 because the
 advisor recommends 2 for that family; their descriptions already say so in full ("the point of
 this variant is batch discipline"), as does `docs/profiles.md` lever 4. Nothing in the preset
@@ -2224,7 +2224,7 @@ What was wrong was one sentence in each of two docs, both now fixed:
   profile only", same problem; it now names the exception and explains why flux and krea2 stay
   at effective 1.
 
-**Separate finding, NOT changed:** `sdxl_character_lora` and `illxl_lora`
+**Separate finding, NOT changed:** `sdxl_char_lora` and `illxl_char_lora`
 (the desktop presets) sit at effective batch 1 while the advisor recommends 2 for their arch —
 so on the SDXL family it is the DESKTOP presets that lag the advisor, not the laptop ones. That
 is a base-recipe decision on presets the operator has been running, and the advisor is
@@ -2354,8 +2354,8 @@ settings actually available for the RTX 5080 Laptop. Repo read plus a community 
 2. **Klein OOMs on the laptop because of the preset, not the card.** BFL states 12 GB
    minimum for the 4B. The Klein presets keep the Qwen3-4B text encoder resident (no
    `cache_text_embeddings`, no `unload_text_encoder`), sample at 1024×25 steps, and set no
-   `layer_offloading`. `krea2_lora_16gb` does all three and fits. Same gap in the Z-Image
-   presets, `flux_lora_laptop16gb` and `krea2_lora_low_vram`. This is the likely cause of
+   `layer_offloading`. `krea2_16gb_automagic_char_lora` does all three and fits. Same gap in the Z-Image
+   presets, `flux_laptop_gen_lora` and `krea2_24gb_gen_lora`. This is the likely cause of
    `LAPTOP16.flux2_klein` = OOM in `batchAdvisor.ts`.
 3. **Windows shared-memory fallback is the real 16 GB failure mode.** Upstream #1007
    (2026-08-11, RTX 5070 Ti, Windows): a config grazing the VRAM ceiling ran 21 → 303 s/it
@@ -2468,7 +2468,7 @@ musubi-tuner (`krea2_train_network.py`) on RunPod 4090/H100, so the recipe trans
 implementation does not. The template verbatim, its term-by-term translation, and the open
 questions are in `docs/krea2_field_template_2026_09.md`; this entry records the decisions.
 
-**Shipped:** `presets/krea2_character_lora.json` (rank 32 / alpha 16 @ LR 2e-4, adamw8bit,
+**Shipped:** `presets/krea2_char_lora.json` (rank 32 / alpha 16 @ LR 2e-4, adamw8bit,
 bf16 + qfloat8 base, gradient checkpointing, `buckets: true` at 1024, latents and text
 embeddings cached, 2200 steps, `save_every` 250 keeping 9), registered in
 `builtinPresets.ts`, rowed in `presets/README.md`, plus a corroboration block on
@@ -2520,7 +2520,7 @@ at fixed alpha/rank, since the LR moved when the alpha did.
 
 The operator's second account covers how the dataset that fed the template above was built.
 Recorded in `docs/krea2_field_template_2026_09.md` sections 5–6, summarised into
-`presets/krea2_character_lora.json` v1.1, and used to upgrade one existing advisor claim.
+`presets/krea2_char_lora.json` v1.1, and used to upgrade one existing advisor claim.
 
 **The one advisor claim that moved.** `ARCH_RECIPES.krea2` already advised keeping invariant
 identity attributes out of captions, explicitly flagged as "a plausible hypothesis from the
@@ -2600,8 +2600,8 @@ Acting on Addendum 2's comparison. Two things built, both deliberately experimen
 than edits; the rest refused with reasons. Full decision record in
 `docs/krea2_field_template_2026_09.md` section 8.
 
-**Built 1 — `presets/krea2_character_lora_shift.json`.** A byte-identical twin of
-`krea2_character_lora` with exactly one field changed, `timestep_type: shift`, so the
+**Built 1 — `presets/krea2_shift_char_lora.json`.** A byte-identical twin of
+`krea2_char_lora` with exactly one field changed, `timestep_type: shift`, so the
 contested linear-vs-shift question can be settled on one dataset with the difference
 attributable. Note for whoever runs it: this trainer's `shift` is NOT musubi's fixed
 `--discrete_flow_shift 2.5`, it is the resolution-aware `krea2_shift` equivalent —
@@ -2648,12 +2648,12 @@ its no-torch path is verified; every number it would produce is still unknown.
 
 ### Addendum 4, same day: the 5080 laptop gets the field recipe (2026-09-19)
 
-Operator is testing on the RTX 5080 Laptop today. `krea2_lora_laptop16gb` already existed and
+Operator is testing on the RTX 5080 Laptop today. `krea2_laptop_automagic_char_lora` already existed and
 is still the right file for the automagic3 recipe, but the field-proven recipe shipped in
 Addendum 1 had no laptop profile — its parent runs 1024 with sampling on and no offloading,
 which is a 16 GB OOM or, worse on Windows, a shared-memory spill.
 
-**Shipped: `presets/krea2_laptop_lora.json`.** Training math inherited unchanged
+**Shipped: `presets/krea2_laptop_adamw_char_lora.json`.** Training math inherited unchanged
 (rank 32 / alpha 16 @ LR 2e-4, adamw8bit, linear, batch 1 × accum 1 — which is what
 `batchAdvisor.ts`'s `LAPTOP16.krea2` cell measures as the ceiling anyway — 2200 steps, latents
 and text embeds cached), so checkpoints stay interchangeable with the desktop parent. Four
@@ -2677,8 +2677,8 @@ deltas, all memory/IO except one:
 **Closed from the 2026-09-16 review, finding 5 (docs drift).** `layer_offloading: true`
 silently rewrites `qtype` qfloat8 → torchao float8 and `qtype_te` likewise
 (`config_modules.py` ~769-772). The two existing offload presets claimed qfloat8 and trained
-on float8 without saying so; that sentence is now in `krea2_lora_16gb` (v1.3) and
-`krea2_lora_laptop16gb` (v1.2) as well as the new file.
+on float8 without saying so; that sentence is now in `krea2_16gb_automagic_char_lora` (v1.3) and
+`krea2_laptop_automagic_char_lora` (v1.2) as well as the new file.
 
 **Carried into the new preset's description rather than left in PLAN:** the Windows
 16 GB failure mode is not a clean OOM. Upstream #1007 reports a config grazing the ceiling
@@ -2742,7 +2742,7 @@ and were right; the docstring line is the wrong one.
 
 Operator's reasoning: the field runs were effective batch 1 anyway, and automagic self-adjusts
 its LR, so automagic3 at 1/1 ought to land near the same place. Assessed rather than accepted,
-then turned into `presets/krea2_character_lora_automagic.json`.
+then turned into `presets/krea2_automagic_char_lora.json`.
 
 **The batch half is right, and it is the whole reason this is worth testing.** Fused
 automagic's one structural cost is that it steps every micro-batch and `config_modules.py`
@@ -2773,7 +2773,7 @@ that it finds the right LR. So this twin uses the author's own shape (launch 1e-
 item for an author-rail automagic variant.
 
 **Three twins now share one parent**, differing in exactly one thing each:
-`krea2_character_lora` (adamw8bit, linear) · `_shift` (timestep sampling) · `_automagic`
+`krea2_char_lora` (adamw8bit, linear) · `_shift` (timestep sampling) · `_automagic`
 (optimizer). Same dataset, same seed, same 2200 steps, and each difference is attributable.
 Nothing is measured; the preset is the experiment, not the recommendation.
 
@@ -2787,7 +2787,7 @@ depending on the optimizer selected? Partly: `suggestBatch()` already reads
 
 **Why that mattered more than it looks.** Every `ARCH_RECIPES` entry's `lrSetting` is an
 adamw-family rate. Automagic takes an LR as a LAUNCH POINT its controller then walks away
-from. So with `krea2_character_lora_automagic` loaded — launch 1e-6, the author's shape — the
+from. So with `krea2_automagic_char_lora` loaded — launch 1e-6, the author's shape — the
 panel offered "LR 0.0001 (now 0.000001)" and **"Apply all" would have set the launch 100×
 high in one click**, destroying the very experiment the preset exists to run.
 
@@ -2796,7 +2796,7 @@ argument; under any `automagic*` it filters the `.lr` setting out and prepends
 `AUTOMAGIC_LR_NOTE`. Rank, alpha, batch and scheduler pass through untouched — they are
 optimizer-independent. The chip is not re-pointed at an automagic-appropriate number because
 there is no agreed one: this fork's `*_automagic` presets launch at their arch's adamw LR and
-rail `max_lr` to it (downward-only), while `krea2_character_lora_automagic` uses the author's
+rail `max_lr` to it (downward-only), while `krea2_automagic_char_lora` uses the author's
 1e-6 with room to climb. Neither is measured, and per `CLAUDE.md` a contested value is not
 resolved by quietly picking one. The note says both shapes exist and points at the presets.
 

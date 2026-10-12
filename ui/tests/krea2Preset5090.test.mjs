@@ -3,14 +3,14 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
-// Pins krea2_character_lora_5090 to the community spec it was added for (2026-10-11), and
+// Pins krea2_5090_char_lora to the community spec it was added for (2026-10-11), and
 // its step-scaling table to the text a user actually reads. The step advisor is per-arch, so
 // the table lives in the preset description - this test is what keeps the two in sync.
-const file = path.resolve(import.meta.dirname, '..', '..', 'presets', 'krea2_character_lora_5090.json');
+const file = path.resolve(import.meta.dirname, '..', '..', 'presets', 'krea2_5090_char_lora.json');
 const preset = JSON.parse(readFileSync(file, 'utf8'));
 const p = preset.config.process[0];
 
-test('krea2_character_lora_5090 matches the community spec', () => {
+test('krea2_5090_char_lora matches the community spec', () => {
   assert.equal(p.model.arch, 'krea2');
   assert.equal(p.model.quantize, false);
   assert.equal(p.model.quantize_te, false);
@@ -29,14 +29,14 @@ test('krea2_character_lora_5090 matches the community spec', () => {
   assert.ok(p.save.max_step_saves_to_keep * p.save.save_every >= 3500 * 4, 'must keep every checkpoint');
 });
 
-test('krea2_character_lora_5090 samples render at 1024 with the trigger placeholder', () => {
+test('krea2_5090_char_lora samples render at 1024 with the trigger placeholder', () => {
   assert.equal(p.sample.width, 1024);
   assert.equal(p.sample.height, 1024);
   assert.ok(p.sample.samples.length > 0);
   for (const s of p.sample.samples) assert.match(s.prompt, /\[trigger\]/);
 });
 
-test('krea2_character_lora_5090 description carries the step table and community caveat', () => {
+test('krea2_5090_char_lora description carries the step table and community caveat', () => {
   const d = preset.meta.description;
   for (const row of ['20 images ~1500', '30 ~1800', '50 ~2500', '100 ~3500']) assert.ok(d.includes(row), row);
   assert.match(d, /community/i);

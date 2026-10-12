@@ -17,7 +17,7 @@ Tuned for the full RTX 5090: bf16, no quantization (Anima 2B / Klein 4B / SDXL),
 batch size sized to use most of the 32 GB. Use when the machine is dedicated to
 the run.
 
-Krea 2 on the 5090: `krea2_character_lora_5090` (added 2026-10-11) is the one Krea 2
+Krea 2 on the 5090: `krea2_5090_char_lora` (added 2026-10-11) is the one Krea 2
 preset here that runs the 12B transformer **unquantized** (bf16, ~26 GB of weights) at
 1024 only, rank 32/32 @ 1e-4 adamw8bit, EMA 0.98, 1800 steps for ~30 images (community
 table: 20 ~1500 / 30 ~1800 / 50 ~2500 / 100 ~3500, carried as `meta.step_table` so the
@@ -38,7 +38,7 @@ other preset if you need the machine back (or a faster finish).
 
 ## Measured VRAM — Anima 2B `background` (gate C, 2026-07-12)
 
-Live 120-step run of `presets/anima_lora_background.json` settings
+Live 120-step run of `presets/anima_background_gen_lora.json` settings
 (res [512, 768, 1024] buckets, batch 1 + accum 4, caching on, low_vram,
 *measured before the 2026-07-29 effective-batch reduction — the preset now ships
 accum 2, which only lowers these figures*,
@@ -58,21 +58,21 @@ caches warm).
 ## `laptop16gb` (added 2026-07-28)
 
 Second machine: RTX 5080 Laptop (16 GB, ~15.9 GB usable), Core Ultra 9 275HX,
-96 GB system RAM, native Windows. Presets: `anima_lora_laptop16gb`,
-`flux_lora_laptop16gb`, `sdxl_laptop_lora`,
-`illxl_laptop_lora`, `krea2_lora_laptop16gb`
-(added 2026-07-29; parent is `krea2_lora_16gb`, which already targeted 16 GB —
+96 GB system RAM, native Windows. Presets: `anima_laptop_gen_lora`,
+`flux_laptop_gen_lora`, `sdxl_laptop_char_lora`,
+`illxl_laptop_char_lora`, `krea2_laptop_automagic_char_lora`
+(added 2026-07-29; parent is `krea2_16gb_automagic_char_lora`, which already targeted 16 GB —
 the laptop variant adds RAM-served latents, 768 preview sampling and the
 sqlite poll throttle, and changes no recipe value), and
-`krea2_laptop_lora` (added 2026-09-19; parent is the field-proven
-`krea2_character_lora`). That last one carries a SECOND deliberate exception to the
+`krea2_laptop_adamw_char_lora` (added 2026-09-19; parent is the field-proven
+`krea2_char_lora`). That last one carries a SECOND deliberate exception to the
 inherit-everything rule below: **resolution 512 against its parent's 1024**. Both are
 resolutions Krea 2 was actually trained at, so it is a different legitimate recipe
 rather than a degraded one — but it is not the resolution the field runs used, and the
 preset says so in place. 1024 is the faithful reproduction if the card holds it.
 
-Klein 9B on the laptop: `k9b_laptop_lora` (added 2026-10-12) is the
-first Klein preset for this tier. It keeps `k9b_lora`'s recipe unchanged
+Klein 9B on the laptop: `k9b_laptop_char_lora` (added 2026-10-12) is the
+first Klein preset for this tier. It keeps `k9b_char_lora`'s recipe unchanged
 (1e-4 adamw8bit, sigmoid, batch 1 x accum 1) except rank, raised to 32/32 (v1.1: matches Adam's earlier
 9B runs and BFL's complex-subject guidance; not compared against 16 at 1024), and trains at **1024 only** - the parent's
 768 bucket is dropped, a third deliberate exception to the inherit-everything rule. Memory:
@@ -86,17 +86,17 @@ Prefer No Sysmem Fallback so a near-ceiling run errors instead of spilling. Its
 `meta.step_table` is the existing 9B rule (60/image, 1000-2500) written out, so the panel's
 numbers match the parent's. The batch plan treats batch 1 as an unmeasured attempt when
 layer_offloading is on (`batchAdvisor.ts`); without offloading Klein stays OOM on this tier.
-Its LoKr twin `k9b_laptop_lokr` (2026-10-12) is the same setup with lokr / full rank /
+Its LoKr twin `k9b_laptop_char_lokr` (2026-10-12) is the same setup with lokr / full rank /
 factor 8 (linear 32/32 + conv 16/16, ignored under full rank) at LR 5e-5 - community-derived,
 unmeasured; factor 4 trades memory for likeness, factor 16 is the OOM step.
 
 **Every recipe value is inherited unchanged from the parent preset, with TWO exceptions:
-effective batch on the SDXL-family presets** (lever 4 below — `sdxl_laptop_lora`
-and `illxl_laptop_lora` run batch 1 + `gradient_accumulation: 2` where
+effective batch on the SDXL-family presets** (lever 4 below — `sdxl_laptop_char_lora`
+and `illxl_laptop_char_lora` run batch 1 + `gradient_accumulation: 2` where
 their desktop parents are effective batch 1). That exception is deliberate: it moves those
 presets INTO agreement with the advisor, which recommends batch 2 for SDXL/SD1.5/Illustrious/
 Pony. Corrected 2026-09-11 — the unqualified claim contradicted lever 4 in this same
-document. **The second exception is `krea2_laptop_lora`'s 512 resolution**
+document. **The second exception is `krea2_laptop_adamw_char_lora`'s 512 resolution**
 (2026-09-19), described above. Otherwise these files change only how a run fits in memory
 and how it feeds the GPU.
 LoRA weights stay interchangeable with the desktop profiles; note that resuming across the two
@@ -111,7 +111,7 @@ The four levers:
    serialized with GPU compute. The 96 GB pool is what makes a resident cache free.
 2. **`low_vram: true`** — parks idle components on CPU. Generic to all archs
    (`toolkit/stable_diffusion_model.py:199`), not just the low-VRAM-first ones.
-   `flux_lora_24gb` leaves it unset, which is the single biggest gap for this card.
+   `flux_24gb_gen_lora` leaves it unset, which is the single biggest gap for this card.
 3. **Preview sampling at 768** (flux/anima) — on the gate-C run above, the *peak* was
    sample generation (14.1 GB), not the training loop (9.9–10.7 GB). Sampling is the
    binding constraint on 16 GB. SDXL-family presets keep 1024 sampling: it is their
@@ -132,6 +132,6 @@ above is either a 32 GB measurement or an inference from config values. The gate
 figures suggest Anima has roughly 4 GB of headroom here, and that FLUX.1-dev (12B
 params, fp8) is the genuinely risky one. Documented OOM fallback order, in each
 preset's `meta.description`: drop training resolution first, then `layer_offloading`
-(see `krea2_lora_16gb` for the pattern; note it silently rewrites `qfloat8` →
+(see `krea2_16gb_automagic_char_lora` for the pattern; note it silently rewrites `qfloat8` →
 `float8`, `toolkit/config_modules.py:721`), and change batch/accum last since that
 changes the recipe rather than the profile.

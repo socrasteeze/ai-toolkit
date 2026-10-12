@@ -10,21 +10,21 @@ A recovered, field-proven Krea 2 training template is ported into the fork: thre
 
 ## Done 2026-09-19
 - `scripts/clean_captions.py` (new) — caption surgery: identity-attribute stripping, tag/prose modes, dry-run default, `.txt.bak` + `--restore`, never writes an empty caption. 21 tests in `testing/test_clean_captions.py`, wired into the runner
-- `presets/krea2_character_lora{,_shift,_automagic,_laptop16gb}.json` — field recipe (32/16 @ 2e-4), two one-variable A/B twins (timestep, optimizer), and the 16 GB laptop profile
+- `presets/krea2_char_lora{,_shift,_automagic,_laptop16gb}.json` — field recipe (32/16 @ 2e-4), two one-variable A/B twins (timestep, optimizer), and the 16 GB laptop profile
 - `docs/krea2_field_template_2026_09.md` — source record, dataset-prep method, musubi comparison, port decisions (§1–8)
 - `scripts/attn_probe.py` — reports which kernel the dispatcher picks at Krea 2's attention shapes; times the alternatives
 - `ui/src/utils/stepSuggestion.ts` — krea2 step corroboration, caption note raised to two-source, timestep contest recorded. No recommended value changed
-- `presets/krea2_lora_16gb` v1.3 / `krea2_lora_laptop16gb` v1.2 — name the `layer_offloading` float8 rewrite (closes the 2026-09-16 review's finding 5)
+- `presets/krea2_16gb_automagic_char_lora` v1.3 / `krea2_laptop_automagic_char_lora` v1.2 — name the `layer_offloading` float8 rewrite (closes the 2026-09-16 review's finding 5)
 - `docs/profiles.md`, `presets/README.md`, `FORK_NOTES.md`, `PLAN.md` — second exception to the inherit rule, rows, fork-only entries, four addenda
 
 ## Open
-1. Laptop run — `krea2_laptop_lora` has never executed. If VRAM allows, retry at resolution 1024 for the faithful reproduction
+1. Laptop run — `krea2_laptop_adamw_char_lora` has never executed. If VRAM allows, retry at resolution 1024 for the faithful reproduction
 2. `python scripts/attn_probe.py --masked`, then again without `--masked`, on the GPU box
-3. Two A/Bs against `krea2_character_lora`, same dataset, seed and steps — `_shift` (timestep sampling; record in the doc's §7) and `_automagic` (optimizer at the author's rails; record where the LR settled, not just the output)
-4. ~~`python testing/test_presets.py` — needs torch, never ran against the four new presets~~ Closed — the test globs every `presets/*.json`, and `run_fork_tests.ps1` ran it on the `.venv` in the 2026-09-22 and 2026-09-23 syncs (`FORK_NOTES.md`; the 09-22 run also fixed its arch-registry parser, `09865fd`). Direct run 2026-10-01: 5/5 tests OK over 32 presets, the four `krea2_character_lora*` included
+3. Two A/Bs against `krea2_char_lora`, same dataset, seed and steps — `_shift` (timestep sampling; record in the doc's §7) and `_automagic` (optimizer at the author's rails; record where the LR settled, not just the output)
+4. ~~`python testing/test_presets.py` — needs torch, never ran against the four new presets~~ Closed — the test globs every `presets/*.json`, and `run_fork_tests.ps1` ran it on the `.venv` in the 2026-09-22 and 2026-09-23 syncs (`FORK_NOTES.md`; the 09-22 run also fixed its arch-registry parser, `09865fd`). Direct run 2026-10-01: 5/5 tests OK over 32 presets, the four `krea2_char_lora*` included
 5. Caption surgery is built; the two prep stages still absent are per-image alias selection from a set and `_facecrop` augmentation (doc section 6)
 7. Decide whether the desktop SDXL/Illustrious presets move to effective batch 2 to match the advisor
-6. `batchAdvisor.ts` cells still unmeasured: batch 4 for Klein/Krea 2 on the 32 GB desktop (`DESKTOP32`), and which Klein variant OOMs on the laptop (`LAPTOP16.flux2_klein` treats 4B and 9B alike); 2026-10-12: a first laptop Klein 9B attempt is `k9b_laptop_lora` (1024, 80% transformer offload, rank 32) and its LoKr twin `k9b_laptop_lokr` - measure it and record s/it + VRAM here and in `LAPTOP16`
+6. `batchAdvisor.ts` cells still unmeasured: batch 4 for Klein/Krea 2 on the 32 GB desktop (`DESKTOP32`), and which Klein variant OOMs on the laptop (`LAPTOP16.flux2_klein` treats 4B and 9B alike); 2026-10-12: a first laptop Klein 9B attempt is `k9b_laptop_char_lora` (1024, 80% transformer offload, rank 32) and its LoKr twin `k9b_laptop_char_lokr` - measure it and record s/it + VRAM here and in `LAPTOP16`
 
 ## Decisions
 - Stay on ai-toolkit over musubi-tuner — its wins (12 GB floor, multi-GPU, exact resume, more attention backends) bind on none of this hardware
@@ -42,7 +42,7 @@ A recovered, field-proven Krea 2 training template is ported into the fork: thre
 - On 16 GB Windows the failure is shared-memory spill (absurd s/it), not a clean OOM. Keep ~1.5 GB free
 - `train.cache_text_embeddings` is mutually exclusive with `diff_output_preservation` — the new presets set the former
 - The advisor's LR chip is an adamw rate and is now withdrawn under `automagic*` — if you re-add one, it will clobber an automagic preset's launch LR on "Apply all"
-- `krea2_character_lora_automagic` breaks this fork's `max_lr` = launch LR pattern ON PURPOSE (author's rails, so the controller can climb). Do not "fix" it to match the other `*_automagic` presets — that would make the experiment answer itself
+- `krea2_automagic_char_lora` breaks this fork's `max_lr` = launch LR pattern ON PURPOSE (author's rails, so the controller can climb). Do not "fix" it to match the other `*_automagic` presets — that would make the experiment answer itself
 - `num_repeats` only duplicates the file list; kohya/musubi repeat advice does not transfer to this step-bounded trainer
 - Never push to `upstream` — its push URL stays the literal `DISABLED`, and the remote does not survive a fresh clone. Commit identity is set per clone (`CLAUDE.md`)
 

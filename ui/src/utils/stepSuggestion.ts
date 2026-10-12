@@ -27,7 +27,26 @@ const DEFAULT_HEURISTIC: StepHeuristic = { stepsPerItem: 75, minSteps: 1000, max
 // means "flat up to ~65 images", not "flat forever".
 //
 // (An `sd3` entry was removed 2026-08-29: the trainer has no SD3 arch, it matched nothing.)
-const ARCH_HEURISTICS: Record<string, StepHeuristic | ((tier: SizeTier) => StepHeuristic)> = {
+const KREA2_SPI_ANCHORS: [number, number][] = [
+  [20, 45],
+  [36, 32],
+  [250, 20],
+];
+export const krea2StepsPerItem = (itemCount: number): number => {
+  if (!itemCount || itemCount <= 0) return 32;
+  const a = KREA2_SPI_ANCHORS;
+  if (itemCount <= a[0][0]) return a[0][1];
+  if (itemCount >= a[a.length - 1][0]) return a[a.length - 1][1];
+  for (let i = 1; i < a.length; i += 1) {
+    if (itemCount <= a[i][0]) {
+      const t = (Math.log(itemCount) - Math.log(a[i - 1][0])) / (Math.log(a[i][0]) - Math.log(a[i - 1][0]));
+      return a[i - 1][1] + t * (a[i][1] - a[i - 1][1]);
+    }
+  }
+  return a[a.length - 1][1];
+};
+
+const ARCH_HEURISTICS: Record<string, StepHeuristic | ((tier: SizeTier, itemCount: number) => StepHeuristic)> = {
   sdxl: { stepsPerItem: 100, minSteps: 1200, maxSteps: 4000 },
   sd15: { stepsPerItem: 100, minSteps: 1000, maxSteps: 3000 },
   flux: { stepsPerItem: 60, minSteps: 1000, maxSteps: 3000 },
@@ -63,8 +82,12 @@ const ARCH_HEURISTICS: Record<string, StepHeuristic | ((tier: SizeTier) => StepH
   // validated against, so krea2 is exempt from it — it already expresses the size effect.
   // Note the maxSteps ceiling (4000), not steps/item, is what still under-reports very large
   // sets — at 400 images the ceiling binds first. Trust sample grids over the gauge there.
-  krea2: tier => ({
-    stepsPerItem: tier === 'small' ? 45 : tier === 'medium' ? 32 : 20,
+  // 2026-10-12 (Adam: compute for the exact count, never snap to a bracket): the three tier
+  // values are now ANCHORS of a continuous curve - 45 at <=20 images, 32 at the measured 36,
+  // 20 at >=250 - interpolated in log(count), so 25, 27 and 29 images each get their own
+  // target instead of all reading the 'small' 45. 0 items (no dataset yet) keeps 32.
+  krea2: (_tier, itemCount) => ({
+    stepsPerItem: krea2StepsPerItem(itemCount),
     minSteps: 600,
     maxSteps: 4000,
   }),
@@ -83,8 +106,11 @@ const ARCH_HEURISTICS: Record<string, StepHeuristic | ((tier: SizeTier) => StepH
 // item count and the tier is derived here, so the suggestion and the exposure gauge resolve the
 // SAME target. If those two ever diverge the gauge will contradict the number the advisor just
 // recommended, which is exactly the failure the floor-warning below exists for.
-const resolveHeuristic = (entry: StepHeuristic | ((tier: SizeTier) => StepHeuristic), tier: SizeTier): StepHeuristic =>
-  typeof entry === 'function' ? entry(tier) : entry;
+const resolveHeuristic = (
+  entry: StepHeuristic | ((tier: SizeTier, itemCount: number) => StepHeuristic),
+  tier: SizeTier,
+  itemCount: number,
+): StepHeuristic => (typeof entry === 'function' ? entry(tier, itemCount) : entry);
 
 // --- dataset-size-aware exposure target (2026-08-29) ---------------------------------------
 //
@@ -163,7 +189,7 @@ export const getHeuristicLookup = (
   const found = lookupByArch(ARCH_HEURISTICS, arch, DEFAULT_HEURISTIC);
   const tier = itemCount > 0 ? getSizeTier(itemCount) : 'medium';
   const archDefinesTiers = typeof found.value === 'function';
-  return { ...found, value: applySizeScale(resolveHeuristic(found.value, tier), itemCount, archDefinesTiers) };
+  return { ...found, value: applySizeScale(resolveHeuristic(found.value, tier, itemCount), itemCount, archDefinesTiers) };
 };
 
 export const getHeuristic = (arch: string | undefined | null, itemCount: number = 0): StepHeuristic =>
@@ -189,6 +215,10 @@ export interface StepTable {
   points: [number, number][];
   max_steps?: number;
   tail_per_item?: number;
+  // 'target': above the last point follow the arch exposure target x tail_target_factor
+  // (default 0.75, inside the gauge's healthy band), never below the last point's steps
+  tail?: 'target';
+  tail_target_factor?: number;
 }
 
 const DEFAULT_TABLE_MAX_STEPS = Number.POSITIVE_INFINITY;
@@ -219,6 +249,10 @@ export const stepsFromTable = (table: StepTable, itemCount: number): number => {
     if (itemCount <= x1) return Math.min(cap, y0 + ((itemCount - x0) / (x1 - x0)) * (y1 - y0));
   }
   const [x1, y1] = pts[pts.length - 1];
+  if (table.tail === 'target' && table.arch) {
+    const factor = table.tail_target_factor ?? 0.75;
+    return Math.min(cap, Math.max(y1, getHeuristic(table.arch, itemCount).stepsPerItem * itemCount * factor));
+  }
   if (typeof table.tail_per_item === 'number' && table.tail_per_item >= 0) {
     return Math.min(cap, y1 + (itemCount - x1) * table.tail_per_item);
   }
@@ -258,6 +292,7 @@ export interface StepSuggestionResult {
   heuristicSource: LookupSource | 'preset';
 }
 
+const fmt1 = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 const roundTo50 = (n: number) => Math.max(50, Math.round(n / 50) * 50);
 const formatBatchSize = (n: number) =>
   Number.isInteger(n) ? `${n}` : n.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
@@ -354,12 +389,12 @@ export const suggestSteps = (input: StepSuggestionInput): StepSuggestionResult |
         : '';
 
   const explanation =
-    `${itemCount} files × ${heuristic.stepsPerItem} steps/file ÷ effective batch ${effectiveBatchLabel}` +
-    ` = ${Math.round(raw)}, clamped to ${heuristic.minSteps}–${heuristic.maxSteps} for ${arch || 'this model'}${provenance}.` +
-    ` Each file is seen ≈${epochsEquivalent}× at the suggested count.` +
+    `${itemCount} files × ${fmt1(heuristic.stepsPerItem)} steps/file ÷ effective batch ${effectiveBatchLabel}` +
+    ` = ${Math.round(raw)}, ${Number.isFinite(heuristic.maxSteps) ? `clamped to ${heuristic.minSteps}–${heuristic.maxSteps}` : `floor ${heuristic.minSteps}, no ceiling`} for ${arch || 'this model'}${provenance}.` +
+    ` Each file is seen ≈${Math.ceil(epochsEquivalent)}× at the suggested count.` +
     (flooredUp
       ? ` Note: the ${heuristic.minSteps}-step floor raised this above the computed ${Math.round(raw)}, so exposure` +
-        ` (≈${epochsEquivalent}×) runs above the ~${heuristic.stepsPerItem}× target for this arch — lower the effective` +
+        ` (≈${Math.ceil(epochsEquivalent)}×) runs above the ~${Math.ceil(heuristic.stepsPerItem)}× target for this arch — lower the effective` +
         ` batch (batch size × gradient accumulation, currently ${effectiveBatchLabel}) to bring the two back in line.`
       : '') +
     (overBatched
@@ -754,7 +789,7 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'RANK BY INTENT (a 12GB musubi guide, independent of the recipe above): 8 gives a lighter style influence, 16 is ' +
       'the balanced middle for composability with other LoRAs, 32 is for a precise subject meant to dominate a stack — ' +
       'which is why this recipe sits at 32 for character work and the concept preset drops alpha instead of rank. ' +
-      'BATCH BY CARD from the same guide: 1 on 8GB, 2 on 12GB, and this fork gates 4 on file count (>=45 here). ' +
+      'BATCH BY CARD from the same guide: 1 on 8GB, 2 on 12GB, and this fork gates 4 on file count (>=47 here, computed from the continuous Krea 2 target). ' +
       REPEATS_NOTE +
       EFFECTIVE_BATCH_NOTE +
       OPTIMIZER_MEMORY_NOTE,
@@ -977,6 +1012,18 @@ const withOptimizer = (recipe: ArchRecipe, optimizer: string | undefined | null)
   };
 };
 
+// 2026-10-12: rank / alpha / batch are discrete settings, so the recipe still picks them by
+// size band - but the note now states the exact count it was computed for and where the
+// next band starts, instead of silently reusing one band's text for every count in it.
+const withCount = (recipe: ArchRecipe, itemCount: number, tier: SizeTier): ArchRecipe => {
+  if (!itemCount || itemCount <= 0) return recipe;
+  const next =
+    tier === 'small' ? `${30 - itemCount} more image(s) reaches the 30-image band` :
+    tier === 'medium' ? `${150 - itemCount} more image(s) reaches the 150-image band` :
+    'largest band';
+  return { ...recipe, notes: `For your ${itemCount} images (${tier} band, <30 / 30-149 / 150+; ${next}): ` + recipe.notes };
+};
+
 export const getArchRecipe = (
   arch: string | undefined | null,
   itemCount: number = 0,
@@ -988,12 +1035,12 @@ export const getArchRecipe = (
 
   if (arch === 'sdxl' || arch.startsWith('sdxl')) {
     const special = illustriousOrPonyRecipe(modelPath, tier);
-    if (special) return withOptimizer(special, optimizer);
+    if (special) return withCount(withOptimizer(special, optimizer), itemCount, tier);
   }
 
   const found = lookupByArch<RecipeByTier | null>(ARCH_RECIPES, arch, null);
   if (!found.value) return null;
-  const recipe = withOptimizer(found.value(tier), optimizer);
+  const recipe = withCount(withOptimizer(found.value(tier), optimizer), itemCount, tier);
   if (found.source !== 'prefix') return recipe;
 
   // Fork note (2026-08-29): a prefix hit used to return the base family's recipe and

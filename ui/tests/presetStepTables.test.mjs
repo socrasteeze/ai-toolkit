@@ -36,10 +36,15 @@ for (const { name, json } of presets) {
     assert.notEqual(t.max_steps, 6000, 'no forced 6000 cap');
     if (!p.model.arch.startsWith('flux2_klein')) {
       assert.equal(t.max_steps, undefined, 'non-Klein tables are uncapped');
-      assert.equal(t.tail_per_item, 20, '+20/image beyond the last anchor');
       const last = t.points[t.points.length - 1];
       const at = n => suggestSteps({ itemCount: n, arch: p.model.arch, batchSize: 1, gradientAccumulation: 1, stepTable: t }).suggested;
-      assert.equal(at(last[0] + 100), Math.round((last[1] + 2000) / 50) * 50, 'tail follows +20/image');
+      if (t.tail === 'target') {
+        const g2 = exposureGauge({ itemCount: 200, arch: p.model.arch, steps: at(200), batchSize: 1, gradientAccumulation: 1, stepTable: t });
+        assert.equal(g2.band, 'healthy', 'target tail reads healthy');
+      } else {
+        assert.equal(t.tail_per_item, 20, '+20/image beyond the last anchor');
+        assert.equal(at(last[0] + 100), Math.round((last[1] + 2000) / 50) * 50, 'tail follows +20/image');
+      }
       assert.ok(at(400) > 6000 || last[1] + (400 - last[0]) * 20 <= 6000, 'no hard 6000 jump/cap');
       // gauge: past the table it judges against the arch target, so a very long run reads hot
       const g = exposureGauge({ itemCount: 200, arch: p.model.arch, steps: 40000, batchSize: 1, gradientAccumulation: 1, stepTable: t });

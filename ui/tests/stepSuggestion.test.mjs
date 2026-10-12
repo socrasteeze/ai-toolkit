@@ -61,7 +61,7 @@ test('maxHealthyBatch allows effective batch 4 once the step floor stops binding
 test('minItemsForBatch reports the file count each effective batch needs', () => {
   // Regression pins: batch 4 is not safe at the low end of a 20-150 image workflow.
   assert.equal(minItemsForBatch(4, 'flux2_klein_4b'), 40);
-  assert.equal(minItemsForBatch(4, 'krea2'), 45);
+  assert.equal(minItemsForBatch(4, 'krea2'), 47); // 45 under the old snapped tiers; 47 with the continuous Krea 2 target (2026-10-12)
   assert.equal(minItemsForBatch(4, 'anima'), 32);
   assert.equal(minItemsForBatch(4, 'sdxl'), 29);
   assert.equal(minItemsForBatch(1, 'anima'), 1);
@@ -266,7 +266,7 @@ test('the batch-4 file thresholds are unaffected (all below the anchor)', () => 
   assert.equal(minItemsForBatch(4, 'sdxl'), 29);
   assert.equal(minItemsForBatch(4, 'anima'), 32);
   assert.equal(minItemsForBatch(4, 'flux2_klein_4b'), 40);
-  assert.equal(minItemsForBatch(4, 'krea2'), 45);
+  assert.equal(minItemsForBatch(4, 'krea2'), 47); // 45 under the old snapped tiers; 47 with the continuous Krea 2 target (2026-10-12)
   for (const n of [29, 32, 40, 45]) assert.equal(sizeTargetScale(n), 1);
 });
 

@@ -71,6 +71,21 @@ resolutions Krea 2 was actually trained at, so it is a different legitimate reci
 rather than a degraded one — but it is not the resolution the field runs used, and the
 preset says so in place. 1024 is the faithful reproduction if the card holds it.
 
+Klein 9B on the laptop: `flux2_klein_9b_character_lora_laptop16gb` (added 2026-10-12) is the
+first Klein preset for this tier. It keeps `flux2_klein_9b_character_lora`'s recipe unchanged
+(16/16 @ 1e-4 adamw8bit, sigmoid, batch 1 x accum 1) and trains at **1024 only** - the parent's
+768 bucket is dropped, a third deliberate exception to the inherit-everything rule. Memory:
+quantize + quantize_te (qfloat8, rewritten to torchao float8 by layer_offloading), low_vram,
+layer offloading TE 100% / transformer 80%, cached text embeddings with the TE unloaded,
+RAM-served latents, sampling off by default (1024 [trigger] prompts pre-set). These are
+COMMUNITY-DERIVED 16 GB settings (ostris #653/#669), not measured on the laptop; the fork's
+only laptop Klein record is an OOM without offloading. OOM order: sampling off -> transformer
+offload 1.0 -> cache_latents false -> 768 last. Set Windows' CUDA Sysmem Fallback Policy to
+Prefer No Sysmem Fallback so a near-ceiling run errors instead of spilling. Its
+`meta.step_table` is the existing 9B rule (60/image, 1000-2500) written out, so the panel's
+numbers match the parent's. The batch plan treats batch 1 as an unmeasured attempt when
+layer_offloading is on (`batchAdvisor.ts`); without offloading Klein stays OOM on this tier.
+
 **Every recipe value is inherited unchanged from the parent preset, with TWO exceptions:
 effective batch on the SDXL-family presets** (lever 4 below — `sdxl_character_lora_laptop16gb`
 and `illustriousxl_character_lora_laptop16gb` run batch 1 + `gradient_accumulation: 2` where

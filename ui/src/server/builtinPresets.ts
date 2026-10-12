@@ -17,6 +17,7 @@ export const BUILTIN_PRESET_NAMES = new Set<string>([
   'anima_lora_laptop16gb',
   'anima_lora_performance',
   'flux2_klein_9b_character_lora',
+  'flux2_klein_9b_character_lora_laptop16gb',
   'flux2_klein_9b_style_lora',
   'flux2_klein_character_lora',
   'flux2_klein_character_lora_automagic',

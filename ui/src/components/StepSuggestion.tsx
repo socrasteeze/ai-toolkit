@@ -191,6 +191,7 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
   // per-preset step table carried in the job config by applyPreset (fork addition 2026-10-11)
   const stepTable = ((jobConfig as any).meta?.step_table ?? null) as StepTable | null;
   const optimizer = process.train.optimizer;
+  const layerOffloading = !!(process.model as any)?.layer_offloading;
   const optimizerFused = ((process.train.optimizer_params || {}) as { fused?: boolean }).fused;
 
   // Machine tier for the batch plan (2026-09-11): read live from the monitor stream, with a
@@ -296,8 +297,8 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
   // desktop and gradient_accumulation on 16/24 GB, with steps re-derived at that effective
   // batch so all three move together.
   const batchPlan = useMemo(
-    () => (tier && itemCount > 0 ? suggestBatch({ itemCount, arch, tier, optimizer, fused: optimizerFused }) : null),
-    [tier, itemCount, arch, optimizer, optimizerFused],
+    () => (tier && itemCount > 0 ? suggestBatch({ itemCount, arch, tier, optimizer, fused: optimizerFused, layerOffloading }) : null),
+    [tier, itemCount, arch, optimizer, optimizerFused, layerOffloading],
   );
   const planSteps = useMemo(
     () =>
@@ -377,7 +378,7 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
       gradientAccumulation: gradAccum,
       stepTable,
     });
-  }, [itemCount, arch, currentSteps, advisorBatchSize, gradAccum]);
+  }, [itemCount, arch, currentSteps, advisorBatchSize, gradAccum, stepTable]);
 
   const bucketAnalyses = useMemo(() => {
     if (Object.keys(merged.dimensionCounts).length === 0) return [];

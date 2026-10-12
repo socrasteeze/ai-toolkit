@@ -107,6 +107,9 @@ export interface BatchPlanInput {
   optimizer?: string | null;
   // optimizer_params.fused; Automagic defaults to fused, v1/v2 have no unfused mode
   fused?: boolean | null;
+  // model.layer_offloading. Only changes a cell recorded as OOM (2026-10-12): those OOMs were
+  // measured WITHOUT offloading, so with it on, batch 1 becomes an inferred (unmeasured) attempt.
+  layerOffloading?: boolean | null;
 }
 
 export interface BatchPlan {
@@ -138,7 +141,11 @@ export interface BatchPlan {
 export const suggestBatch = (input: BatchPlanInput): BatchPlan => {
   const itemCount = Math.max(0, input.itemCount || 0);
   const datasetCeiling = maxHealthyBatch(itemCount, input.arch);
-  const cell = vramCellFor(input.tier, input.arch);
+  const baseCell = vramCellFor(input.tier, input.arch);
+  const cell =
+    baseCell.maxMicroBatch <= 0 && input.layerOffloading
+      ? I(1, `${baseCell.note}; layer_offloading is on, so batch 1 is an UNMEASURED attempt (e.g. flux2_klein_9b_character_lora_laptop16gb) - not a recorded fit`)
+      : baseCell;
   const vramCeiling = cell.maxMicroBatch;
   const reasons: string[] = [];
 

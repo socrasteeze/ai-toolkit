@@ -75,7 +75,7 @@
   "meta": {
     "name": "[name]",
     "version": "1.0",
-    "description": "A/B TWIN of krea2_char_lora, identical in every value except timestep_type: shift instead of linear. It exists to settle a contested setting by measurement instead of argument (CLAUDE.md's rule for exactly this). The disagreement, one source each: LoRA Dataset Studio / RunComfy call linear the Krea-canonical choice, which is why every other Krea 2 preset here ships it; musubi-tuner's own docs/krea2.md - kohya, on the trainer that produced every Krea 2 run this fork trusts - recommends shift sampling instead, --timestep_sampling shift with --discrete_flow_shift 2.5, saying it matches the K2 inference time-shift at 1024x1024, or --timestep_sampling krea2_shift for a resolution-aware schedule per sample. This trainer's shift IS that resolution-aware schedule, not a fixed 2.5: toolkit/samplers/custom_flowmatch_sampler.py's shift branch is commented 'matches inference dynamic shifting' and reads the Krea-specific exponential mu endpoints krea2.py sets (base_shift 0.5 at 256-res to max_shift 1.15 at 1280-res, use_dynamic_shifting true, time_shift_type exponential), per sample from the actual latent size. Upstream's 2026-09-16 patch_size fix is what made its token count correct - runs before that commit computed the wrong one, so any older shift result is void. HOW TO USE IT: run this and krea2_char_lora on the SAME dataset, same seed, same step count, then compare sample grids at matched steps - likeness, prompt adherence, and whether detail holds at non-1024 aspect buckets, which is where a resolution-aware schedule should show up first if it shows up at all. Nothing else differs, so the difference is attributable. Record the result in docs/krea2_field_template_2026_09.md section 7 and, if shift wins, the other Krea 2 presets follow. UNRESOLVED and UNMEASURED as shipped: this preset is the experiment, not the recommendation - the field template that motivated it never recorded which sampling its good runs used. STEP TABLE (meta.step_table, revised 2026-10-12): 20 images ~1500, 30 images ~1500, 50 images ~1600; above 50 images +20 steps/image with no hard cap (e.g. 100 images ~2600, 200 ~4600) - the exposure gauge judges sizes past the table against the arch exposure target and shows warm/hot if the run is getting long. Source: the Krea 2 tiered exposure target (45/32 steps/image) floored at 1500, last anchor at 50 images. Values are steps at effective batch 1 - the Step Suggestion panel and exposure gauge use this table while the preset is loaded and divide by your effective batch (batch_size x gradient_accumulation); below the first row the first row's steps apply.",
+    "description": "A/B TWIN of krea2_char_lora, identical in every value except timestep_type: shift instead of linear. It exists to settle a contested setting by measurement instead of argument (CLAUDE.md's rule for exactly this). The disagreement, one source each: LoRA Dataset Studio / RunComfy call linear the Krea-canonical choice, which is why every other Krea 2 preset here ships it; musubi-tuner's own docs/krea2.md - kohya, on the trainer that produced every Krea 2 run this fork trusts - recommends shift sampling instead, --timestep_sampling shift with --discrete_flow_shift 2.5, saying it matches the K2 inference time-shift at 1024x1024, or --timestep_sampling krea2_shift for a resolution-aware schedule per sample. This trainer's shift IS that resolution-aware schedule, not a fixed 2.5: toolkit/samplers/custom_flowmatch_sampler.py's shift branch is commented 'matches inference dynamic shifting' and reads the Krea-specific exponential mu endpoints krea2.py sets (base_shift 0.5 at 256-res to max_shift 1.15 at 1280-res, use_dynamic_shifting true, time_shift_type exponential), per sample from the actual latent size. Upstream's 2026-09-16 patch_size fix is what made its token count correct - runs before that commit computed the wrong one, so any older shift result is void. HOW TO USE IT: run this and krea2_char_lora on the SAME dataset, same seed, same step count, then compare sample grids at matched steps - likeness, prompt adherence, and whether detail holds at non-1024 aspect buckets, which is where a resolution-aware schedule should show up first if it shows up at all. Nothing else differs, so the difference is attributable. Record the result in docs/krea2_field_template_2026_09.md section 7 and, if shift wins, the other Krea 2 presets follow. UNRESOLVED and UNMEASURED as shipped: this preset is the experiment, not the recommendation - the field template that motivated it never recorded which sampling its good runs used. STEP TABLE (meta.step_table, 2026-10-12, machine-independent - the same table ships on every krea2 preset, laptop or desktop): 20 images ~1500, 30 images ~1800, 50 images ~2500, 75 images ~3000, exact-count interpolation between rows, capped at 3000 steps. OPTIMIZED DATASET COUNT ~75 images: that is where the cap is reached; past it the panel keeps 3000 and the exposure gauge says the dataset is past the optimal size for this model and suggests curating down, instead of calling it undertrained. Source: the Krea 2 community table (20 ~1500 / 30 ~1800 / 50 ~2500 / 100 ~3500, gathered 2026-10-11 and shipped first in krea2_5090_char_lora), capped at 3000 so the 50-100 segment stops at 75 images. Values are steps at effective batch 1; the Step Suggestion panel divides by your effective batch (batch_size x gradient_accumulation), which is the only thing that differs between machines. Below the first row the first row's steps apply.",
     "step_table": {
       "arch": "krea2",
       "points": [
@@ -85,14 +85,18 @@
         ],
         [
           30,
-          1500
+          1800
         ],
         [
           50,
-          1600
+          2500
+        ],
+        [
+          75,
+          3000
         ]
       ],
-      "tail_per_item": 20
+      "max_steps": 3000
     }
   }
 }

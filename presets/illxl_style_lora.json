@@ -70,25 +70,24 @@
   "meta": {
     "name": "[name]",
     "version": "1.1",
-    "description": "Style LoRA on IllustriousXL (SDXL arch). Higher caption dropout and the 'style' timestep weighting bias learning toward look/aesthetic over subject identity. Speed (2026-08-29): latents are served from RAM after the first pass (cache_latents + cache_latents_to_disk \u2014 disk-only caching re-read every latent every step), loss_sync_every 4, ui_db_poll_seconds 2. Training math unchanged. STEP TABLE (meta.step_table, revised 2026-10-12): 20 images ~2000, 30 images ~3000, 40 images ~4000; above 40 images it follows 0.75x the arch exposure target for your exact count (never below the 40-image value, no hard cap - e.g. Anima ~4850 at 100 / ~7750 at 200, illxl ~6500 at 100 / ~10300 at 200), which keeps the exposure gauge in its healthy band - the exposure gauge judges sizes past the table against the arch exposure target and shows warm/hot if the run is getting long. Source: the SDXL-arch 100 steps/image exposure target at 20/30 images and the old SDXL ceiling (4000) as the last anchor at 40. Values are steps at effective batch 1 - the Step Suggestion panel and exposure gauge use this table while the preset is loaded and divide by your effective batch (batch_size x gradient_accumulation); below the first row the first row's steps apply.",
+    "description": "Style LoRA on IllustriousXL (SDXL arch). Higher caption dropout and the 'style' timestep weighting bias learning toward look/aesthetic over subject identity. Speed (2026-08-29): latents are served from RAM after the first pass (cache_latents + cache_latents_to_disk \u2014 disk-only caching re-read every latent every step), loss_sync_every 4, ui_db_poll_seconds 2. Training math unchanged. STEP TABLE (meta.step_table, 2026-10-12, machine-independent - the same table ships on every IllustriousXL/SDXL preset, laptop or desktop): 20 images ~1750, 30 images ~2500, 50 images ~3000, exact-count interpolation between rows, capped at 3000 steps. OPTIMIZED DATASET COUNT ~50 images: that is where the cap is reached; past it the panel keeps 3000 and the exposure gauge says the dataset is past the optimal size for this model and suggests curating down, instead of calling it undertrained. Source: community Illustrious/SDXL character guides: 15-20 images 1500-2000 steps, 20-30 images 2000-3000 (sanj.dev, r/StableDiffusion primer 2026-01), Illustrious converging around 3000 (SeaArt guide; night-dev ai-toolkit guide starts at 3000; note.com 30 images x 10 repeats x 10 epochs = 3000). Values are steps at effective batch 1; the Step Suggestion panel divides by your effective batch (batch_size x gradient_accumulation), which is the only thing that differs between machines. Below the first row the first row's steps apply.",
     "step_table": {
       "arch": "sdxl",
       "points": [
         [
           20,
-          2000
+          1750
         ],
         [
           30,
-          3000
+          2500
         ],
         [
-          40,
-          4000
+          50,
+          3000
         ]
       ],
-      "tail": "target",
-      "tail_target_factor": 0.75
+      "max_steps": 3000
     }
   }
 }

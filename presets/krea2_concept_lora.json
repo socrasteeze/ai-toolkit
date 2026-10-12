@@ -73,7 +73,7 @@
   "meta": {
     "name": "[name]",
     "version": "1.1",
-    "description": "Concept (object/action) LoRA on Krea 2 Raw. EXTRAPOLATED \u2014 no published Krea concept recipe exists (LDS flags this too): rank 32 (Krea family canon) x concept alpha = rank/2, linear timesteps (Krea-canonical). Captions describe everything EXCEPT the concept. Steps: LDS computes 475*sqrt(images) clamped [2000,12000] \u2014 3000 suits ~30-40 images. Speed (2026-08-29): latents are served from RAM after the first pass (cache_latents + cache_latents_to_disk \u2014 disk-only caching re-read every latent every step), loss_sync_every 4, ui_db_poll_seconds 2. Training math unchanged. STEP TABLE (meta.step_table, revised 2026-10-12): 20 images ~1500, 30 images ~1500, 50 images ~1600; above 50 images +20 steps/image with no hard cap (e.g. 100 images ~2600, 200 ~4600) - the exposure gauge judges sizes past the table against the arch exposure target and shows warm/hot if the run is getting long. Source: the Krea 2 tiered exposure target (45/32 steps/image) floored at 1500, last anchor at 50 images. Values are steps at effective batch 1 - the Step Suggestion panel and exposure gauge use this table while the preset is loaded and divide by your effective batch (batch_size x gradient_accumulation); below the first row the first row's steps apply.",
+    "description": "Concept (object/action) LoRA on Krea 2 Raw. EXTRAPOLATED \u2014 no published Krea concept recipe exists (LDS flags this too): rank 32 (Krea family canon) x concept alpha = rank/2, linear timesteps (Krea-canonical). Captions describe everything EXCEPT the concept. Steps: LDS computes 475*sqrt(images) clamped [2000,12000] \u2014 3000 suits ~30-40 images. Speed (2026-08-29): latents are served from RAM after the first pass (cache_latents + cache_latents_to_disk \u2014 disk-only caching re-read every latent every step), loss_sync_every 4, ui_db_poll_seconds 2. Training math unchanged. STEP TABLE (meta.step_table, 2026-10-12, machine-independent - the same table ships on every krea2 preset, laptop or desktop): 20 images ~1500, 30 images ~1800, 50 images ~2500, 75 images ~3000, exact-count interpolation between rows, capped at 3000 steps. OPTIMIZED DATASET COUNT ~75 images: that is where the cap is reached; past it the panel keeps 3000 and the exposure gauge says the dataset is past the optimal size for this model and suggests curating down, instead of calling it undertrained. Source: the Krea 2 community table (20 ~1500 / 30 ~1800 / 50 ~2500 / 100 ~3500, gathered 2026-10-11 and shipped first in krea2_5090_char_lora), capped at 3000 so the 50-100 segment stops at 75 images. Values are steps at effective batch 1; the Step Suggestion panel divides by your effective batch (batch_size x gradient_accumulation), which is the only thing that differs between machines. Below the first row the first row's steps apply.",
     "step_table": {
       "arch": "krea2",
       "points": [
@@ -83,14 +83,18 @@
         ],
         [
           30,
-          1500
+          1800
         ],
         [
           50,
-          1600
+          2500
+        ],
+        [
+          75,
+          3000
         ]
       ],
-      "tail_per_item": 20
+      "max_steps": 3000
     }
   }
 }

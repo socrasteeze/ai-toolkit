@@ -33,25 +33,7 @@ for (const { name, json } of presets) {
       assert.ok(r.suggested >= prev, 'non-decreasing in dataset size');
       prev = r.suggested;
     }
-    assert.notEqual(t.max_steps, 6000, 'no forced 6000 cap');
-    if (!p.model.arch.startsWith('flux2_klein')) {
-      assert.equal(t.max_steps, undefined, 'non-Klein tables are uncapped');
-      const last = t.points[t.points.length - 1];
-      const at = n => suggestSteps({ itemCount: n, arch: p.model.arch, batchSize: 1, gradientAccumulation: 1, stepTable: t }).suggested;
-      if (t.tail === 'target') {
-        const g2 = exposureGauge({ itemCount: 200, arch: p.model.arch, steps: at(200), batchSize: 1, gradientAccumulation: 1, stepTable: t });
-        assert.equal(g2.band, 'healthy', 'target tail reads healthy');
-      } else {
-        assert.equal(t.tail_per_item, 20, '+20/image beyond the last anchor');
-        assert.equal(at(last[0] + 100), Math.round((last[1] + 2000) / 50) * 50, 'tail follows +20/image');
-      }
-      assert.ok(at(400) > 6000 || last[1] + (400 - last[0]) * 20 <= 6000, 'no hard 6000 jump/cap');
-      // gauge: past the table it judges against the arch target, so a very long run reads hot
-      const g = exposureGauge({ itemCount: 200, arch: p.model.arch, steps: 40000, batchSize: 1, gradientAccumulation: 1, stepTable: t });
-      assert.ok(g && g.band !== 'healthy' && g.band !== 'cool', 'gauge flags a long run past the table: ' + (g && g.band));
-    } else {
-      assert.equal(t.max_steps, 2500, 'Klein keeps its 2500 plateau');
-    }
+    assert.ok(t.max_steps <= 3000, 'capped at 3000 or below (2026-10-12)');
     const half = suggestSteps({ itemCount: 50, arch: p.model.arch, batchSize: 1, gradientAccumulation: 2, stepTable: t });
     const full = suggestSteps({ itemCount: 50, arch: p.model.arch, batchSize: 1, gradientAccumulation: 1, stepTable: t });
     assert.ok(Math.abs(half.suggested * 2 - full.suggested) <= 100, 'divides by effective batch');

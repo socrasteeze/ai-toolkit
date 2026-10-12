@@ -260,6 +260,20 @@ export const stepsFromTable = (table: StepTable, itemCount: number): number => {
   return Math.min(cap, y1 + ((itemCount - x1) * (y1 - y0)) / (x1 - x0));
 };
 
+/** Smallest image count (rounded up) at which the table reaches max_steps, or null if it never does. */
+export const tableCapCount = (table: StepTable): number | null => {
+  const cap = table.max_steps;
+  if (!cap || !Number.isFinite(cap)) return null;
+  const pts = table.points;
+  if (pts[0][1] >= cap) return pts[0][0];
+  for (let i = 1; i < pts.length; i += 1) {
+    const [x0, y0] = pts[i - 1];
+    const [x1, y1] = pts[i];
+    if (y1 >= cap) return Math.ceil(x0 + ((cap - y0) / (y1 - y0)) * (x1 - x0));
+  }
+  return null;
+};
+
 const tableHeuristic = (table: StepTable, itemCount: number): StepHeuristic => ({
   stepsPerItem: stepsFromTable(table, itemCount) / itemCount,
   minSteps: 100,
@@ -380,8 +394,9 @@ export const suggestSteps = (input: StepSuggestionInput): StepSuggestionResult |
 
   // Say where the target came from when it is not this arch's own number — a generic
   // 75/file for an arch nobody has researched must not read like a researched value.
+  const capAt = table ? tableCapCount(table) : null;
   const provenance = table
-    ? " (from this preset's step table, meta.step_table)"
+    ? ` (from this preset's step table, meta.step_table${capAt !== null ? `; it reaches its ${table.max_steps}-step cap at ~${capAt} images${itemCount >= capAt ? ' - past that, curate the dataset down rather than training longer' : ''}` : ''})`
     : lookup.source === 'default'
       ? ` (generic default — no ${arch || 'arch'}-specific exposure data)`
       : lookup.source === 'prefix'
@@ -430,6 +445,9 @@ export interface ExposureGauge {
   // true when the reading is 'cool' only because the arch's maxSteps ceiling binds at
   // this dataset size — i.e. the advisor's own suggestion cannot reach the target either
   ceilingBound: boolean;
+  // step-table presets: the dataset is at/after the size where the table hits its cap
+  pastOptimalSize?: boolean;
+  optimalCount?: number | null;
 }
 
 // Bands are relative to the arch's stepsPerItem heuristic: healthy ≈ 0.7–1.3× of it,
@@ -456,10 +474,11 @@ export const exposureGauge = (input: {
   if (!itemCount || itemCount <= 0 || !steps || steps <= 0) return null;
   const effectiveBatch = Math.max(1, input.batchSize || 1) * Math.max(1, input.gradientAccumulation || 1);
   const table = activeStepTable(input.stepTable, arch);
-  // beyond the table's last point the gauge judges against the arch exposure target, not the
-  // table's own tail (otherwise any tail would always read on-target)
-  const inTable = !!table && itemCount <= table.points[table.points.length - 1][0];
-  const heuristic = table && inTable ? tableHeuristic(table, itemCount) : getHeuristic(arch, itemCount);
+  const heuristic = table ? tableHeuristic(table, itemCount) : getHeuristic(arch, itemCount);
+  // 2026-10-12: past the image count where the table reaches its cap, the dataset - not the
+  // step count - is the thing to change, so the gauge never calls that 'cool / undertrained'.
+  const optimalCount = table ? tableCapCount(table) : null;
+  const pastOptimalSize = optimalCount !== null && itemCount >= optimalCount;
   const target = heuristic.stepsPerItem;
   const exposures = (steps * effectiveBatch) / itemCount;
   const ratio = exposures / target;
@@ -474,11 +493,17 @@ export const exposureGauge = (input: {
     warm: '🔥 Warm — watch for overfit',
     fry: '💀 Fry-risk — likely overtrained',
   };
+  const capSteps = table?.max_steps;
+  const oversizeTip =
+    `Past the optimal dataset size for this model: the step table reaches its ${capSteps}-step cap at ~${optimalCount} images ` +
+    `and you have ${itemCount}. Curate down toward your best ~${optimalCount} images rather than training longer.`;
   return {
     exposures: Math.round(exposures * 10) / 10,
-    band,
-    label: labels[band],
-    ceilingBound,
+    band: pastOptimalSize && band === 'cool' ? 'healthy' : band,
+    label: pastOptimalSize ? (band === 'warm' || band === 'fry' ? `${labels[band]}. ${oversizeTip}` : oversizeTip) : labels[band],
+    ceilingBound: pastOptimalSize ? false : ceilingBound,
+    pastOptimalSize,
+    optimalCount,
   };
 };
 

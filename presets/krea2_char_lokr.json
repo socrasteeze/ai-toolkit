@@ -74,7 +74,7 @@
   "meta": {
     "name": "[name]",
     "version": "1.0",
-    "description": "Character LoKr (not LoRA) on Krea 2 Raw, 24GB class - new 2026-09-11. WHY: LoKr is reported to bleed identity noticeably less than LoRA on this model - put two characters in one image and they keep their own faces instead of averaging - which is the same failure the Krea 2 LoRA presets answer with Differential Output Preservation and regularization datasets. LoKr is a cheaper first try than either. Everything else is krea2_24gb_gen_lora unchanged: adamw8bit, linear timesteps (Krea-canonical), 1024 resolution (train at 512 or 1024, never 768 - Krea 2's own training resolutions are 256/512/1024 and 768 runs are reported to go wrong), qfloat8 + low_vram. TWO deltas from the LoRA presets. (1) network.type lokr with lokr_factor 8. The factor is CONTESTED and this is the compromise value: the ai-toolkit community leans 4, 8 is the stated middle, one published guide says 16 (at 768, which contradicts the resolution rule). Mind the direction - in LyCORIS factorization a LOWER factor means a LARGER, more expressive network (factor 4 on a 1024-dim layer gives a 256x256 block, factor 16 gives 64x64), so 4 is the heavy end and produces the multi-GB files people report. lokr_full_rank is true, which is the trainer's default and makes network.linear / linear_alpha IGNORED (config_modules.py overrides them) - they are left at 32/32 only so the UI fields show something sane. (2) LR 5e-5, half the LoRA presets' 1e-4: LoKr wants the lower rate (one wrapper rails an adaptive controller at min 5e-5 / max 1e-4 for LoKr specifically, and keeps 1e-4 for plain LoRA). Set a made-up trigger word rather than a real name. Steps 2000 is a placeholder - let the in-app advisor size them from your image count (Krea 2's target is tiered: ~45 passes/image under 30 images, 32 at 30-149, 20 above). UNVERIFIED IN THIS FORK: no measured LoKr run here, and no LoKr checkpoint has been round-tripped through ComfyUI from this trainer. Treat it as an experiment against the known-good LoRA presets, not a replacement for them. STEP TABLE (meta.step_table, revised 2026-10-12): 20 images ~1500, 30 images ~1500, 50 images ~1600; above 50 images +20 steps/image with no hard cap (e.g. 100 images ~2600, 200 ~4600) - the exposure gauge judges sizes past the table against the arch exposure target and shows warm/hot if the run is getting long. Source: the Krea 2 tiered exposure target (45/32 steps/image) floored at 1500, last anchor at 50 images. Values are steps at effective batch 1 - the Step Suggestion panel and exposure gauge use this table while the preset is loaded and divide by your effective batch (batch_size x gradient_accumulation); below the first row the first row's steps apply.",
+    "description": "Character LoKr (not LoRA) on Krea 2 Raw, 24GB class - new 2026-09-11. WHY: LoKr is reported to bleed identity noticeably less than LoRA on this model - put two characters in one image and they keep their own faces instead of averaging - which is the same failure the Krea 2 LoRA presets answer with Differential Output Preservation and regularization datasets. LoKr is a cheaper first try than either. Everything else is krea2_24gb_gen_lora unchanged: adamw8bit, linear timesteps (Krea-canonical), 1024 resolution (train at 512 or 1024, never 768 - Krea 2's own training resolutions are 256/512/1024 and 768 runs are reported to go wrong), qfloat8 + low_vram. TWO deltas from the LoRA presets. (1) network.type lokr with lokr_factor 8. The factor is CONTESTED and this is the compromise value: the ai-toolkit community leans 4, 8 is the stated middle, one published guide says 16 (at 768, which contradicts the resolution rule). Mind the direction - in LyCORIS factorization a LOWER factor means a LARGER, more expressive network (factor 4 on a 1024-dim layer gives a 256x256 block, factor 16 gives 64x64), so 4 is the heavy end and produces the multi-GB files people report. lokr_full_rank is true, which is the trainer's default and makes network.linear / linear_alpha IGNORED (config_modules.py overrides them) - they are left at 32/32 only so the UI fields show something sane. (2) LR 5e-5, half the LoRA presets' 1e-4: LoKr wants the lower rate (one wrapper rails an adaptive controller at min 5e-5 / max 1e-4 for LoKr specifically, and keeps 1e-4 for plain LoRA). Set a made-up trigger word rather than a real name. Steps 2000 is a placeholder - let the in-app advisor size them from your image count (Krea 2's target is tiered: ~45 passes/image under 30 images, 32 at 30-149, 20 above). UNVERIFIED IN THIS FORK: no measured LoKr run here, and no LoKr checkpoint has been round-tripped through ComfyUI from this trainer. Treat it as an experiment against the known-good LoRA presets, not a replacement for them. STEP TABLE (meta.step_table, 2026-10-12, machine-independent - the same table ships on every krea2 preset, laptop or desktop): 20 images ~1500, 30 images ~1800, 50 images ~2500, 75 images ~3000, exact-count interpolation between rows, capped at 3000 steps. OPTIMIZED DATASET COUNT ~75 images: that is where the cap is reached; past it the panel keeps 3000 and the exposure gauge says the dataset is past the optimal size for this model and suggests curating down, instead of calling it undertrained. Source: the Krea 2 community table (20 ~1500 / 30 ~1800 / 50 ~2500 / 100 ~3500, gathered 2026-10-11 and shipped first in krea2_5090_char_lora), capped at 3000 so the 50-100 segment stops at 75 images. Values are steps at effective batch 1; the Step Suggestion panel divides by your effective batch (batch_size x gradient_accumulation), which is the only thing that differs between machines. Below the first row the first row's steps apply.",
     "step_table": {
       "arch": "krea2",
       "points": [
@@ -84,14 +84,18 @@
         ],
         [
           30,
-          1500
+          1800
         ],
         [
           50,
-          1600
+          2500
+        ],
+        [
+          75,
+          3000
         ]
       ],
-      "tail_per_item": 20
+      "max_steps": 3000
     }
   }
 }

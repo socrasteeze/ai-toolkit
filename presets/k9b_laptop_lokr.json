@@ -1,0 +1,128 @@
+{
+  "job": "extension",
+  "config": {
+    "name": "preset",
+    "process": [
+      {
+        "type": "diffusion_trainer",
+        "training_folder": "output",
+        "device": "cuda",
+        "trigger_word": null,
+        "network": {
+          "type": "lokr",
+          "linear": 32,
+          "linear_alpha": 32,
+          "conv": 16,
+          "conv_alpha": 16,
+          "lokr_full_rank": true,
+          "lokr_factor": 8
+        },
+        "save": {
+          "dtype": "bf16",
+          "save_every": 250,
+          "max_step_saves_to_keep": 10,
+          "save_format": "safetensors",
+          "push_to_hub": false
+        },
+        "datasets": [
+          {
+            "folder_path": "/path/to/images/folder",
+            "caption_ext": "txt",
+            "caption_dropout_rate": 0.05,
+            "resolution": [
+              1024
+            ],
+            "num_repeats": 1,
+            "cache_latents_to_disk": true,
+            "cache_latents": true,
+            "buckets": true
+          }
+        ],
+        "train": {
+          "batch_size": 1,
+          "steps": 1500,
+          "gradient_accumulation": 1,
+          "train_unet": true,
+          "train_text_encoder": false,
+          "gradient_checkpointing": true,
+          "noise_scheduler": "flowmatch",
+          "optimizer": "adamw8bit",
+          "timestep_type": "sigmoid",
+          "content_or_style": "balanced",
+          "lr": 5e-05,
+          "dtype": "bf16",
+          "loss_sync_every": 4,
+          "ui_db_poll_seconds": 2,
+          "cache_text_embeddings": true,
+          "unload_text_encoder": true,
+          "disable_sampling": true
+        },
+        "model": {
+          "name_or_path": "black-forest-labs/FLUX.2-klein-base-9B",
+          "arch": "flux2_klein_9b",
+          "quantize": true,
+          "qtype": "qfloat8",
+          "quantize_te": true,
+          "qtype_te": "qfloat8",
+          "low_vram": true,
+          "compile": false,
+          "layer_offloading": true,
+          "layer_offloading_text_encoder_percent": 1,
+          "layer_offloading_transformer_percent": 0.8
+        },
+        "sample": {
+          "sampler": "flowmatch",
+          "sample_every": 250,
+          "width": 1024,
+          "height": 1024,
+          "guidance_scale": 4,
+          "sample_steps": 25,
+          "samples": [
+            {
+              "prompt": "[trigger], close up portrait, natural window light, neutral expression"
+            },
+            {
+              "prompt": "[trigger] smiling, medium shot, standing on a city street at golden hour"
+            },
+            {
+              "prompt": "[trigger], full body, walking through a forest trail, wearing a denim jacket"
+            },
+            {
+              "prompt": "[trigger] sitting at a cafe table holding a coffee cup, candid photo"
+            },
+            {
+              "prompt": "three quarter view of [trigger], studio lighting, plain grey backdrop"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "meta": {
+    "name": "[name]",
+    "version": "1.0",
+    "description": "FLUX.2 Klein 9B character LoKr in the 16 GB laptop memory profile (RTX 5080 Laptop 16 GB, 96 GB RAM, native Windows - NOBLE-G18), trained at 1024. LoKr twin of k9b_laptop_lora: identical 1024 / layer offloading (TE 100%, transformer 80%) / quantize + quantize_te (qfloat8 -> torchao float8 under offloading) / low_vram / cached text embeddings + TE unloaded / RAM-served latents / sampling off (1024 [trigger] prompts pre-set) / save every 250 keeping 10 / step table setup - only the network and LR differ. SOURCE: COMMUNITY-DERIVED and UNMEASURED - no LoKr run of Klein exists in this fork and none of these values were tried on the laptop. Community reports (r/StableDiffusion, ai-toolkit users on Klein 9B) claim LoKr reaches likeness faster than LoRA on Klein character training; that is a claim, not a fork result. NETWORK: type lokr, lokr_full_rank true, lokr_factor 8, linear 32/32 + conv 16/16 (the community Klein 9B LoKr config). NOTE: with lokr_full_rank on, toolkit/config_modules.py replaces linear/alpha/conv/conv_alpha with 9999999999 so the second Kronecker factor is never decomposed - the 32/32 and 16/16 values are kept for reference and only matter if you turn full rank off. Factor direction (toolkit/models/lokr.py factorization()): LOWER factor = LARGER network. Factor 4 is the community pick for maximum likeness at more memory and a bigger file; 16 is smaller and also reported to work. LR 5e-5 (half the LoRA preset's 1e-4, same as krea2_character_lokr and the community Klein 9B LoKr config), adamw8bit, sigmoid timesteps, batch 1 x accum 1, 1500 steps. LOADING: the fork's flux2 load path quantizes block-by-block on the GPU and hands blocks to the layer offloader, so the ostris #653 load-time OOM should not apply (read from code, not tested on 16 GB). WINDOWS: set NVIDIA Control Panel > Manage 3D settings > CUDA - Sysmem Fallback Policy = Prefer No Sysmem Fallback; without it a near-ceiling run spills into shared memory and s/it jumps several-fold instead of erroring. Keep ~1.5 GB VRAM free. IF YOU OOM, in order: (1) confirm sampling is still off; (2) raise layer_offloading_transformer_percent 0.8 -> 1.0; (3) set cache_latents false (keep cache_latents_to_disk); (4) raise lokr_factor 8 -> 16 (smaller network) - do NOT go to 4 on this card until 8 fits with headroom; (5) only then lower resolution to 768. STEPS: meta.step_table is the fork's existing Klein 9B rule (60 steps/image, 1000-2500) written out - 17 images ~1000, 20 ~1200, 30 ~1800, 40 ~2400, 42+ 2500; unchanged at 1024 because no fork doc gives a reason to change it. Community LoKr runs report likeness earlier (around 1000-1500 steps), so test the early checkpoints. BATCH: batch 1; the 16 GB laptop batch plan treats it as UNMEASURED when layer_offloading is on. Set your Trigger Word in the job form. Gated on HF - accept the licence.",
+    "step_table": {
+      "arch": "flux2_klein_9b",
+      "points": [
+        [
+          17,
+          1020
+        ],
+        [
+          20,
+          1200
+        ],
+        [
+          30,
+          1800
+        ],
+        [
+          40,
+          2400
+        ]
+      ],
+      "max_steps": 2500
+    }
+  }
+}

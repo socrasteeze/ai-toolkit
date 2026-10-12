@@ -71,9 +71,10 @@ resolutions Krea 2 was actually trained at, so it is a different legitimate reci
 rather than a degraded one — but it is not the resolution the field runs used, and the
 preset says so in place. 1024 is the faithful reproduction if the card holds it.
 
-Klein 9B on the laptop: `flux2_klein_9b_character_lora_laptop16gb` (added 2026-10-12) is the
+Klein 9B on the laptop: `k9b_laptop_lora` (added 2026-10-12) is the
 first Klein preset for this tier. It keeps `flux2_klein_9b_character_lora`'s recipe unchanged
-(16/16 @ 1e-4 adamw8bit, sigmoid, batch 1 x accum 1) and trains at **1024 only** - the parent's
+(1e-4 adamw8bit, sigmoid, batch 1 x accum 1) except rank, raised to 32/32 (v1.1: matches Adam's earlier
+9B runs and BFL's complex-subject guidance; not compared against 16 at 1024), and trains at **1024 only** - the parent's
 768 bucket is dropped, a third deliberate exception to the inherit-everything rule. Memory:
 quantize + quantize_te (qfloat8, rewritten to torchao float8 by layer_offloading), low_vram,
 layer offloading TE 100% / transformer 80%, cached text embeddings with the TE unloaded,
@@ -85,6 +86,9 @@ Prefer No Sysmem Fallback so a near-ceiling run errors instead of spilling. Its
 `meta.step_table` is the existing 9B rule (60/image, 1000-2500) written out, so the panel's
 numbers match the parent's. The batch plan treats batch 1 as an unmeasured attempt when
 layer_offloading is on (`batchAdvisor.ts`); without offloading Klein stays OOM on this tier.
+Its LoKr twin `k9b_laptop_lokr` (2026-10-12) is the same setup with lokr / full rank /
+factor 8 (linear 32/32 + conv 16/16, ignored under full rank) at LR 5e-5 - community-derived,
+unmeasured; factor 4 trades memory for likeness, factor 16 is the OOM step.
 
 **Every recipe value is inherited unchanged from the parent preset, with TWO exceptions:
 effective batch on the SDXL-family presets** (lever 4 below — `sdxl_character_lora_laptop16gb`

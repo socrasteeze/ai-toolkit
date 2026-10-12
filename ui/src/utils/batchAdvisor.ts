@@ -144,7 +144,7 @@ export const suggestBatch = (input: BatchPlanInput): BatchPlan => {
   const baseCell = vramCellFor(input.tier, input.arch);
   const cell =
     baseCell.maxMicroBatch <= 0 && input.layerOffloading
-      ? I(1, `${baseCell.note}; layer_offloading is on, so batch 1 is an UNMEASURED attempt (e.g. flux2_klein_9b_character_lora_laptop16gb) - not a recorded fit`)
+      ? I(1, `${baseCell.note}; layer_offloading is on, so batch 1 is an UNMEASURED attempt (e.g. k9b_laptop_lora) - not a recorded fit`)
       : baseCell;
   const vramCeiling = cell.maxMicroBatch;
   const reasons: string[] = [];

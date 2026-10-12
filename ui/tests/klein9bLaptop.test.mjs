@@ -5,10 +5,10 @@ import path from 'node:path';
 import { suggestSteps, exposureGauge, activeStepTable } from '../src/utils/stepSuggestion.ts';
 import { suggestBatch } from '../src/utils/batchAdvisor.ts';
 
-// Pins flux2_klein_9b_character_lora_laptop16gb (2026-10-12): community-derived 16 GB memory
+// Pins k9b_laptop_lora (2026-10-12): community-derived 16 GB memory
 // profile at 1024 on top of the unchanged 9B character recipe, and its step table = the
 // fork's existing 9B rule (60/image, 1000-2500).
-const file = path.resolve(import.meta.dirname, '..', '..', 'presets', 'flux2_klein_9b_character_lora_laptop16gb.json');
+const file = path.resolve(import.meta.dirname, '..', '..', 'presets', 'k9b_laptop_lora.json');
 const preset = JSON.parse(readFileSync(file, 'utf8'));
 const p = preset.config.process[0];
 const table = preset.meta.step_table;
@@ -17,8 +17,9 @@ test('klein 9b laptop preset: recipe and 16 GB memory settings', () => {
   assert.equal(p.model.arch, 'flux2_klein_9b');
   assert.equal(p.model.name_or_path, 'black-forest-labs/FLUX.2-klein-base-9B');
   assert.equal(p.network.type, 'lora');
-  assert.equal(p.network.linear, 16);
-  assert.equal(p.network.linear_alpha, 16);
+  assert.equal(p.network.linear, 32);
+  assert.equal(p.network.linear_alpha, 32);
+  assert.equal(p.network.conv, undefined, 'linear-only like the parent');
   assert.equal(p.train.optimizer, 'adamw8bit');
   assert.equal(p.train.lr, 1e-4);
   assert.equal(p.train.batch_size, 1);
@@ -89,4 +90,39 @@ test('laptop batch plan: Klein still OOM without offloading, inferred batch 1 wi
   assert.match(on.vramNote, /UNMEASURED/);
   const desk = suggestBatch({ itemCount: 30, arch: 'flux2_klein_9b', tier: 'desktop32', optimizer: 'adamw8bit', layerOffloading: true });
   assert.equal(desk.vramCeiling, 2, 'desktop cell unchanged');
+});
+
+const lokrFile = path.resolve(import.meta.dirname, '..', '..', 'presets', 'k9b_laptop_lokr.json');
+const lokr = JSON.parse(readFileSync(lokrFile, 'utf8'));
+const k = lokr.config.process[0];
+
+test('k9b_laptop_lokr: LoKr network, LR 5e-5, otherwise the LoRA laptop setup', () => {
+  assert.deepEqual(k.network, { type: 'lokr', linear: 32, linear_alpha: 32, conv: 16, conv_alpha: 16, lokr_full_rank: true, lokr_factor: 8 });
+  assert.equal(k.train.lr, 5e-5);
+  assert.equal(k.train.optimizer, 'adamw8bit');
+  assert.deepEqual(k.model, p.model);
+  assert.deepEqual(k.datasets, p.datasets);
+  assert.deepEqual(k.save, p.save);
+  assert.deepEqual(k.sample, p.sample);
+  const { lr: _a, ...kt } = k.train; const { lr: _b, ...pt } = p.train;
+  assert.deepEqual(kt, pt);
+  assert.deepEqual(lokr.meta.step_table, table);
+  for (const s of k.sample.samples) assert.match(s.prompt, /\[trigger\]/);
+  const d = lokr.meta.description;
+  assert.match(d, /COMMUNITY-DERIVED and UNMEASURED/);
+  assert.match(d, /Factor 4/);
+  assert.match(d, /IF YOU OOM, in order/);
+  assert.match(d, /Sysmem Fallback/);
+});
+
+test('k9b_laptop_lokr step table drives the panel like the LoRA twin', () => {
+  for (const [n, want] of [[20, 1200], [30, 1800], [60, 2500]]) {
+    const r = suggestSteps({ itemCount: n, arch: 'flux2_klein_9b', batchSize: 1, gradientAccumulation: 1, stepTable: lokr.meta.step_table });
+    assert.equal(r.suggested, want);
+    assert.equal(r.heuristicSource, 'preset');
+  }
+  const plan = suggestBatch({ itemCount: 30, arch: k.model.arch, tier: 'laptop16', optimizer: k.train.optimizer, layerOffloading: k.model.layer_offloading });
+  assert.equal(plan.fits, true);
+  assert.equal(plan.batchSize, 1);
+  assert.equal(plan.measured, false);
 });

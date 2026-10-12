@@ -179,7 +179,7 @@ export const getHeuristic = (arch: string | undefined | null, itemCount: number 
 // the range (small sets are not trained less), the last segment's slope above it, capped at
 // max_steps (default 6000). Values are steps at effective batch 1; a larger effective batch
 // divides them. Every preset without a table is untouched. krea2_character_lora_5090 and
-// flux2_klein_9b_character_lora_laptop16gb ship one. The batch ceiling (maxHealthyBatch / batchAdvisor) stays arch-based on purpose.
+// k9b_laptop_lora ship one. The batch ceiling (maxHealthyBatch / batchAdvisor) stays arch-based on purpose.
 export interface StepTable {
   arch?: string;
   points: [number, number][];

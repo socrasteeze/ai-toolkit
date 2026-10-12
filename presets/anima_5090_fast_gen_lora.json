@@ -59,7 +59,7 @@
           "noise_scheduler": "flowmatch",
           "optimizer": "adamw",
           "timestep_type": "sigmoid",
-          "lr": 0.00002,
+          "lr": 2e-05,
           "dtype": "bf16"
         },
         "model": {
@@ -84,7 +84,7 @@
   "meta": {
     "name": "[name]",
     "version": "2.0",
-    "description": "Anima 2B LoRA, 5090 FAST profile: the performance preset plus every verified speed lever. gradient_checkpointing OFF (a 2B model on 32GB does not need the ~30-40% recompute tax), latents cached to disk AND served from RAM (cache_latents + cache_latents_to_disk — disk-only re-reads every step), text embeds cached (hard-unloads the text encoder), full bf16 no quantization, batch 2, samples/saves stretched to 500. Fork speed keys: loss_sync_every 4 (loss display/log updates every 4 steps instead of syncing the GPU every step), ui_db_poll_seconds 2 (UI stop/save/sample buttons take up to 2s to be noticed). Training math is identical to the performance preset — same effective batch 2, author's recipe (rank 32, AdamW 2e-5, LLM adapter frozen) apart from that batch, which this fork lowered from the author's 4 because effective batch 4 pushes the in-app step suggestion under its floor on small/medium datasets, where clamping inflates real per-image exposure into overfit range. If 1024 x batch 2 OOMs without checkpointing, drop batch_size to 1 before re-enabling gradient_checkpointing. Not for shared-GPU use — take the background preset for that. Effective batch 4 (batch 4 x accum 1) matches the Anima author's published recipe. Needs >=32 training files; below that use anima_background_gen_lora (effective batch 2). STEP TABLE (meta.step_table, added 2026-10-12): 20 images ~1500, 30 images ~2250, 50 images ~3750, 100 images ~6000, then +20/image above 100 (200 images ~6000), capped at 6000. Source: the fork's per-arch advisor value exposure target for anima (steps/image incl. the size damping, i.e. what the exposure gauge calls on-target - before the arch's own maxSteps ceiling) at 20/30/50/100 images, floored at 1500, then +20 steps/image above 100, capped at 6000. Values are steps at effective batch 1 - the Step Suggestion panel and exposure gauge use this table while the preset is loaded and divide by your effective batch (batch_size x gradient_accumulation); below the first row the first row's steps apply.",
+    "description": "Anima 2B LoRA, 5090 FAST profile: the performance preset plus every verified speed lever. gradient_checkpointing OFF (a 2B model on 32GB does not need the ~30-40% recompute tax), latents cached to disk AND served from RAM (cache_latents + cache_latents_to_disk \u2014 disk-only re-reads every step), text embeds cached (hard-unloads the text encoder), full bf16 no quantization, batch 2, samples/saves stretched to 500. Fork speed keys: loss_sync_every 4 (loss display/log updates every 4 steps instead of syncing the GPU every step), ui_db_poll_seconds 2 (UI stop/save/sample buttons take up to 2s to be noticed). Training math is identical to the performance preset \u2014 same effective batch 2, author's recipe (rank 32, AdamW 2e-5, LLM adapter frozen) apart from that batch, which this fork lowered from the author's 4 because effective batch 4 pushes the in-app step suggestion under its floor on small/medium datasets, where clamping inflates real per-image exposure into overfit range. If 1024 x batch 2 OOMs without checkpointing, drop batch_size to 1 before re-enabling gradient_checkpointing. Not for shared-GPU use \u2014 take the background preset for that. Effective batch 4 (batch 4 x accum 1) matches the Anima author's published recipe. Needs >=32 training files; below that use anima_background_gen_lora (effective batch 2). STEP TABLE (meta.step_table, revised 2026-10-12): 20 images ~1500, 30 images ~2250, 40 images ~3000; above 40 images +20 steps/image with no hard cap (e.g. 100 images ~4200, 200 ~6200) - the exposure gauge judges sizes past the table against the arch exposure target and shows warm/hot if the run is getting long. Source: Anima's 75 steps/image exposure target at 20/30 images and the old Anima ceiling (3000) as the last anchor at 40. Values are steps at effective batch 1 - the Step Suggestion panel and exposure gauge use this table while the preset is loaded and divide by your effective batch (batch_size x gradient_accumulation); below the first row the first row's steps apply.",
     "step_table": {
       "arch": "anima",
       "points": [
@@ -97,19 +97,11 @@
           2250
         ],
         [
-          50,
-          3750
-        ],
-        [
-          100,
-          6000
-        ],
-        [
-          200,
-          6000
+          40,
+          3000
         ]
       ],
-      "max_steps": 6000
+      "tail_per_item": 20
     }
   }
 }

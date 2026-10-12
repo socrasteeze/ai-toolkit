@@ -177,16 +177,21 @@ export const getHeuristic = (arch: string | undefined | null, itemCount: number 
 // (so switching model type drops it), the table replaces the arch heuristic for the suggestion
 // and the exposure gauge: linear interpolation between points, the first point's steps below
 // the range (small sets are not trained less), the last segment's slope above it, capped at
-// max_steps (default 6000). Values are steps at effective batch 1; a larger effective batch
+// max_steps when the table sets one (no default cap since 2026-10-12). An optional
+// tail_per_item replaces that slope above the last point (steps added per extra image).
+// The exposure gauge uses the table only up to its last point; beyond it the gauge falls
+// back to the arch exposure target, so a long tail still shows warm/hot when it overshoots.
+// Values are steps at effective batch 1; a larger effective batch
 // divides them. Every preset without a table is untouched. Since 2026-10-12 every Anima,
 // illxl, Klein 4B/9B and Krea 2 preset ships one (pinned by ui/tests/presetStepTables.test.mjs). The batch ceiling (maxHealthyBatch / batchAdvisor) stays arch-based on purpose.
 export interface StepTable {
   arch?: string;
   points: [number, number][];
   max_steps?: number;
+  tail_per_item?: number;
 }
 
-const DEFAULT_TABLE_MAX_STEPS = 6000;
+const DEFAULT_TABLE_MAX_STEPS = Number.POSITIVE_INFINITY;
 
 /** Normalized, sorted points, or null when the table is absent, malformed or for another arch. */
 export const activeStepTable = (
@@ -213,8 +218,11 @@ export const stepsFromTable = (table: StepTable, itemCount: number): number => {
     const [x1, y1] = pts[i];
     if (itemCount <= x1) return Math.min(cap, y0 + ((itemCount - x0) / (x1 - x0)) * (y1 - y0));
   }
-  const [x0, y0] = pts[pts.length - 2];
   const [x1, y1] = pts[pts.length - 1];
+  if (typeof table.tail_per_item === 'number' && table.tail_per_item >= 0) {
+    return Math.min(cap, y1 + (itemCount - x1) * table.tail_per_item);
+  }
+  const [x0, y0] = pts[pts.length - 2];
   return Math.min(cap, y1 + ((itemCount - x1) * (y1 - y0)) / (x1 - x0));
 };
 
@@ -413,7 +421,10 @@ export const exposureGauge = (input: {
   if (!itemCount || itemCount <= 0 || !steps || steps <= 0) return null;
   const effectiveBatch = Math.max(1, input.batchSize || 1) * Math.max(1, input.gradientAccumulation || 1);
   const table = activeStepTable(input.stepTable, arch);
-  const heuristic = table ? tableHeuristic(table, itemCount) : getHeuristic(arch, itemCount);
+  // beyond the table's last point the gauge judges against the arch exposure target, not the
+  // table's own tail (otherwise any tail would always read on-target)
+  const inTable = !!table && itemCount <= table.points[table.points.length - 1][0];
+  const heuristic = table && inTable ? tableHeuristic(table, itemCount) : getHeuristic(arch, itemCount);
   const target = heuristic.stepsPerItem;
   const exposures = (steps * effectiveBatch) / itemCount;
   const ratio = exposures / target;

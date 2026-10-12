@@ -18,7 +18,7 @@ A recovered, field-proven Krea 2 training template is ported into the fork: thre
 - `docs/profiles.md`, `presets/README.md`, `FORK_NOTES.md`, `PLAN.md` — second exception to the inherit rule, rows, fork-only entries, four addenda
 
 ## Open
-1. Laptop run — `krea2_character_lora_laptop16gb` has never executed. If VRAM allows, retry at resolution 1024 for the faithful reproduction
+1. Laptop run — `krea2_laptop_lora` has never executed. If VRAM allows, retry at resolution 1024 for the faithful reproduction
 2. `python scripts/attn_probe.py --masked`, then again without `--masked`, on the GPU box
 3. Two A/Bs against `krea2_character_lora`, same dataset, seed and steps — `_shift` (timestep sampling; record in the doc's §7) and `_automagic` (optimizer at the author's rails; record where the LR settled, not just the output)
 4. ~~`python testing/test_presets.py` — needs torch, never ran against the four new presets~~ Closed — the test globs every `presets/*.json`, and `run_fork_tests.ps1` ran it on the `.venv` in the 2026-09-22 and 2026-09-23 syncs (`FORK_NOTES.md`; the 09-22 run also fixed its arch-registry parser, `09865fd`). Direct run 2026-10-01: 5/5 tests OK over 32 presets, the four `krea2_character_lora*` included

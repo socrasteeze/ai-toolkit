@@ -796,7 +796,7 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'point for reference: fal\'s hosted Klein base trainers default to LR 5e-5 / 1000 steps. ' +
       'Timestep guidance (LoRA Dataset Studio, itself extrapolated/not Klein-verified): sigmoid for characters, weighted ' +
       'for style — the only value in this recipe with no published Klein source behind it. ' +
-      "STYLE-specific network: BFL's own Klein style example is a linear+Conv2d LoRA at 128/64 linear + 64/32 conv (ratio 4:2:2:1), which is exactly what LDS ships. The 4B style preset folds that to half scale (64/32 linear + 32/16 conv) — now a deliberate fork deviation for a 4B rather than a guess in the absence of a source — while flux2_klein_9b_style_lora.json uses the official 128/64/64/32. This ramp is linear-only; use a style preset for the conv recipe. " +
+      "STYLE-specific network: BFL's own Klein style example is a linear+Conv2d LoRA at 128/64 linear + 64/32 conv (ratio 4:2:2:1), which is exactly what LDS ships. The 4B style preset folds that to half scale (64/32 linear + 32/16 conv) — now a deliberate fork deviation for a 4B rather than a guess in the absence of a source — while k9b_style_lora.json uses the official 128/64/64/32. This ramp is linear-only; use a style preset for the conv recipe. " +
       'OPTIMIZER (single-source but specific, worth heeding): adamw8bit is the recommendation and ADAFACTOR IS ' +
       'REPORTED TO FAIL on Klein 9B character training — its adaptive scaling does not converge for identity and ' +
       'the face collapses to a generic average by ~1k steps. Adafactor sits in this app\'s optimizer dropdown and ' +
@@ -834,7 +834,7 @@ const ARCH_RECIPES: Record<string, RecipeByTier> = {
       'point for reference: fal\'s hosted Klein base trainers default to LR 5e-5 / 1000 steps. ' +
       'Timestep guidance (LoRA Dataset Studio, itself extrapolated/not Klein-verified): sigmoid for characters, weighted ' +
       'for style — the only value in this recipe with no published Klein source behind it. ' +
-      "STYLE-specific network: BFL's own Klein style example is a linear+Conv2d LoRA at 128/64 linear + 64/32 conv (ratio 4:2:2:1), which is exactly what LDS ships. The 4B style preset folds that to half scale (64/32 linear + 32/16 conv) — now a deliberate fork deviation for a 4B rather than a guess in the absence of a source — while flux2_klein_9b_style_lora.json uses the official 128/64/64/32. This ramp is linear-only; use a style preset for the conv recipe. " +
+      "STYLE-specific network: BFL's own Klein style example is a linear+Conv2d LoRA at 128/64 linear + 64/32 conv (ratio 4:2:2:1), which is exactly what LDS ships. The 4B style preset folds that to half scale (64/32 linear + 32/16 conv) — now a deliberate fork deviation for a 4B rather than a guess in the absence of a source — while k9b_style_lora.json uses the official 128/64/64/32. This ramp is linear-only; use a style preset for the conv recipe. " +
       'OPTIMIZER (single-source but specific, worth heeding): adamw8bit is the recommendation and ADAFACTOR IS ' +
       'REPORTED TO FAIL on Klein 9B character training — its adaptive scaling does not converge for identity and ' +
       'the face collapses to a generic average by ~1k steps. Adafactor sits in this app\'s optimizer dropdown and ' +

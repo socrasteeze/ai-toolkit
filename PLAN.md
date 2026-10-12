@@ -995,14 +995,14 @@ constructed-TrainConfig cases (fused automagic3 + accumulation → raises;
 **Follow-up, same day — preset audit re-run after a concurrent merge:** the "Add a 16GB
 laptop preset tier" commit landed while this work was in progress, adding
 `anima_lora_laptop16gb.json`, `flux_lora_laptop16gb.json`,
-`illustriousxl_character_lora_laptop16gb.json`, and `sdxl_character_lora_laptop16gb.json`
+`illxl_laptop_lora.json`, and `sdxl_laptop_lora.json`
 (21 JSON presets total now). These are exactly three of the four "…laptop16gb" files an
 earlier draft of the Automagic task had predicted but which didn't exist at audit time
 above — re-running the audit against the merged set: still zero use an Automagic
 optimizer (all four are `adamw`/`adamw8bit`), but three of the four now join
 `anima_lora_background.json` in the batch-1 + `gradient_accumulation: 4` pattern
-(`anima_lora_laptop16gb`, `illustriousxl_character_lora_laptop16gb`,
-`sdxl_character_lora_laptop16gb` — `flux_lora_laptop16gb` uses accumulation 1, not
+(`anima_lora_laptop16gb`, `illxl_laptop_lora`,
+`sdxl_laptop_lora` — `flux_lora_laptop16gb` uses accumulation 1, not
 affected). **Net finding unchanged: zero of the 21 shipped presets trip the guard.** All
 three gained the same one-sentence Automagic caveat already added to
 `anima_lora_background.json`'s description. Re-verified: all 21 presets parse through
@@ -1230,7 +1230,7 @@ suggestion and the gauge disagreeing because only one of them accounted for the 
   already 2, and the flux/krea2/zimage/klein/anima batch-1 recipes were already ≤2.
 - Presets (6 of 21 were above the cap): `anima_lora_performance` and `anima_lora_5090_fast`
   batch 4→2; `anima_lora_background`, `anima_lora_laptop16gb`,
-  `illustriousxl_character_lora_laptop16gb`, `sdxl_character_lora_laptop16gb` accumulation
+  `illxl_laptop_lora`, `sdxl_laptop_lora` accumulation
   4→2. `config/examples/train_lora_anima_2b_5090_fast.yaml` batch 4→2 with its header.
 - **Deliberate deviation from the Anima author's published recipe**, which specifies
   effective batch 4 and is otherwise the highest-confidence source in this fork. Only the
@@ -1672,9 +1672,9 @@ The laptop and background profiles stay at effective batch 2 deliberately: they 
 low-VRAM tier, and batch 4 would not fit regardless of dataset size.
 
 **Also delivered in this pass** (same session, separate concerns):
-- `presets/flux2_klein_9b_{character,style}_lora.json` — the 9B tier existed only as two
+- `presets/k9b_lora.json / presets/k9b_style_lora.json (then lux2_klein_9b_{character,style}_lora, renamed 2026-10-12)` — the 9B tier existed only as two
   hand-edit instructions buried in the 4B preset's description. Now real presets.
-- `presets/{flux2_klein_character_lora,illustriousxl_character_lora,anima_lora}_automagic.json`
+- `presets/{flux2_klein_character_lora,illxl_lora,anima_lora}_automagic.json`
   — automagic3 variants carrying the `min_lr`/`max_lr` rail pattern proven on
   `krea2_lora_16gb` (`max_lr` = the preset's own launch LR, so the controller only adapts
   downward). All three pin `gradient_accumulation: 1`: fused Automagic steps every micro-batch
@@ -2143,7 +2143,7 @@ effective batch with `batch_size`, 16 GB laptop/background reaches it with
 | Profile | batch x accum | low_vram |
 |---|---|---|
 | `anima_lora_performance`, `anima_lora_5090_fast` (32 GB desktop) | 4 x 1 | false |
-| `anima_lora_background`, `anima_lora_laptop16gb`, `sdxl_character_lora_laptop16gb`, `illustriousxl_character_lora_laptop16gb` (16 GB) | 1 x 2 | true |
+| `anima_lora_background`, `anima_lora_laptop16gb`, `sdxl_laptop_lora`, `illxl_laptop_lora` (16 GB) | 1 x 2 | true |
 | everything else | 1 x 1 | mostly true |
 
 Why they are not interchangeable, from the source rather than from theory:
@@ -2224,7 +2224,7 @@ What was wrong was one sentence in each of two docs, both now fixed:
   profile only", same problem; it now names the exception and explains why flux and krea2 stay
   at effective 1.
 
-**Separate finding, NOT changed:** `sdxl_character_lora` and `illustriousxl_character_lora`
+**Separate finding, NOT changed:** `sdxl_character_lora` and `illxl_lora`
 (the desktop presets) sit at effective batch 1 while the advisor recommends 2 for their arch —
 so on the SDXL family it is the DESKTOP presets that lag the advisor, not the laptop ones. That
 is a base-recipe decision on presets the operator has been running, and the advisor is
@@ -2653,7 +2653,7 @@ is still the right file for the automagic3 recipe, but the field-proven recipe s
 Addendum 1 had no laptop profile — its parent runs 1024 with sampling on and no offloading,
 which is a 16 GB OOM or, worse on Windows, a shared-memory spill.
 
-**Shipped: `presets/krea2_character_lora_laptop16gb.json`.** Training math inherited unchanged
+**Shipped: `presets/krea2_laptop_lora.json`.** Training math inherited unchanged
 (rank 32 / alpha 16 @ LR 2e-4, adamw8bit, linear, batch 1 × accum 1 — which is what
 `batchAdvisor.ts`'s `LAPTOP16.krea2` cell measures as the ceiling anyway — 2200 steps, latents
 and text embeds cached), so checkpoints stay interchangeable with the desktop parent. Four

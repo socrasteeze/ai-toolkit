@@ -188,7 +188,7 @@ export default function PresetManager({ jobConfig, setJobConfig }: Props) {
                 label="Save current config as preset"
                 value={saveName}
                 onChange={value => setSaveName(value)}
-                placeholder="eg. illustriousxl_character_lora"
+                placeholder="eg. illxl_lora"
               />
             </div>
             <Button

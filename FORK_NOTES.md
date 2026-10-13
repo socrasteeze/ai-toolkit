@@ -263,7 +263,10 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
   renders a red warning (above the version-specific content, both branches) when the
   selected optimizer is fused-and-accumulating — the same condition
   `toolkit/config_modules.py`'s guard rejects — with one-click fixes ("Un-fuse it" /
-  "Reset accumulation to 1"); see "Automagic + gradient accumulation guard" below
+  "Reset accumulation to 1"); see "Automagic + gradient accumulation guard" below. For a
+  non-Automagic optimizer it renders only when `optimizer_params` still carries
+  `min_lr`/`max_lr` (left over from an *_automagic preset; the optimizer constructor
+  rejects them): red warning + "Remove them" button
 - `ui/src/components/PresetManager.tsx` — Presets dialog: load / save-as-new / delete,
   plus a per-row **Overwrite** button (writes the current form back over a preset; built-ins
   get a stronger confirm, never blocked). Built-in rows show a "built-in" tag from the GET

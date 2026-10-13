@@ -17,9 +17,32 @@ type Props = {
 export default function OptimizerHint({ jobConfig, setJobConfig }: Props) {
   const train = jobConfig.config.process[0].train;
   const optimizer = (train.optimizer || '').toLowerCase();
-  if (!optimizer.startsWith('automagic')) return null;
-
   const params = (train.optimizer_params || {}) as { [key: string]: any };
+
+  if (!optimizer.startsWith('automagic')) {
+    // min_lr/max_lr are Automagic-only kwargs. Switching the optimizer away from an
+    // *_automagic preset leaves them behind and the optimizer constructor rejects them
+    // (e.g. "AdamW8bit.__init__() got an unexpected keyword argument 'min_lr'").
+    if (params.min_lr === undefined && params.max_lr === undefined) return null;
+    return (
+      <div className="text-xs pt-1">
+        <div className="rounded-md bg-red-950/60 border border-red-800 px-2 py-1.5 text-red-200">
+          <span className="font-semibold">Leftover Automagic params:</span> optimizer_params has min_lr/max_lr, which
+          only Automagic accepts. This config will fail to start.{' '}
+          <button
+            type="button"
+            className="text-blue-400 hover:text-blue-300 underline"
+            onClick={() => {
+              const { min_lr, max_lr, ...rest } = params;
+              setJobConfig(rest, 'config.process[0].train.optimizer_params');
+            }}
+          >
+            Remove them
+          </button>
+        </div>
+      </div>
+    );
+  }
   // gradient_accumulation_steps is legacy (no UI field, config-import only) but still
   // reachable via an imported config, so it's read defensively off the raw object.
   const gradAccum = (train as any).gradient_accumulation;

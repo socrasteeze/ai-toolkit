@@ -936,6 +936,12 @@ Verified: tsc clean, production rebuild clean. (The hint reads
 JobConfig type — same as they reach the trainer, which passes optimizer_params through
 as an untyped dict.)
 
+Follow-up (2026-10-13): switching the optimizer away from an *_automagic preset left
+`min_lr`/`max_lr` in `optimizer_params`, and the new optimizer's constructor rejected
+them at job start (unexpected keyword argument). OptimizerHint now also renders for
+non-Automagic optimizers, but only when those keys are present: a red "Leftover Automagic
+params" warning with a one-click "Remove them" that drops just those two keys.
+
 ## Automagic + gradient accumulation: config-time guard (2026-07-29)
 
 Follow-up to the Automagic v3 research: the "incompatible with multi-backward grad

@@ -229,3 +229,31 @@ What remains fork-side for Anima (all adapted to upstream's implementation):
   `ostris/aitoolkit` — fork-specific, deliberate (2026-07-31).
 - `hf-cache/` (local HuggingFace cache, several GB) is gitignored — it's runtime cache,
   never commit it back.
+
+<!-- ghost:start -->
+## Ghost mode (data privacy policy)
+
+**Names**
+- Never write a real data file or folder name in replies, docs, commits, PR or ticket
+  text, handoffs, logs, or code comments. Use type and count ("14 images in data/"),
+  position ("the third PDF"), or an alias.
+- Prefer commands that do not print names: counts, extension filters, globs.
+- Every file you create gets a generic name (`screenshot-01.png`, `preview-02.jpg`,
+  `export-2026-01.csv`). Never derive an output name from a data name.
+
+**Visuals**
+- Every screenshot, image preview, thumbnail, contact sheet, GIF, or rendered page that
+  you save, commit, embed in a doc or artifact, or send to the user is redacted first.
+  Pixelate faces, people, plates, and any data text. Keep UI chrome only if it shows no
+  data. When unsure, pixelate the whole frame.
+- Then delete or overwrite the raw capture. Never commit one.
+- Viewing raw data images to do the work (captioning, culling, QA) is allowed. That view
+  never leaves as an output.
+
+**Contents**
+- Do not quote data contents (names, addresses, account numbers, message text) in
+  replies or docs. Describe shape: fields, counts, types.
+- Fixtures, examples, and seed data use invented values.
+
+If a rule blocks the task, stop and ask. Do not work around it.
+<!-- ghost:end -->

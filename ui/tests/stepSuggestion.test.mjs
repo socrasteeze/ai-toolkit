@@ -33,6 +33,7 @@ test('weightedBatchSize ignores empty datasets and falls back when no items are 
 import {
   suggestSteps,
   exposureGauge,
+  formatExposureCount,
   maxHealthyBatch,
   minItemsForBatch,
   getArchRecipe,
@@ -43,6 +44,41 @@ import {
 } from '../src/utils/stepSuggestion.ts';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+
+test('a capped Anima preset keeps the screenshot configuration fractional and cool', () => {
+  const preset = JSON.parse(readFileSync(path.resolve(import.meta.dirname, '..', '..', 'presets', 'anima_automagic_gen_lora.json'), 'utf8'));
+  const gauge = exposureGauge({
+    itemCount: 216,
+    arch: 'anima',
+    steps: 20,
+    batchSize: 2,
+    gradientAccumulation: 1,
+    stepTable: preset.meta.step_table,
+  });
+  assert.equal(gauge.exposures, 40 / 216);
+  assert.equal(formatExposureCount(gauge.exposures), '0.19');
+  assert.equal(gauge.band, 'cool');
+  assert.match(gauge.label, /Cool/);
+  assert.doesNotMatch(gauge.label, /optimal dataset|curate/i);
+  const planned = exposureGauge({
+    itemCount: 216,
+    arch: 'anima',
+    steps: 900,
+    batchSize: 2,
+    gradientAccumulation: 1,
+    stepTable: preset.meta.step_table,
+  });
+  assert.equal(formatExposureCount(planned.exposures), '8.33');
+  assert.equal(planned.band, 'cool');
+});
+
+test('exposure display preserves fractions and never rounds a tiny positive count to zero', () => {
+  assert.equal(formatExposureCount(1), '1');
+  assert.equal(formatExposureCount(0), '0');
+  assert.equal(formatExposureCount(0.004), '<0.01');
+  assert.equal(formatExposureCount(0.01), '0.01');
+  assert.equal(formatExposureCount(8.333333), '8.33');
+});
 
 const CEILING_ARCHS = ['flux2_klein_4b', 'flux2_klein_9b', 'krea2', 'sdxl', 'anima'];
 

@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiClient } from '@/utils/api';
 import { JobConfig } from '@/types';
-import { suggestSteps, exposureGauge, analyzeBuckets, resolutionAdvice, getArchRecipe, StepTable } from '@/utils/stepSuggestion';
+import { suggestSteps, exposureGauge, formatExposureCount, analyzeBuckets, resolutionAdvice, getArchRecipe, StepTable } from '@/utils/stepSuggestion';
 import { weightedBatchSize } from '@/utils/advisorBatch';
 import { suggestBatch, tierForVramMb, TIER_LABEL, MachineTier } from '@/utils/batchAdvisor';
 import useGPUInfo from '@/hooks/useGPUInfo';
@@ -511,7 +511,7 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
       {gauge && (
         <div className="pt-1">
           <span className={bandColor[gauge.band]}>
-            {Math.ceil(gauge.exposures)} exposures/image — {gauge.label}
+            {formatExposureCount(gauge.exposures)} exposures/image — {gauge.label}
           </span>{' '}
           ({currentSteps} steps · eff. batch {formatBatchSize(advisorBatchSize * Math.max(1, gradAccum || 1))} ·{' '}
           {itemCount} files)

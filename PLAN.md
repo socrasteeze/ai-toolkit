@@ -2882,3 +2882,18 @@ Operator asked for the desktop shortcut to run `start-rebuild.bat` and for stop 
 The stop matcher moved to `scripts/stop_aitk.ps1`, shared by `stop.bat` and `start-rebuild.bat`. It fixes two defects: `stop.bat all` matched only `python.exe`, but Windows training runs as `pythonw.exe`, so it never stopped training; and the `cron/worker.js` and bare `run.py` patterns were not scoped to this checkout. Matching rules are in `FORK_NOTES.md`.
 
 2026-10-04: a cron worker orphaned since 2026-10-02 (its `concurrently` parent gone) slipped past the matcher and kept the prisma query engine DLL loaded, so `start-rebuild.bat`'s `npm ci` failed with EPERM. With `node_modules` half-wiped, `npx prisma` then offered to download `prisma@latest` (8.0.0-rc.19). `stop_aitk.ps1` now also stops node running `dist/cron/worker.js` that has this checkout's engine DLL loaded; the loaded module is the only checkout-scoped signal such a process carries. Verified with a DLL-loading fake worker (stopped) and a plain decoy (left alone).
+
+## Exposure gauge: fractional passes and capped suggestions (2026-10-15)
+
+The gauge rounded every positive exposure count up to a whole pass and changed cool
+readings to healthy when a preset table reached its cap image count. At 216 images,
+20 steps, batch 2 and accumulation 1, this displayed a green 1 instead of a blue
+0.19. The cap is a suggestion heuristic, not evidence of an optimal dataset size.
+
+`exposureGauge()` now retains the unrounded exposure and computed band. The panel
+formats fractions to two decimals, with `<0.01` for smaller positive values. Capped
+tables add a sample-review note without overriding the band or directing dataset
+removal. Step tables and training settings are unchanged. Regression coverage uses
+the reported configuration, the planned 900-step configuration, and capped presets
+across the existing model families. The UI suite, TypeScript check, and fork verifier
+pass. The running production UI has not been rebuilt or restarted.

@@ -307,6 +307,11 @@ export interface StepSuggestionResult {
 }
 
 const fmt1 = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+
+export const formatExposureCount = (exposures: number): string => {
+  if (exposures > 0 && exposures < 0.01) return '<0.01';
+  return Number.isInteger(exposures) ? String(exposures) : exposures.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+};
 const roundTo50 = (n: number) => Math.max(50, Math.round(n / 50) * 50);
 const formatBatchSize = (n: number) =>
   Number.isInteger(n) ? `${n}` : n.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
@@ -396,7 +401,7 @@ export const suggestSteps = (input: StepSuggestionInput): StepSuggestionResult |
   // 75/file for an arch nobody has researched must not read like a researched value.
   const capAt = table ? tableCapCount(table) : null;
   const provenance = table
-    ? ` (from this preset's step table, meta.step_table${capAt !== null ? `; it reaches its ${table.max_steps}-step cap at ~${capAt} images${itemCount >= capAt ? ' - past that, curate the dataset down rather than training longer' : ''}` : ''})`
+    ? ` (from this preset's step table, meta.step_table${capAt !== null ? `; it reaches its ${table.max_steps}-step cap at ~${capAt} images; this is a suggestion cap, not a dataset-size limit` : ''})`
     : lookup.source === 'default'
       ? ` (generic default — no ${arch || 'arch'}-specific exposure data)`
       : lookup.source === 'prefix'
@@ -445,9 +450,9 @@ export interface ExposureGauge {
   // true when the reading is 'cool' only because the arch's maxSteps ceiling binds at
   // this dataset size — i.e. the advisor's own suggestion cannot reach the target either
   ceilingBound: boolean;
-  // step-table presets: the dataset is at/after the size where the table hits its cap
-  pastOptimalSize?: boolean;
-  optimalCount?: number | null;
+  // A step-table cap limits suggestions; it does not establish an optimal dataset size.
+  stepTableCapped?: boolean;
+  capImageCount?: number | null;
 }
 
 // Bands are relative to the arch's stepsPerItem heuristic: healthy ≈ 0.7–1.3× of it,
@@ -475,10 +480,8 @@ export const exposureGauge = (input: {
   const effectiveBatch = Math.max(1, input.batchSize || 1) * Math.max(1, input.gradientAccumulation || 1);
   const table = activeStepTable(input.stepTable, arch);
   const heuristic = table ? tableHeuristic(table, itemCount) : getHeuristic(arch, itemCount);
-  // 2026-10-12: past the image count where the table reaches its cap, the dataset - not the
-  // step count - is the thing to change, so the gauge never calls that 'cool / undertrained'.
-  const optimalCount = table ? tableCapCount(table) : null;
-  const pastOptimalSize = optimalCount !== null && itemCount >= optimalCount;
+  const capImageCount = table ? tableCapCount(table) : null;
+  const stepTableCapped = capImageCount !== null && itemCount >= capImageCount;
   const target = heuristic.stepsPerItem;
   const exposures = (steps * effectiveBatch) / itemCount;
   const ratio = exposures / target;
@@ -493,17 +496,14 @@ export const exposureGauge = (input: {
     warm: '🔥 Warm — watch for overfit',
     fry: '💀 Fry-risk — likely overtrained',
   };
-  const capSteps = table?.max_steps;
-  const oversizeTip =
-    `Past the optimal dataset size for this model: the step table reaches its ${capSteps}-step cap at ~${optimalCount} images ` +
-    `and you have ${itemCount}. Curate down toward your best ~${optimalCount} images rather than training longer.`;
+  const capNote = 'Preset suggestions are capped; judge training samples.';
   return {
-    exposures: Math.round(exposures * 10) / 10,
-    band: pastOptimalSize && band === 'cool' ? 'healthy' : band,
-    label: pastOptimalSize ? (band === 'warm' || band === 'fry' ? `${labels[band]}. ${oversizeTip}` : oversizeTip) : labels[band],
-    ceilingBound: pastOptimalSize ? false : ceilingBound,
-    pastOptimalSize,
-    optimalCount,
+    exposures,
+    band,
+    label: stepTableCapped ? `${labels[band]}. ${capNote}` : labels[band],
+    ceilingBound,
+    stepTableCapped,
+    capImageCount,
   };
 };
 

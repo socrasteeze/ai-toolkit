@@ -1,9 +1,9 @@
 # HANDOFF
 
-**Updated:** 2026-10-15 · **Branch:** `main` · **Base:** `89db2ee` (this delivery sits on top) · **Tree:** dirty — `presets/anima_automagic_gen_lora.json` deliberately left uncommitted
+**Updated:** 2026-10-15 · **Branch:** `main` · **Base:** `ebd3c54` (this delivery sits on top) · **Tree:** clean
 
 ## State
-Upstream is synced through `12395a1` (FLUX.3 Image, band loss), validated 13/13, pushed. The only thing not pushed is one preset that a job-form Overwrite rewrote. It holds personal fields and the operator still has to make a recipe decision on it.
+Upstream is synced through `12395a1` (FLUX.3 Image, band loss), validated 13/13, pushed. The job-overwritten Anima automagic preset shipped as v1.3 with personal fields stripped (`PLAN.md` last entry).
 
 ## Done this session
 - Upstream sync (13 commits, clean merge, fork surface 60) + the unlogged 2026-10-14 window — `FORK_NOTES.md` sync log
@@ -12,17 +12,16 @@ Upstream is synced through `12395a1` (FLUX.3 Image, band loss), validated 13/13,
 - Shipped the other session's finished work: PresetManager modal wrapping/feedback (`ui/src/components/PresetManager.tsx`), advisor fractional-exposure fix (`6e8d6aa`)
 
 ## Open
-1. Decide `presets/anima_automagic_gen_lora.json`: restore to HEAD (`git restore`) or keep its new recipe (batch 2, 1000 steps, low_vram off) with trigger word, default caption, sample prompts and `name_or_path` reset first. The repo is PUBLIC
-2. Rebuild + restart the production UI to pick up the PresetManager and advisor fixes — `start-rebuild.bat`
-3. First Anima run with `name_or_path` pointed at the local Diffusers folder — confirm it trains offline
-4. Krea 2 on hardware: `krea2_laptop_adamw_char_lora` laptop run (retry at 1024 if VRAM allows), then `scripts/attn_probe.py` with and without `--masked`
-5. Two A/Bs vs `krea2_char_lora` (same dataset/seed/steps): `_shift` (record in the doc's §7) and `_automagic` (record where LR settled)
-6. `batchAdvisor.ts` unmeasured cells: batch 4 Klein/Krea 2 on `DESKTOP32`; Klein 4B vs 9B on `LAPTOP16` — measure `k9b_laptop_char_lora`/`_lokr` s/it + VRAM
-7. Decide whether the desktop SDXL/Illustrious presets move to effective batch 2 to match the advisor
+1. Rebuild + restart the production UI to pick up the PresetManager and advisor fixes — `start-rebuild.bat`
+2. First Anima run with `name_or_path` pointed at the local Diffusers folder — confirm it trains offline
+3. Krea 2 on hardware: `krea2_laptop_adamw_char_lora` laptop run (retry at 1024 if VRAM allows), then `scripts/attn_probe.py` with and without `--masked`
+4. Two A/Bs vs `krea2_char_lora` (same dataset/seed/steps): `_shift` (record in the doc's §7) and `_automagic` (record where LR settled)
+5. `batchAdvisor.ts` unmeasured cells: batch 4 Klein/Krea 2 on `DESKTOP32`; Klein 4B vs 9B on `LAPTOP16` — measure `k9b_laptop_char_lora`/`_lokr` s/it + VRAM
+6. Decide whether the desktop SDXL/Illustrious presets move to effective batch 2 to match the advisor
 
 ## Decisions
 - Local Diffusers folder over patching upstream `anima/anima.py` for single-file loads — keeps the fork surface at 60
-- Personal-field preset held out of the push instead of auto-stripped — the overwrite also changed the recipe, which is the operator's call
+- Overwritten preset: kept the operator's recipe, stripped trigger word/caption/prompts/local path — repo is public
 - No `flux3` advisor recipe — no research basis yet; do not add a guessed one
 - Upstream's 13 commits keep their original authorship — rewriting them breaks ancestry against `upstream/main`
 - Timestep `linear` vs `shift`, adamw8bit vs automagic3 left unresolved, shipped as one-variable A/B twins

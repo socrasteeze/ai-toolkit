@@ -2912,3 +2912,16 @@ overflow or feedback-induced list movement occurred. Long text, missing names,
 save failure/success, overwrite, delete, load, close and Escape passed. All 167 UI
 tests and TypeScript checking passed. No real presets were written by the harness.
 The operator's preset edits remain separate. Production rebuild/restart is pending.
+
+## anima_automagic_gen_lora v1.3: operator recipe from a job-form overwrite (2026-10-15)
+
+The operator overwrote this preset from a live job. Kept the recipe values: batch 2
+(fused Automagic, accumulation 1, so effective batch 2), 1000 steps, low_vram off,
+resolution 1024 only (was 512/768/1024), sample guidance 4 at 832x1216, plus the
+form's explicit defaults (sigmoid timesteps, lokr/conv/DOP/EMA fields, all inert for
+a plain LoRA). Stripped before commit, because the repo is public: trigger word, default
+caption, the four sample prompts, and the job's local single-file 
+ame_or_path. That
+path is reset to the Diffusers repo, since upstream's Anima loader cannot load a
+single .safetensors. The step table and the description text are unchanged. Steps
+1000 sit below the table's 1500 floor, so the advisor will suggest more. Not run on GPU.

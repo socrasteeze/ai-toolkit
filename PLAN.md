@@ -2897,3 +2897,18 @@ removal. Step tables and training settings are unchanged. Regression coverage us
 the reported configuration, the planned 900-step configuration, and capped presets
 across the existing model families. The UI suite, TypeScript check, and fork verifier
 pass. The running production UI has not been rebuilt or restarted.
+
+## Preset modal: wrapping and action feedback (2026-10-15)
+
+`PresetManager` is mounted inside the toolbar, which sets `white-space: nowrap`.
+The modal now overrides that inheritance locally, constrains the name and input
+columns, and uses shorter helper text. Error and success share one feedback state
+and a fixed-height region, so a successful overwrite replaces a prior save error
+without moving the list. Existing overwrite/delete confirmation remains intact.
+
+An isolated Chromium harness rendered the actual preset manager, modal and form
+input with synthetic API responses at 360, 768, 1024 and 1440 pixels. No horizontal
+overflow or feedback-induced list movement occurred. Long text, missing names,
+save failure/success, overwrite, delete, load, close and Escape passed. All 167 UI
+tests and TypeScript checking passed. No real presets were written by the harness.
+The operator's preset edits remain separate. Production rebuild/restart is pending.

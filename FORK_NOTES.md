@@ -273,6 +273,8 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
   plus a per-row **Overwrite** button (writes the current form back over a preset; built-ins
   get a stronger confirm, never blocked). Built-in rows show a "built-in" tag from the GET
   route's `builtIn` flag (2026-07-21)
+  Modal content overrides the toolbar's inherited nowrap; one reserved feedback region
+  replaces stale error/success messages without moving the list (2026-10-15).
 - `ui/src/components/StepSuggestion.tsx` — step suggestion + dataset analyzer panel.
   Derives the dataset name/subPath to query via `deriveDatasetSelection`, which needs
   `DATASETS_FOLDER` (fetched with `useSettings()`) to split `folder_path` correctly for

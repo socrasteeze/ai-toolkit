@@ -1,55 +1,47 @@
 # HANDOFF
 
-**Updated:** 2026-09-28 · **Branch:** `main` · **Base:** `c99cf67` (upstream sync merge; this file's commit sits on top) · **Tree:** clean
+**Updated:** 2026-10-15 · **Branch:** `main` · **Base:** `89db2ee` (this delivery sits on top) · **Tree:** dirty — `presets/anima_automagic_gen_lora.json` deliberately left uncommitted
 
 ## State
-A recovered, field-proven Krea 2 training template is ported into the fork: three presets, one source-record doc, one diagnostic, advisor notes. Nothing has been run on hardware — every number is inherited from someone else's musubi-tuner runs or from published guidance.
+Upstream is synced through `12395a1` (FLUX.3 Image, band loss), validated 13/13, pushed. The only thing not pushed is one preset that a job-form Overwrite rewrote. It holds personal fields and the operator still has to make a recipe decision on it.
 
-## Done this session (2026-09-28)
-- Upstream sync: 1 commit (`ecee894`, `UniversalTable` rows keyed by id). Clean merge, fork surface still 60 files, tsc/build/78 contract tests green. Logged in `FORK_NOTES.md`
-
-## Done 2026-09-19
-- `scripts/clean_captions.py` (new) — caption surgery: identity-attribute stripping, tag/prose modes, dry-run default, `.txt.bak` + `--restore`, never writes an empty caption. 21 tests in `testing/test_clean_captions.py`, wired into the runner
-- `presets/krea2_char_lora{,_shift,_automagic,_laptop16gb}.json` — field recipe (32/16 @ 2e-4), two one-variable A/B twins (timestep, optimizer), and the 16 GB laptop profile
-- `docs/krea2_field_template_2026_09.md` — source record, dataset-prep method, musubi comparison, port decisions (§1–8)
-- `scripts/attn_probe.py` — reports which kernel the dispatcher picks at Krea 2's attention shapes; times the alternatives
-- `ui/src/utils/stepSuggestion.ts` — krea2 step corroboration, caption note raised to two-source, timestep contest recorded. No recommended value changed
-- `presets/krea2_16gb_automagic_char_lora` v1.3 / `krea2_laptop_automagic_char_lora` v1.2 — name the `layer_offloading` float8 rewrite (closes the 2026-09-16 review's finding 5)
-- `docs/profiles.md`, `presets/README.md`, `FORK_NOTES.md`, `PLAN.md` — second exception to the inherit rule, rows, fork-only entries, four addenda
+## Done this session
+- Upstream sync (13 commits, clean merge, fork surface 60) + the unlogged 2026-10-14 window — `FORK_NOTES.md` sync log
+- Stale merged `noble/*` branches deleted on origin (4 total); origin now has only `main`
+- Anima job failure diagnosed: upstream's loader needs a Diffusers folder or repo, not a single `.safetensors` — no code change; a local Diffusers copy was made outside the repo
+- Shipped the other session's finished work: PresetManager modal wrapping/feedback (`ui/src/components/PresetManager.tsx`), advisor fractional-exposure fix (`6e8d6aa`)
 
 ## Open
-1. Laptop run — `krea2_laptop_adamw_char_lora` has never executed. If VRAM allows, retry at resolution 1024 for the faithful reproduction
-2. `python scripts/attn_probe.py --masked`, then again without `--masked`, on the GPU box
-3. Two A/Bs against `krea2_char_lora`, same dataset, seed and steps — `_shift` (timestep sampling; record in the doc's §7) and `_automagic` (optimizer at the author's rails; record where the LR settled, not just the output)
-4. ~~`python testing/test_presets.py` — needs torch, never ran against the four new presets~~ Closed — the test globs every `presets/*.json`, and `run_fork_tests.ps1` ran it on the `.venv` in the 2026-09-22 and 2026-09-23 syncs (`FORK_NOTES.md`; the 09-22 run also fixed its arch-registry parser, `09865fd`). Direct run 2026-10-01: 5/5 tests OK over 32 presets, the four `krea2_char_lora*` included
-5. Caption surgery is built; the two prep stages still absent are per-image alias selection from a set and `_facecrop` augmentation (doc section 6)
+1. Decide `presets/anima_automagic_gen_lora.json`: restore to HEAD (`git restore`) or keep its new recipe (batch 2, 1000 steps, low_vram off) with trigger word, default caption, sample prompts and `name_or_path` reset first. The repo is PUBLIC
+2. Rebuild + restart the production UI to pick up the PresetManager and advisor fixes — `start-rebuild.bat`
+3. First Anima run with `name_or_path` pointed at the local Diffusers folder — confirm it trains offline
+4. Krea 2 on hardware: `krea2_laptop_adamw_char_lora` laptop run (retry at 1024 if VRAM allows), then `scripts/attn_probe.py` with and without `--masked`
+5. Two A/Bs vs `krea2_char_lora` (same dataset/seed/steps): `_shift` (record in the doc's §7) and `_automagic` (record where LR settled)
+6. `batchAdvisor.ts` unmeasured cells: batch 4 Klein/Krea 2 on `DESKTOP32`; Klein 4B vs 9B on `LAPTOP16` — measure `k9b_laptop_char_lora`/`_lokr` s/it + VRAM
 7. Decide whether the desktop SDXL/Illustrious presets move to effective batch 2 to match the advisor
-6. `batchAdvisor.ts` cells still unmeasured: batch 4 for Klein/Krea 2 on the 32 GB desktop (`DESKTOP32`), and which Klein variant OOMs on the laptop (`LAPTOP16.flux2_klein` treats 4B and 9B alike); 2026-10-12: a first laptop Klein 9B attempt is `k9b_laptop_char_lora` (1024, 80% transformer offload, rank 32) and its LoKr twin `k9b_laptop_char_lokr` - measure it and record s/it + VRAM here and in `LAPTOP16`
 
 ## Decisions
-- Stay on ai-toolkit over musubi-tuner — its wins (12 GB floor, multi-GPU, exact resume, more attention backends) bind on none of this hardware
-- Ship 32/16 @ 2e-4 as a new preset over re-tuning the 32/32 @ 1e-4 ones — `alpha/rank × LR` makes them the same effective 1e-4, so it is a capacity choice, not an LR correction
-- Advisor step tiers unchanged despite the template's flat 2200 — it agrees at 70 images and runs 2.3× hot at 30
-- Timestep `linear` vs `shift`, and adamw8bit vs automagic3, both left unresolved and shipped as one-variable A/B twins — contested or unevidenced, not settleable by argument
-- No attention backend added — a padding mask disqualifies flash in the dispatcher, and Krea 2 already runs a cuDNN-first SDPA priority list
-- Laptop preset at 512 over the parent's 1024 — memory; both are real Krea 2 training resolutions, and the file says which is faithful
-- Dataset-prep port (caption surgery, alias triggers, `_facecrop`) scoped in the doc's §6 but NOT built — operator's call
-- Fast-forward merge over squash — the commit messages carry the research provenance the docs point at
+- Local Diffusers folder over patching upstream `anima/anima.py` for single-file loads — keeps the fork surface at 60
+- Personal-field preset held out of the push instead of auto-stripped — the overwrite also changed the recipe, which is the operator's call
+- No `flux3` advisor recipe — no research basis yet; do not add a guessed one
+- Upstream's 13 commits keep their original authorship — rewriting them breaks ancestry against `upstream/main`
+- Timestep `linear` vs `shift`, adamw8bit vs automagic3 left unresolved, shipped as one-variable A/B twins
+- Dataset-prep port (alias triggers, `_facecrop`) scoped in the Krea 2 doc's §6 but NOT built — operator's call
 
 ## Traps
-- `train.attention_backend` is a silent no-op for Krea 2 — `set_attention_backend` is not defined on `SingleStreamDiT`
-- `layer_offloading: true` rewrites `qtype` qfloat8 → torchao float8 (`toolkit/config_modules.py` ~769), so the preset text and the run disagree
-- On 16 GB Windows the failure is shared-memory spill (absurd s/it), not a clean OOM. Keep ~1.5 GB free
-- `train.cache_text_embeddings` is mutually exclusive with `diff_output_preservation` — the new presets set the former
-- The advisor's LR chip is an adamw rate and is now withdrawn under `automagic*` — if you re-add one, it will clobber an automagic preset's launch LR on "Apply all"
-- `krea2_automagic_char_lora` breaks this fork's `max_lr` = launch LR pattern ON PURPOSE (author's rails, so the controller can climb). Do not "fix" it to match the other `*_automagic` presets — that would make the experiment answer itself
-- `num_repeats` only duplicates the file list; kohya/musubi repeat advice does not transfer to this step-bounded trainer
-- Never push to `upstream` — its push URL stays the literal `DISABLED`, and the remote does not survive a fresh clone. Commit identity is set per clone (`CLAUDE.md`)
+- The preset **Overwrite** button writes the whole job form (trigger word, captions, sample prompts, local paths) into a TRACKED preset on a PUBLIC repo — scan `presets/` before every commit
+- Anima `name_or_path` as a single `.safetensors` fails with "Could not find or load 'modular_model_index.json'" — use the Diffusers repo id or a local Diffusers folder
+- `train.attention_backend` is a silent no-op for Krea 2 (`SingleStreamDiT` has no `set_attention_backend`)
+- `layer_offloading: true` rewrites `qtype` qfloat8 → torchao float8 (`toolkit/config_modules.py`), so preset text and run disagree
+- 16 GB Windows fails as shared-memory spill (absurd s/it), not a clean OOM — keep ~1.5 GB free; `cache_text_embeddings` excludes `diff_output_preservation`
+- Advisor LR chip is withdrawn under `automagic*` (re-adding it clobbers launch LR); `krea2_automagic_char_lora`'s `max_lr` ≠ launch LR is deliberate — do not "fix" it
+- `num_repeats` only duplicates the file list; kohya/musubi repeat advice does not transfer
+- Never push to `upstream` (push URL stays the literal `DISABLED`; remote does not survive a fresh clone); never open a PR; identity is set per clone (`CLAUDE.md`)
 
 ## Verify
 ```powershell
 cd ui; npm ci; npx tsc --noEmit; npx tsc -p tsconfig.worker.json --noEmit; npx next build; npm test
 pwsh scripts/run_fork_tests.ps1
 .\.venv\Scripts\python testing\test_presets.py
-.\.venv\Scripts\python scripts\attn_probe.py --masked
+git diff "$(git merge-base HEAD upstream/main)..HEAD" --name-status | Select-String -NotMatch '^A'
 ```

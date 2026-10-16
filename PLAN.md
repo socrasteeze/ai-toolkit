@@ -2925,3 +2925,29 @@ ame_or_path. That
 path is reset to the Diffusers repo, since upstream's Anima loader cannot load a
 single .safetensors. The step table and the description text are unchanged. Steps
 1000 sit below the table's 1500 floor, so the advisor will suggest more. Not run on GPU.
+
+## Job log wrapping and scrollbars (2026-10-15)
+
+The training overview and caption monitor share fork-only `jobLog.css`. Log lines
+preserve whitespace while wrapping long text and paths. The scrollers use theme
+gray tokens, a thin vertical scrollbar, and reserved scrollbar space. The terminal
+parser, polling, and follow-bottom logic are unchanged. The active run was untouched.
+
+### UI Stability Audit: Job Logs
+
+Scope: Training overview and caption monitor | Viewports: 360, 768, 1024, 1440 | Runtime: isolated Chromium, light and dark
+
+#### Verdict
+
+SHIP: source changes validated. Production rebuild/restart remains pending.
+
+#### Findings
+
+| # | Check | Status | Severity | Evidence | Fix |
+|---|---|---|---|---|---|
+| 1 | Long log lines and paths | PASS | POLISH | 16 browser cases: scrollWidth equals clientWidth | Preformatted wrapping with overflow-wrap anywhere |
+| 2 | Scrollbar theme | PASS | POLISH | Computed thumb/track colors match both theme token sets | Shared thin scrollbar styling |
+| 3 | Live log scrolling | PASS | SHIFT | Appended synthetic output: bottom follows; earlier reading position stays fixed | Existing scroll logic retained |
+
+All 167 UI tests, TypeScript checking, and fork verification passed. Browser checks
+rendered the actual components with synthetic hooks and logs, without live job APIs.

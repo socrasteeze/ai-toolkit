@@ -8,6 +8,7 @@ import { getTotalSteps } from '@/utils/jobs';
 import { Cpu, HardDrive, Info, Gauge } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import useJobLog from '@/hooks/useJobLog';
+import './jobLog.css';
 // fork addition, see FORK_NOTES.md
 import { parseLocalGpuIndices, splitPeerGpu } from '@/utils/gpuIds';
 
@@ -153,7 +154,7 @@ export default function JobOverview({ job }: JobOverviewProps) {
           <div className="bg-gray-950 rounded-lg p-4 relative flex-grow min-h-60">
             <div
               ref={logRef}
-              className="text-xs text-gray-300 absolute inset-0 p-4 overflow-y-auto"
+              className="aitk-job-log text-xs text-gray-300 absolute inset-0 p-4"
               onScroll={handleScroll}
             >
               {statusLog === 'loading' && 'Loading log...'}

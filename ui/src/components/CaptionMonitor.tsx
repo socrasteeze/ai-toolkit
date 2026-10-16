@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp, Cpu } from 'lucide-react';
 import useJobByRef from '@/hooks/useJobByRef';
 import useJobLog from '@/hooks/useJobLog';
+import './jobLog.css';
 import useGPUInfo from '@/hooks/useGPUInfo';
 import GPUWidget from '@/components/GPUWidget';
 import JobActionBar from '@/components/JobActionBar';
@@ -131,7 +132,7 @@ export default function CaptionMonitor({ datasetPath, onHeightChange }: CaptionM
             <div className="bg-gray-950 rounded-lg h-full relative">
               <div
                 ref={logRef}
-                className="text-xs text-gray-300 absolute inset-0 p-3 overflow-y-auto"
+                className="aitk-job-log text-xs text-gray-300 absolute inset-0 p-3"
                 onScroll={handleScroll}
               >
                 {statusLog === 'loading' && 'Loading log...'}

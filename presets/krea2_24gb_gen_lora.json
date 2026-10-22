@@ -50,7 +50,7 @@
           "ui_db_poll_seconds": 2
         },
         "model": {
-          "name_or_path": "krea/Krea-2-Raw",
+          "name_or_path": "F:/Models/diffusion_models/krea/krea2_raw_bf16.safetensors",
           "arch": "krea2",
           "quantize": true,
           "qtype": "qfloat8",

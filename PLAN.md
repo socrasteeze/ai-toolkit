@@ -2951,3 +2951,16 @@ SHIP: source changes validated. Production rebuild/restart remains pending.
 
 All 167 UI tests, TypeScript checking, and fork verification passed. Browser checks
 rendered the actual components with synthetic hooks and logs, without live job APIs.
+
+## Krea 2 raw defaults to the local checkpoint (2026-10-22)
+
+The operator keeps base models on local disks so training never reaches the hub. The
+`krea2` and `krea2:o_edit` UI defaults and seven desktop `krea2_*` presets now set
+`name_or_path` to `F:/Models/diffusion_models/krea/krea2_raw_bf16.safetensors`. A
+head/tail checksum and the size match the hub `raw.safetensors`. `krea2.py` already
+loads a local `.safetensors` path. The laptop and 16 GB presets keep `krea/Krea-2-Raw`,
+because the F: path exists on the desktop only. FLUX.2 klein 9B stays on the hub id: the
+local single file has the same size but a different SHA-256. Anima stays on the hub id:
+its local folder is modular and names the hub repo for each component. The text encoder
+and VAE for Krea 2 still load `Qwen/Qwen3-VL-4B-Instruct` and `Qwen/Qwen-Image` from the
+HF cache. This adds `ui.tsx` as upstream touchpoint 61. Not run on GPU.

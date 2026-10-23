@@ -49,7 +49,7 @@ export default function OptimizerHint({ jobConfig, setJobConfig }: Props) {
   const gradAccumSteps = (train as any).gradient_accumulation_steps;
   const isAccumulating = gradAccum > 1 || gradAccumSteps > 1 || gradAccumSteps === -1;
   const isFused = params.fused !== false;
-  const isV3 = optimizer === 'automagic3';
+  const hasUnfusedMode = optimizer === 'automagic3' || optimizer === 'automagic4';
 
   // fork addition (see FORK_NOTES.md): fused Automagic (all versions default to fused;
   // v1/v2 have no unfused mode) steps once per micro-batch instead of once per
@@ -64,7 +64,7 @@ export default function OptimizerHint({ jobConfig, setJobConfig }: Props) {
         fail to start.
       </div>
       <div className="pt-1 flex flex-wrap gap-x-3 gap-y-1">
-        {isV3 && (
+        {hasUnfusedMode && (
           <button
             type="button"
             className="text-blue-400 hover:text-blue-300 underline"
@@ -106,13 +106,20 @@ export default function OptimizerHint({ jobConfig, setJobConfig }: Props) {
     );
   }
 
-  // automagic3
+  // automagic3 / automagic4 (v4 subclasses v3: same min_lr/max_lr and fused params)
   const lr = train.lr;
   const boundsSet = params.min_lr !== undefined && params.max_lr !== undefined;
 
   return (
     <div className="text-xs text-gray-400 pt-1">
       {accumulationWarning}
+      {optimizer === 'automagic4' && (
+        <div className="pb-0.5">
+          Automagic v4 is marked experimental by its author (expect breaking changes): v3 plus per-element
+          sensitivity-balanced updates and an LR vote whose fixed point is set by optimizer_params.step_target (default
+          0.1). The v3 notes below still apply.
+        </div>
+      )}
       <div>
         Automagic v3 self-adapts one LR per group — the LR above is a launch point, not a target (author default 1e-6),
         and no LR scheduler is needed. Weight decay is decoupled (optimizer default 0). Not a Prodigy variant: Prodigy's

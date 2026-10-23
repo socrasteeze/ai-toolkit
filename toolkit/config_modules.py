@@ -466,8 +466,8 @@ class TrainConfig:
 
         # fork (guard): the Automagic optimizer family fuses its step into the backward
         # pass via register_post_accumulate_grad_hook (see the automagic3 class
-        # docstring, "fused" param) — with fused=True (the default for all three
-        # versions; v1/v2 have no unfused mode at all) each param updates on every
+        # docstring, "fused" param) — with fused=True (the default for every
+        # version; v1/v2 have no unfused mode at all, v4 inherits v3's) each param updates on every
         # micro-batch backward instead of once per accumulation cycle, silently
         # bypasses this trainer's post-backward grad clipping and nan-skip, and never
         # actually reaches a real accumulated gradient. Multi-backward accumulation
@@ -484,7 +484,7 @@ class TrainConfig:
             )
             _is_fused = self.optimizer_params.get('fused', True) is not False
             if _is_accumulating and _is_fused:
-                if self.optimizer.lower() == 'automagic3':
+                if self.optimizer.lower() in ('automagic3', 'automagic4'):
                     remedy = (
                         "set optimizer_params.fused to false to use a traditional "
                         "(non-fused) step, or set gradient_accumulation (and "

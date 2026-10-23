@@ -1014,6 +1014,15 @@ three gained the same one-sentence Automagic caveat already added to
 `anima_background_gen_lora.json`'s description. Re-verified: all 21 presets parse through
 `TrainConfig`; `tsc --noEmit` and `next build` still clean.
 
+**Addendum (2026-10-23): Automagic v4.** Upstream added `automagic4` (`Automagic4(Automagic3)`,
+marked experimental by its author). It inherits v3's `fused` param (default `True`) and
+overrides `_update_param`, which both v3's fused backward hook and its unfused `.step()`
+call — so `fused: false` is a real remedy for v4 too (smoke-tested both modes on CPU).
+The guard already caught v4 via `startswith('automagic')`, but its remedy text said "no
+unfused mode"; it now groups v4 with v3, and `OptimizerHint.tsx` shows "Un-fuse it" for
+v4 plus a one-line experimental note above the v3 text. No advisor recipe or preset uses
+v4 — none added (no research basis).
+
 ## Launcher QoL: drop start.bat auto-open, add create_shortcut.bat (2026-07-20)
 
 `start.bat` used to auto-open a browser tab (`start "" "http://localhost:8675"`) on

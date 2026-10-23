@@ -58,7 +58,7 @@
           }
         },
         "model": {
-          "name_or_path": "F:/Models/diffusion_models/krea/krea2_raw_bf16.safetensors",
+          "name_or_path": "krea/Krea-2-Raw",
           "arch": "krea2",
           "quantize": true,
           "qtype": "qfloat8",

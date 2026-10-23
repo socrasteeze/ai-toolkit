@@ -62,9 +62,7 @@ decisions in §9).
 ## Fork hygiene rules (apply to any future change)
 
 1. New functionality goes in new files. Upstream files should only ever get small,
-   easy-to-reapply insertions. As of 2026-10-22 that is **61 files** (61 when the fork pointed
-   the Krea 2 (raw) defaults in `extensions_built_in/diffusion_models/ui.tsx` at a local
-   file; 60 on 2026-09-19; 59 on 2026-09-12, then
+   easy-to-reapply insertions. As of 2026-09-19 that is **60 files** (59 on 2026-09-12, then
    60 when upstream's per-job notes feature added a 19th Next-15-param-type route handler,
    `jobs/[jobID]/notes/route.ts` — see `FORK_NOTES.md`'s 2026-09-19 (2nd) sync row). It jumped from 26 to 57 on
    2026-08-13 (a Next 15 route/page `params` type fix — see FORK_NOTES.md — touched 16 App

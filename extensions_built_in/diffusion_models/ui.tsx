@@ -2479,7 +2479,7 @@ export const AI_TOOLKIT_UI_MODELS: ModelArch[] = [
     gateUrl: "https://huggingface.co/krea/Krea-2-Raw",
     defaults: {
       "config.process[0].model.name_or_path": [
-        "F:/Models/diffusion_models/krea/krea2_raw_bf16.safetensors",
+        "krea/Krea-2-Raw",
         defaultNameOrPath,
       ],
       "config.process[0].model.quantize": [true, false],
@@ -2530,7 +2530,7 @@ export const AI_TOOLKIT_UI_MODELS: ModelArch[] = [
     group: "experimental",
     defaults: {
       "config.process[0].model.name_or_path": [
-        "F:/Models/diffusion_models/krea/krea2_raw_bf16.safetensors",
+        "krea/Krea-2-Raw",
         defaultNameOrPath,
       ],
       "config.process[0].model.quantize": [true, false],

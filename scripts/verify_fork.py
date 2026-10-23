@@ -34,7 +34,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Keep in step with FORK_NOTES.md's "Upstream files modified" table.
-EXPECTED_TOUCHPOINTS = 61
+EXPECTED_TOUCHPOINTS = 60
 
 # (file, needle, what it is). Substring match, not regex — these are anchors that
 # survive reformatting, not exact lines.
@@ -73,7 +73,6 @@ INSERTIONS = [
     ("extensions_built_in/sd_trainer/SDTrainer.py", "DeferredLossTracker", "deferred loss sync"),
     ("extensions_built_in/sd_trainer/DiffusionTrainer.py", "_fork_last_db_poll", "UI db poll throttle"),
     ("build_and_push_docker", "socrasteeze/aitoolkit", "fork docker target"),
-    ("extensions_built_in/diffusion_models/ui.tsx", "krea2_raw_bf16", "local Krea 2 raw default"),
 ]
 
 # Files whose absence of a needle is the failure (a deletion the fork made).

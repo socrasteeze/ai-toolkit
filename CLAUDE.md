@@ -62,7 +62,9 @@ decisions in §9).
 ## Fork hygiene rules (apply to any future change)
 
 1. New functionality goes in new files. Upstream files should only ever get small,
-   easy-to-reapply insertions. As of 2026-09-19 that is **60 files** (59 on 2026-09-12, then
+   easy-to-reapply insertions. As of 2026-10-30 that is **61 files** (the new touchpoint is
+   `extensions_built_in/diffusion_models/anima/anima.py` for block_compile discovery;
+   59 on 2026-09-12, then
    60 when upstream's per-job notes feature added a 19th Next-15-param-type route handler,
    `jobs/[jobID]/notes/route.ts` — see `FORK_NOTES.md`'s 2026-09-19 (2nd) sync row). It jumped from 26 to 57 on
    2026-08-13 (a Next 15 route/page `params` type fix — see FORK_NOTES.md — touched 16 App
@@ -189,9 +191,12 @@ top of `PLAN.md`'s Phase 3 section:
 
 The fork's Phase 4 Anima port (vendored sd-scripts transformer, A1–A4 gates all passed
 2026-07-12) was **retired on 2026-07-16** after upstream shipped its own diffusers-based
-Anima support (ostris#860). `extensions_built_in/diffusion_models/anima/`,
-`diffusion_models/__init__.py`, and `options.tsx` are byte-identical to upstream again —
-do not resurrect the port on future merges. Full history and the port→upstream
+Anima support (ostris#860). `extensions_built_in/diffusion_models/anima/` has one fork
+touchpoint as of 2026-10-30: `anima.py`'s `get_transformer_block_names` supplies wrapper-relative
+block paths and explicit `text_conditioner.in_proj` / `text_conditioner.out_proj` paths
+to preserve LoRA targets without probing the bare Diffusers module. `diffusion_models/__init__.py`
+and `options.tsx` remain byte-identical to upstream. Do not resurrect the port on future merges.
+Full history and the port→upstream
 adaptation notes: `PLAN.md` Phase 4 ("Upstream Anima collision → fork port SUNSET").
 The spec (`ANIMA_INTEGRATION_SPEC.md`) and gate artifacts (`docs/anima_delta_catalog.md`,
 `docs/anima_a4_parity.md`, `docs/profiles.md`) describe the RETIRED port — historical

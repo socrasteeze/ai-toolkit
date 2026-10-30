@@ -577,9 +577,12 @@ class AnimaModel(BaseModel):
         return "anima"
 
     def get_transformer_block_names(self) -> Optional[List[str]]:
-        block_names = ["transformer_blocks"]
+        block_names = ["transformer.transformer_blocks"]
         if self.train_text_conditioner:
-            block_names.append("text_conditioner")
+            # name the conditioner's Linears outside .blocks too, so transformer_only LoRA still
+            # targets them; a bare "text_conditioner" crashes block_compile (diffusers __getattr__
+            # raises KeyError on the __len__ probe)
+            block_names += ["text_conditioner.blocks", "text_conditioner.in_proj", "text_conditioner.out_proj"]
         return block_names
 
     def get_model_to_train(self):

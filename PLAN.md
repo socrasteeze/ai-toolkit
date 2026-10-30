@@ -1859,6 +1859,20 @@ measured (AIO.46). The bench configs are two lines on top of the fast preset:
 `model.compile: true`, `model.block_compile: true`; keep `compile_dynamic` at its default
 `true` for a bucketed resolution list.
 
+### Anima block_compile discovery (2026-10-30)
+
+With `model.compile: true` and `block_compile: true`, Anima reported no individual
+transformer blocks and fell back to whole-model compilation. The trainer walks paths
+from `AnimaTrainableModel`, but the old `transformer_blocks` name omitted its
+`transformer` wrapper component. `get_transformer_block_names` now returns
+`transformer.transformer_blocks` and, when training the text conditioner,
+`text_conditioner.blocks`, `text_conditioner.in_proj`, and `text_conditioner.out_proj`.
+The explicit projection paths preserve LoRA's `transformer_only` substring matches;
+using only `.blocks` would drop those targets and break older text-conditioner LoRAs.
+The bare `text_conditioner` is excluded because Diffusers raises `KeyError: '__len__'`
+when the compile walk probes it. The projection modules are skipped safely by that
+walk. No trainer or save/load code changes. The fork checker expects 61 touchpoints.
+
 ## Dataset-size-aware exposure target (2026-08-29) — closes the 2026-07-29 deferral
 
 The other half of AIO.10. The 2026-07-29 entry above documented that every fixed steps/item

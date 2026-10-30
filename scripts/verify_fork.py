@@ -19,7 +19,7 @@ Exit code 0 when every check passes, 1 otherwise. Checks:
                  upstream keeps shipping the stale Next 14 sync type
 4. fork-docs   - no `forkDocs.tsx` key also exists in upstream's `docs.tsx` (a
                  shadowed key silently stops rendering, and once rendered WRONG)
-5. presets     - BUILTIN_PRESET_NAMES lists exactly the files in presets/
+5. presets     - BUILTIN_PRESET_NAMES lists exactly the non-git-ignored files in presets/
 
 Update EXPECTED_TOUCHPOINTS and INSERTIONS in the same commit as any change to the
 merge surface, exactly as FORK_NOTES.md's table requires.
@@ -206,9 +206,14 @@ def check_builtin_presets(result):
         result.skip("presets", "builtinPresets.ts or presets/ not found")
         return
     listed = set(re.findall(r"^\s*'([^']+)',", text, re.MULTILINE))
+    # git-ignored files (personal UI-saved presets) are not shipped
+    ignored = {
+        Path(line).name
+        for line in git("ls-files", "-oi", "--exclude-standard", "presets").stdout.splitlines()
+    }
     shipped = {
         p.stem for p in presets_dir.iterdir()
-        if p.suffix.lower() in {".json", ".jsonc", ".yaml", ".yml"}
+        if p.suffix.lower() in {".json", ".jsonc", ".yaml", ".yml"} and p.name not in ignored
     }
     missing = sorted(shipped - listed)
     extra = sorted(listed - shipped)

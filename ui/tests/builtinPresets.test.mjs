@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { execFileSync } from 'node:child_process';
 import { readdirSync } from 'node:fs';
 import path from 'node:path';
 
@@ -8,8 +9,17 @@ import { BUILTIN_PRESET_NAMES } from '../src/server/builtinPresets.ts';
 // The set that flags built-ins in the Presets dialog used to be hand-synced with the files
 // in presets/ and drifted five presets behind (2026-08-29). This pins it to the directory.
 const presetsDir = path.resolve(import.meta.dirname, '..', '..', 'presets');
+// git-ignored files (personal UI-saved presets) are not shipped; without git, count everything
+let ignored = new Set();
+try {
+  ignored = new Set(
+    execFileSync('git', ['ls-files', '-oi', '--exclude-standard', '.'], { cwd: presetsDir, encoding: 'utf8' })
+      .split('\n')
+      .filter(Boolean),
+  );
+} catch {}
 const shipped = readdirSync(presetsDir)
-  .filter(name => /\.(json|jsonc|yaml|yml)$/i.test(name))
+  .filter(name => /\.(json|jsonc|yaml|yml)$/i.test(name) && !ignored.has(name))
   .map(name => name.replace(/\.(json|jsonc|yaml|yml)$/i, ''))
   .sort();
 

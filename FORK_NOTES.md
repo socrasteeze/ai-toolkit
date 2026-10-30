@@ -196,7 +196,7 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
 - `config/examples/train_lora_anima_2b.yaml`
 - `config/examples/train_lora_anima_2b_5090_fast.yaml` — speed-optimized variant (Phase 6): checkpointing off, RAM-served latents, fork speed keys
 - `presets/anima_performance_gen_lora.json`, `presets/anima_background_gen_lora.json`
-- `presets/anima_5090_fast_gen_lora.json` — the Phase 6 fast profile (see PLAN.md Phase 6 + the Speed optimization section below)
+- ~~`presets/anima_5090_fast_gen_lora.json`~~ — the Phase 6 fast profile; **removed 2026-10-30** by the operator (its config-only levers live on in `config/examples/train_lora_anima_2b_5090_fast.yaml`)
 - `presets/*_laptop16gb.json` — the 16 GB laptop tier (2026-07-28): `anima_laptop_gen_lora`, `flux_laptop_gen_lora`, `sdxl_laptop_char_lora`, `illxl_laptop_char_lora`, plus `krea2_laptop_automagic_char_lora` (added 2026-07-29). Memory/IO profiles only — every recipe value is inherited unchanged from the parent preset (see PLAN.md "16 GB laptop tier" and, for the krea2 one, "Krea 2 guidance from a measured 16GB run")
 - `presets/k9b_char_lora.json`, `presets/k9b_style_lora.json` — the 9B tier (2026-08-24). Identical to the 4B presets except `arch` and `name_or_path`; previously the 9B was only reachable by hand-editing those two fields out of the 4B preset's description text. **Revised 2026-09-11**: Klein-specific guidance from BFL now exists and ratifies rank 16 / LR 1e-4 / 1500 starting steps, so these are no longer FLUX.1 extrapolations; the 9B style preset was raised to BFL's official 128/64 linear + 64/32 conv, and both 9B presets' "~32-48 GB VRAM" claim was corrected (the 9B is ~29 GB fp16 / ~15 GB fp8 — a single 24 GB card with quantization). Still not 9B-MEASURED, and the timestep type remains the one unsourced value
 - `presets/krea2_char_lokr.json` — Krea 2 character **LoKr** variant (2026-09-11). `network.type: lokr` + `lokr_full_rank: true` + `lokr_factor: 8` and LR 5e-5 (half the LoRA presets'); otherwise `krea2_24gb_gen_lora` unchanged. Added because LoKr is reported to bleed identity far less than LoRA on Krea 2, which is the failure the existing presets answer with DOP/regularization. The factor is contested (community 4 / middle 8 / one published guide 16) and the direction is counter-intuitive — a LOWER factor is a LARGER network (`toolkit/models/lokr.py` `factorization()`). UNVERIFIED: no measured LoKr run in this fork. See PLAN.md "Klein/Krea 2 recipe review (2026-09-11)"
@@ -432,7 +432,7 @@ to approximately ±3.4e38, unlike upstream's finite check. The dead mean-flow
 CUDA loop measuring that synchronization pattern took 0.0778s with the no-op `.item()`
 and 0.0318s without it (2.44x for the microbenchmark; not an end-to-end training claim).
 
-Config-only levers (upstream keys, encoded in `presets/anima_5090_fast_gen_lora.json`):
+Config-only levers (upstream keys, encoded in `presets/anima_5090_fast_gen_lora.json` until its 2026-10-30 removal; still in `config/examples/train_lora_anima_2b_5090_fast.yaml`):
 `gradient_checkpointing: false` (defaults **true** — the single biggest lever on
 a small model), `cache_latents: true` **plus** `cache_latents_to_disk: true`
 (disk-only caching re-reads + deep-copies every latent from disk every step;

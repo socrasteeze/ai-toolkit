@@ -11,7 +11,6 @@
 // list can no longer silently go stale (it was five presets behind on 2026-08-29).
 // Names are the sanitized basename (no extension), matching what the GET/POST routes report.
 export const BUILTIN_PRESET_NAMES = new Set<string>([
-  'anima_5090_fast_gen_lora',
   'anima_automagic_gen_lora',
   'anima_background_gen_lora',
   'anima_laptop_gen_lora',

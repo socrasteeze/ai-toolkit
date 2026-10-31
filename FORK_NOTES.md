@@ -236,8 +236,13 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
 - `ui/tests/datasetScope.test.mjs` — Node contract coverage for all-content, loose-only, loose exclusion, selected children, hidden/`_controls` pruning, and unsafe scope payloads
 - `ui/src/server/imageSize.ts` — header-only image dimension reader (png/jpg/webp)
 - `ui/src/app/api/presets/route.ts` — GET lists presets (each with a `builtIn` flag from
-  `isBuiltinPreset`), POST saves/overwrites by name (writeFile — overwrite is the same path)
-- `ui/src/app/api/presets/[name]/route.ts`
+  `isBuiltinPreset`), POST saves/overwrites by name (writeFile — overwrite is the same path).
+  2026-10-31: POST always writes to `presets/user/` (`getUserPresetsRoot()` in `presetsPath.ts`);
+  GET merges user/ over the root, a user copy shadowing a built-in of the same name (`modified` flag)
+- `ui/src/app/api/presets/[name]/route.ts` — GET reads (user/ first, via `findPresetFile`); DELETE
+  refuses a shipped built-in (400), so no UI action changes a tracked file (2026-10-31)
+- `presets/.gitignore` — ignores `user/` and `*_local.json` (2026-10-31). UI saves had landed as
+  untracked/modified files in `presets/`, and a dirty tree makes `start-rebuild.bat` refuse to run
 - `ui/src/app/api/datasets/count/route.ts` — accepts optional `subPath`, `includeLooseFiles`,
   and `includeSubfolders`; path and scope are validated before counting so step estimates
   match the exact trainer selection
@@ -279,7 +284,8 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
 - `ui/src/components/PresetManager.tsx` — Presets dialog: load / save-as-new / delete,
   plus a per-row **Overwrite** button (writes the current form back over a preset; built-ins
   get a stronger confirm, never blocked). Built-in rows show a "built-in" tag from the GET
-  route's `builtIn` flag (2026-07-21)
+  route's `builtIn` flag (2026-07-21). 2026-10-31: overwriting a built-in saves a shadow copy
+  ("Built-In · Modified" tag, Delete becomes **Restore**); unmodified built-ins have no Delete
   Modal content overrides the toolbar's inherited nowrap; one reserved feedback region
   replaces stale error/success messages without moving the list (2026-10-15).
 - `ui/src/components/jobLog.css` — shared theme-aware vertical scrollbars, stable

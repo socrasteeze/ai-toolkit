@@ -9,6 +9,11 @@ on the New Training Job page in the UI.
   dataset *settings*) but keeps your current job name and dataset folder selections.
 - Saving a preset from the UI strips machine-specific values (job name, dataset paths,
   training folder) so the file is shareable as-is.
+- Saves and overwrites from the UI go to `presets/user/` (git-ignored by `presets/.gitignore`,
+  along with `*_local.json`), never over a shipped file, so they can't dirty the git tree and
+  block `start-rebuild.bat`. A copy there with a built-in's name replaces it in the dialog
+  ("Built-In · Modified"); **Restore** deletes the copy. Shipped built-ins can't be deleted
+  from the UI.
 - Missing fields are filled from the UI defaults on load, so partial configs are fine.
 - The folder location can be overridden with a `PRESETS_FOLDER` row in the UI settings
   database; it defaults to `<repo>/presets`.

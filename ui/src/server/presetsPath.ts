@@ -38,6 +38,17 @@ export const getPresetsRoot = async () => {
   return presetsPath;
 };
 
+// UI saves land here (git-ignored by presets/.gitignore), never over a shipped file, so saving,
+// overwriting or deleting a preset from the UI can't dirty the git tree. A copy here with a
+// built-in's name shadows it; deleting the copy restores the shipped version.
+export const getUserPresetsRoot = async () => {
+  const userRoot = path.join(await getPresetsRoot(), 'user');
+  if (!fs.existsSync(userRoot)) {
+    fs.mkdirSync(userRoot, { recursive: true });
+  }
+  return userRoot;
+};
+
 // Presets are addressed by their file basename without extension. Only allow simple
 // names so a request can never escape the presets folder.
 export const sanitizePresetName = (name: string): string => {
@@ -51,16 +62,19 @@ export const sanitizePresetName = (name: string): string => {
 // Find the file for a preset name, trying each supported extension. Tries the exact
 // basename first so drop-in files with uppercase/spaces still resolve, then the sanitized
 // form used for UI-saved presets. basename() prevents path traversal in both cases.
+// The user folder is searched first so a user copy shadows a shipped preset of the same name.
 export const findPresetFile = async (name: string): Promise<string | null> => {
-  const presetsRoot = await getPresetsRoot();
+  const roots = [await getUserPresetsRoot(), await getPresetsRoot()];
   const exactName = path.basename(name).replace(/\.(json|jsonc|yaml|yml)$/i, '');
   const candidates = [exactName, sanitizePresetName(name)];
-  for (const candidate of candidates) {
-    if (candidate === '') continue;
-    for (const ext of presetExtensions) {
-      const filePath = path.join(presetsRoot, `${candidate}${ext}`);
-      if (fs.existsSync(filePath)) {
-        return filePath;
+  for (const root of roots) {
+    for (const candidate of candidates) {
+      if (candidate === '') continue;
+      for (const ext of presetExtensions) {
+        const filePath = path.join(root, `${candidate}${ext}`);
+        if (fs.existsSync(filePath)) {
+          return filePath;
+        }
       }
     }
   }

@@ -1,0 +1,4 @@
+# Fork-only (see FORK_NOTES.md). Presets saved from the UI go to user/ so they never
+# modify a shipped file or dirty the tree (start-rebuild.bat refuses a dirty tree).
+user/
+*_local.json

@@ -1873,6 +1873,20 @@ The bare `text_conditioner` is excluded because Diffusers raises `KeyError: '__l
 when the compile walk probes it. The projection modules are skipped safely by that
 walk. No trainer or save/load code changes. The fork checker expects 61 touchpoints.
 
+### UI preset saves go to `presets/user/` (2026-10-31)
+
+Saving, overwriting or deleting a preset in the UI used to write straight into `presets/`, so
+it created untracked or modified files, or deleted tracked ones. `start-rebuild.bat` refuses
+to run on a dirty tree, so a deleted built-in (2026-10-30) had to be committed before the app
+would rebuild. Now every UI save goes to `presets/user/`, which the new `presets/.gitignore`
+ignores along with `*_local.json`. A copy there with a built-in's name shadows the shipped
+file in the dialog and on load ("Built-In · Modified", **Restore** deletes the copy). DELETE
+refuses an unshadowed built-in. So no UI action changes a tracked file. Editing a shipped file
+by hand still dirties the tree; the dialog is the supported path. All fork-only files, so no
+touchpoint change. Same session: an automagic4 "LR is stuck at max_lr" report was checked and
+left alone: `max_lr` = launch LR is the deliberate downward-only rail (see
+the Automagic v3 entry), not a bug.
+
 ## Dataset-size-aware exposure target (2026-08-29) — closes the 2026-07-29 deferral
 
 The other half of AIO.10. The 2026-07-29 entry above documented that every fixed steps/item

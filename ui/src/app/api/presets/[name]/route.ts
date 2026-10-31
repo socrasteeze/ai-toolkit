@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import YAML from 'yaml';
-import { findPresetFile } from '@/server/presetsPath';
+import path from 'path';
+import { findPresetFile, getUserPresetsRoot, isBuiltinPreset } from '@/server/presetsPath';
 import { parseJsonc } from '@/utils/jsonc';
 
 // Fork-only route (see FORK_NOTES.md). Reads or deletes a single preset file.
@@ -36,6 +37,14 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const filePath = await findPresetFile(name);
     if (!filePath) {
       return NextResponse.json({ error: `Preset '${name}' not found` }, { status: 404 });
+    }
+    // a shipped built-in is tracked in git; deleting it would dirty the tree and block a rebuild
+    const isUserCopy = path.dirname(filePath) === (await getUserPresetsRoot());
+    if (!isUserCopy && isBuiltinPreset(path.basename(filePath, path.extname(filePath)))) {
+      return NextResponse.json(
+        { error: `'${name}' is a built-in preset shipped with the fork and can't be deleted from the UI` },
+        { status: 400 },
+      );
     }
     await fs.promises.unlink(filePath);
     return NextResponse.json({ success: true });

@@ -17,6 +17,8 @@ interface PresetInfo {
   fileName: string;
   updatedAt: number;
   builtIn?: boolean;
+  // a built-in shadowed by the user's own copy in presets/user/
+  modified?: boolean;
 }
 
 type Props = {
@@ -86,14 +88,14 @@ export default function PresetManager({ jobConfig, setJobConfig }: Props) {
   // Overwrite an existing preset in place with the current form's config. The POST
   // route writes by name, so this reuses the same save path as "Save as new" — the
   // only difference is the target name is an existing preset, plus a confirmation.
-  // Built-in (shipped, provenance-tracked) presets get a stronger warning, but the
-  // write is never blocked — the user asked for it explicitly. `overwrite: true` is what
-  // tells the route this came through that confirmation (it refuses otherwise).
+  // The route writes to presets/user/, so overwriting a built-in saves a copy that shadows
+  // it; the shipped file is never touched. `overwrite: true` is what tells the route this
+  // came through that confirmation (it refuses otherwise).
   const overwritePreset = (preset: PresetInfo) => {
     const warning = preset.builtIn
-      ? `'${preset.name}' is a BUILT-IN recipe shipped with the fork (tracked in git and the ` +
-        `preset-alignment doc). Overwrite it with your current form settings?\n\n` +
-        `To keep the original, save a new preset below.`
+      ? `'${preset.name}' is a built-in preset. Overwrite it with your current form settings?\n\n` +
+        `Your version is saved separately and replaces it in this list; the shipped file isn't ` +
+        `changed. Delete your version later to restore the original.`
       : `Overwrite preset '${preset.name}' with your current form settings?`;
     if (!confirm(warning)) return;
     setFeedback(null);
@@ -109,15 +111,18 @@ export default function PresetManager({ jobConfig, setJobConfig }: Props) {
       });
   };
 
-  const deletePreset = (name: string) => {
-    if (!confirm(`Delete preset '${name}'?`)) return;
+  const deletePreset = (preset: PresetInfo) => {
+    const question = preset.modified
+      ? `Delete your version of '${preset.name}' and restore the built-in original?`
+      : `Delete preset '${preset.name}'?`;
+    if (!confirm(question)) return;
     setFeedback(null);
     apiClient
-      .delete(`/api/presets/${encodeURIComponent(name)}`)
+      .delete(`/api/presets/${encodeURIComponent(preset.name)}`)
       .then(() => refreshPresets())
       .catch(err => {
         console.error('Error deleting preset:', err);
-        setFeedback({ kind: 'error', message: `Failed to delete preset '${name}'.` });
+        setFeedback({ kind: 'error', message: err?.response?.data?.error ?? `Failed to delete preset '${preset.name}'.` });
       });
   };
 
@@ -155,7 +160,7 @@ export default function PresetManager({ jobConfig, setJobConfig }: Props) {
                     {preset.name}
                     {preset.builtIn && (
                       <span className="ml-2 text-[10px] uppercase tracking-wide text-amber-400/80 border border-amber-400/40 rounded px-1 py-[1px]">
-                        Built-In
+                        {preset.modified ? 'Built-In · Modified' : 'Built-In'}
                       </span>
                     )}
                   </div>
@@ -175,12 +180,15 @@ export default function PresetManager({ jobConfig, setJobConfig }: Props) {
                   >
                     Overwrite
                   </Button>
-                  <Button
-                    className="text-gray-300 bg-gray-700 hover:bg-red-700 px-3 py-1 rounded-md text-xs"
-                    onClick={() => deletePreset(preset.name)}
-                  >
-                    Delete
-                  </Button>
+                  {(!preset.builtIn || preset.modified) && (
+                    <Button
+                      className="text-gray-300 bg-gray-700 hover:bg-red-700 px-3 py-1 rounded-md text-xs"
+                      onClick={() => deletePreset(preset)}
+                      title={preset.modified ? 'Delete your version and restore the built-in' : undefined}
+                    >
+                      {preset.modified ? 'Restore' : 'Delete'}
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}

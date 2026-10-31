@@ -1,29 +1,42 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import { getPresetsRoot, presetExtensions, sanitizePresetName, isBuiltinPreset } from '@/server/presetsPath';
+import {
+  getPresetsRoot,
+  getUserPresetsRoot,
+  presetExtensions,
+  sanitizePresetName,
+  isBuiltinPreset,
+  findPresetFile,
+} from '@/server/presetsPath';
 
 // Fork-only route (see FORK_NOTES.md). Presets are plain config files in the presets
 // folder so other users' configs can be dropped in without touching the database.
 
 export async function GET() {
   try {
-    const presetsRoot = await getPresetsRoot();
-    const entries = await fs.promises.readdir(presetsRoot, { withFileTypes: true });
+    // user folder first: a user copy shadows the shipped preset of the same name
+    const userRoot = await getUserPresetsRoot();
     const presets = [];
-    for (const entry of entries) {
-      if (!entry.isFile() || entry.name.startsWith('.')) continue;
-      const ext = path.extname(entry.name).toLowerCase();
-      if (!presetExtensions.includes(ext)) continue;
-      const filePath = path.join(presetsRoot, entry.name);
-      const stat = await fs.promises.stat(filePath);
-      const name = entry.name.slice(0, -ext.length);
-      presets.push({
-        name,
-        fileName: entry.name,
-        updatedAt: stat.mtimeMs,
-        builtIn: isBuiltinPreset(name),
-      });
+    const seen = new Set<string>();
+    for (const root of [userRoot, await getPresetsRoot()]) {
+      const entries = await fs.promises.readdir(root, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isFile() || entry.name.startsWith('.')) continue;
+        const ext = path.extname(entry.name).toLowerCase();
+        if (!presetExtensions.includes(ext)) continue;
+        const name = entry.name.slice(0, -ext.length);
+        if (seen.has(name)) continue;
+        seen.add(name);
+        const stat = await fs.promises.stat(path.join(root, entry.name));
+        presets.push({
+          name,
+          fileName: entry.name,
+          updatedAt: stat.mtimeMs,
+          builtIn: isBuiltinPreset(name),
+          modified: root === userRoot && isBuiltinPreset(name),
+        });
+      }
     }
     presets.sort((a, b) => a.name.localeCompare(b.name));
     return NextResponse.json({ presets });
@@ -53,14 +66,10 @@ export async function POST(request: Request) {
     if (safeName === '') {
       return NextResponse.json({ error: 'Invalid preset name' }, { status: 400 });
     }
-    const presetsRoot = await getPresetsRoot();
-    const filePath = path.join(presetsRoot, `${safeName}.json`);
+    // always written to the user folder; overwriting a built-in leaves the shipped file untouched
+    const filePath = path.join(await getUserPresetsRoot(), `${safeName}.json`);
     if (overwrite !== true) {
-      const exists = await fs.promises.access(filePath).then(
-        () => true,
-        () => false,
-      );
-      if (exists) {
+      if (isBuiltinPreset(safeName) || (await findPresetFile(safeName))) {
         const what = isBuiltinPreset(safeName) ? 'a built-in preset shipped with the fork' : 'an existing preset';
         return NextResponse.json(
           { error: `'${safeName}' is ${what} — use Overwrite to replace it, or pick another name` },

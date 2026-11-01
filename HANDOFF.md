@@ -1,46 +1,48 @@
-# HANDOFF
+# Handoff: Checkpoint Compare for ai-toolkit (like Fizgig's LoRA Royale)
 
-**Updated:** 2026-10-15 · **Branch:** `main` · **Base:** `ebd3c54` (this delivery sits on top) · **Tree:** clean
+Repo: D:\ai-toolkit (socrasteeze/ai-toolkit, upstream ostris fetch-only). Work on main, one local commit, do NOT push.
+Windows / PowerShell. Venv: D:\ai-toolkit\.venv.
 
-## State
-Upstream is synced through `12395a1` (FLUX.3 Image, band loss), validated 13/13, pushed. The job-overwritten Anima automagic preset shipped as v1.3 with personal fields stripped (`PLAN.md` last entry).
+## Hard rules
+- No .bak files anywhere. No force-push, no reset --hard; keep existing local commits and unrelated uncommitted work out of the commit.
+- Never read/move/copy/write/delete any _Archive folder or any IRL dataset folder.
+- No full fork test suite (run_fork_tests.ps1 / next build / npm test). Quick verify only: verify_fork.py, py_compile, tsc --noEmit on touched files.
+- No real training runs. Don't restart the UI if a job is running (check Job.status in aitk_db.db).
+- Generated images go under D:\Output\atk\compare\<run>\ (never D:\Pictures).
 
-## Done this session
-- Upstream sync (13 commits, clean merge, fork surface 60) + the unlogged 2026-10-14 window — `FORK_NOTES.md` sync log
-- Stale merged `noble/*` branches deleted on origin (4 total); origin now has only `main`
-- Anima job failure diagnosed: upstream's loader needs a Diffusers folder or repo, not a single `.safetensors` — no code change; a local Diffusers copy was made outside the repo
-- Shipped the other session's finished work: PresetManager modal wrapping/feedback (`ui/src/components/PresetManager.tsx`), advisor fractional-exposure fix (`6e8d6aa`)
+## Goal
+Pick a training run, render the same prompt + seed with every saved checkpoint, scrub them with a slider, compare each against the real training image, and score likeness so the best checkpoint is obvious. Then promote the winner.
 
-## Open
-1. Rebuild + restart the production UI to pick up the PresetManager and advisor fixes — `start-rebuild.bat`
-2. First Anima run with `name_or_path` pointed at the local Diffusers folder — confirm it trains offline
-3. Krea 2 on hardware: `krea2_laptop_adamw_char_lora` laptop run (retry at 1024 if VRAM allows), then `scripts/attn_probe.py` with and without `--masked`
-4. Two A/Bs vs `krea2_char_lora` (same dataset/seed/steps): `_shift` (record in the doc's §7) and `_automagic` (record where LR settled)
-5. `batchAdvisor.ts` unmeasured cells: batch 4 Klein/Krea 2 on `DESKTOP32`; Klein 4B vs 9B on `LAPTOP16` — measure `k9b_laptop_char_lora`/`_lokr` s/it + VRAM
-6. Decide whether the desktop SDXL/Illustrious presets move to effective batch 2 to match the advisor
+## Inputs
+- Runs: under the TRAINING_FOLDER setting (Settings table in aitk_db.db). Checkpoints are <run>_000000NNN.safetensors plus final <run>.safetensors; run config in <run>\.job_config.json (model.arch, model.name_or_path, datasets[0].folder_path, trigger_word, sample settings).
+- Also allow pointing at a promoted folder (e.g. D:\anima\lora\trained\<run>\).
+- Reference: user picks an image from the run's dataset folder; its sibling .txt caption is the default prompt (editable). Trigger handling must match training: toolkit/prompt_utils.py inject_trigger_into_prompt (plain replace of [trigger]/[name], prepend if missing; no paren escaping).
+- Seed fixed (default 42), size = reference image's bucket/aspect at the run's training resolution; steps/CFG default from the run's sample config.
+- Optional second "bleed" prompt with no trigger (e.g. "statue, bronze statue, bronze, metal, monochrome").
 
-## Decisions
-- Local Diffusers folder over patching upstream `anima/anima.py` for single-file loads — keeps the fork surface at 60
-- Overwritten preset: kept the operator's recipe, stripped trigger word/caption/prompts/local path — repo is public
-- No `flux3` advisor recipe — no research basis yet; do not add a guessed one
-- Upstream's 13 commits keep their original authorship — rewriting them breaks ancestry against `upstream/main`
-- Timestep `linear` vs `shift`, adamw8bit vs automagic3 left unresolved, shipped as one-variable A/B twins
-- Dataset-prep port (alias triggers, `_facecrop`) scoped in the Krea 2 doc's §6 but NOT built — operator's call
+## Behavior
+1. Load the base model once; for each checkpoint (plus optional no-LoRA baseline) swap the LoRA and render. Reuse the fork's existing generate/inference path (ui/src/app/generate/page.tsx, ui/src/app/api/inference/[...path], components/generate/LoraBrowserModal) rather than building a second pipeline.
+2. Cache renders by (checkpoint file, mtime, prompt, seed, size, steps, cfg) under D:\Output\atk\compare\<run>\ so reopening doesn't re-render. Show progress and allow cancel.
+3. Viewer:
+   - Checkpoint slider (step 100 -> final) over the rendered image.
+   - Before/after wipe slider: render vs the actual training image.
+   - Grid view of all checkpoints as a fallback.
+4. Likeness score per checkpoint vs the training image. Prefer a face-identity embedding (insightface/ArcFace) if available in the venv; otherwise DINOv2 or CLIP image similarity. Show which method was used. Highlight the best checkpoint. For the bleed prompt, show similarity too (high = identity bleeding into untriggered prompts).
+5. Promote button per checkpoint: same logic as D:\Runs\.scripts\atk\promote.py (dest = realpath(E:\models\loras\<arch folder>) \ trained \ <run> \ <name>.safetensors; anima -> D:\anima\lora, krea/klein/flux/qwen/wan/ltx2 -> F:\Models\loras\<arch>, illustrious -> E:\models\loras\illustrious). Copy only, never move/delete, confirm before overwrite.
 
-## Traps
-- The preset **Overwrite** button writes the whole job form (trigger word, captions, sample prompts, local paths) into a TRACKED preset on a PUBLIC repo — scan `presets/` before every commit
-- Anima `name_or_path` as a single `.safetensors` fails with "Could not find or load 'modular_model_index.json'" — use the Diffusers repo id or a local Diffusers folder
-- `train.attention_backend` is a silent no-op for Krea 2 (`SingleStreamDiT` has no `set_attention_backend`)
-- `layer_offloading: true` rewrites `qtype` qfloat8 → torchao float8 (`toolkit/config_modules.py`), so preset text and run disagree
-- 16 GB Windows fails as shared-memory spill (absurd s/it), not a clean OOM — keep ~1.5 GB free; `cache_text_embeddings` excludes `diff_output_preservation`
-- Advisor LR chip is withdrawn under `automagic*` (re-adding it clobbers launch LR); `krea2_automagic_char_lora`'s `max_lr` ≠ launch LR is deliberate — do not "fix" it
-- `num_repeats` only duplicates the file list; kohya/musubi repeat advice does not transfer
-- Never push to `upstream` (push URL stays the literal `DISABLED`; remote does not survive a fresh clone); never open a PR; identity is set per clone (`CLAUDE.md`)
+## Where in the UI
+A "Compare" tab on the job page (ui/src/app/jobs/[jobID]) for runs the UI knows, plus a "Checkpoint Compare" entry under Generate for any run folder.
+
+## Scope / arch
+Anima first (base D:\anima\Anima-Base-v1.0-Diffusers). Krea 2 and Klein 9B where the existing generate path supports them; otherwise show a clear "not supported for this arch yet". No FLUX.1 work.
 
 ## Verify
-```powershell
-cd ui; npm ci; npx tsc --noEmit; npx tsc -p tsconfig.worker.json --noEmit; npx next build; npm test
-pwsh scripts/run_fork_tests.ps1
-.\.venv\Scripts\python testing\test_presets.py
-git diff "$(git merge-base HEAD upstream/main)..HEAD" --name-status | Select-String -NotMatch '^A'
-```
+- verify_fork.py passes; py_compile on touched .py; tsc --noEmit on touched UI files.
+- If no job is running: smoke-render 2 checkpoints of a local run with one of its dataset captions and confirm cached files + scores appear.
+- git log -1 --stat shows one local commit on main; nothing pushed.
+
+## Report
+Commit hash, what was built and where it lives in the UI, files changed, verification results, likeness method used, gaps/uncertainties, and whether a UI restart is needed.
+
+## Related (separate, read-only)
+Check whether Fizgig's LoRA Royale (F:\Fizgig) can load ai-toolkit Anima checkpoints: compare the safetensors key format Royale expects to the keys in a saved Anima checkpoint from a local run (header only). Don't modify Fizgig.

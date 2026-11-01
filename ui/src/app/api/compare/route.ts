@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { getTrainingFolder } from '@/server/settings';
+import { getCompareOutputFolder, setCompareOutputFolder } from '@/server/compareOutput';
 import { resolveEngine } from '@/server/inferenceEngine';
 import { getImageDimensions } from '@/server/imageSize';
 import {
   bucketFor,
   buildPlan,
-  compareDir,
   listCheckpoints,
   listReferences,
   listRunFolders,
@@ -18,6 +18,7 @@ import {
   readRunInfo,
   resolveReference,
   resolveRunFolder,
+  validateOutputFolder,
 } from '@/server/compare';
 import { cancelRender, getJob, readScores, scoreKey, startRender } from '@/server/compareRun';
 
@@ -29,14 +30,19 @@ const fail = (e: any, status = 400) => NextResponse.json({ error: e?.message || 
 const loadRun = async (run: unknown) => {
   if (typeof run !== 'string' || !run.trim()) throw new Error('Pick a run.');
   const trainingRoot = await getTrainingFolder();
-  return readRunInfo(resolveRunFolder(run.trim(), trainingRoot), trainingRoot);
+  return readRunInfo(resolveRunFolder(run.trim(), trainingRoot), trainingRoot, await getCompareOutputFolder());
 };
 
 export async function GET(request: NextRequest) {
   const q = request.nextUrl.searchParams;
   try {
     const run = q.get('run');
-    if (!run) return NextResponse.json({ runs: listRunFolders(await getTrainingFolder()) });
+    if (!run) {
+      return NextResponse.json({
+        runs: listRunFolders(await getTrainingFolder()),
+        outputFolder: await getCompareOutputFolder(),
+      });
+    }
     const info = await loadRun(run);
     const rel = q.get('reference');
     if (rel) {
@@ -54,6 +60,8 @@ export async function GET(request: NextRequest) {
       supported: info.supported,
       hasTrigger: !!info.trigger,
       blockedDatasets: info.blockedDatasets,
+      outputDir: info.outputDir,
+      promoteFolder: info.supported ? path.dirname(promoteDest(info.arch, info.runName, info.runName)) : null,
       sample: info.sample,
       checkpoints: listCheckpoints(info.folder).map(c => ({ file: c.file, label: c.label })),
       references: listReferences(info),
@@ -67,8 +75,8 @@ const planState = async (body: any) => {
   const info = await loadRun(body.run);
   const items = buildPlan(info, body);
   const reference = resolveReference(info, body.reference);
-  const dir = compareDir(info.runName);
-  const scores = readScores(info.runName);
+  const dir = info.outputDir;
+  const scores = readScores(dir);
   const engine = await resolveEngine();
   const rows = items.map(i => {
     const scored = scores[scoreKey(i.key, reference)];
@@ -89,6 +97,12 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   if (!body) return fail(new Error('Malformed request.'));
   try {
+    if (body.action === 'output') {
+      const folder = validateOutputFolder(body.folder);
+      await fs.promises.mkdir(folder, { recursive: true });
+      await setCompareOutputFolder(folder);
+      return NextResponse.json({ outputFolder: folder });
+    }
     if (body.action === 'state') {
       const { info, rows, engine } = await planState(body);
       return NextResponse.json({ rows, engineReady: !!engine?.endpoint, job: getJob(info.runName) });

@@ -18,7 +18,9 @@ import {
   readRunInfo,
   renderKey,
   resolveReference,
+  resolveRenderFile,
   resolveRunFolder,
+  validateOutputFolder,
 } from '../src/server/compare.ts';
 
 const scratch = fn => async () => {
@@ -128,7 +130,8 @@ test('run info, plan and references work from a config, and the plan rejects a r
       },
     }),
   );
-  const info = readRunInfo(run, root);
+  const info = readRunInfo(run, root, 'X:\\out');
+  assert.equal(info.outputDir, path.join('X:\\out', 'sample_run'));
   assert.equal(info.supported, true);
   assert.equal(info.resolution, 1024);
   assert.equal(info.divisibility, 32);
@@ -157,7 +160,7 @@ test('unsupported archs say so, and FLUX.1 is not supported', scratch(root => {
     writeFileSync(path.join(run, '.job_config.json'), JSON.stringify({ process: [{ model: { arch }, datasets: [{}] }] }));
   for (const [arch, expected] of [['anima', true], ['krea2', true], ['flux2_klein_9b', true], ['flux', false], ['sdxl', false]]) {
     write(arch);
-    assert.equal(readRunInfo(run, root).supported, expected, arch);
+    assert.equal(readRunInfo(run, root, root).supported, expected, arch);
   }
 }));
 
@@ -167,9 +170,27 @@ test('a promoted folder with no config falls back to the run of the same name', 
   mkdirSync(path.join(training, 'r'), { recursive: true });
   mkdirSync(promoted, { recursive: true });
   writeFileSync(path.join(training, 'r', '.job_config.json'), JSON.stringify({ process: [{ model: { arch: 'anima' } }] }));
-  assert.equal(readRunInfo(promoted, training).arch, 'anima');
-  assert.throws(() => readRunInfo(path.join(root, 'lib'), training), /job_config/);
+  assert.equal(readRunInfo(promoted, training, root).arch, 'anima');
+  assert.throws(() => readRunInfo(path.join(root, 'lib'), training, root), /job_config/);
 }));
+
+test('the output folder must be absolute and off the forbidden list', () => {
+  assert.equal(validateOutputFolder(' D:\\Output\\training '), 'D:\\Output\\training');
+  for (const bad of ['relative\\path', '', null, 'D:\\Output\\_Archive', 'D:\\irl\\out']) {
+    assert.throws(() => validateOutputFolder(bad), undefined, String(bad));
+  }
+  assert.throws(() => readRunInfo('E:\\runs\\irl', 'E:\\runs', 'D:\\out'), /off limits/);
+});
+
+test('the public image route can reach only generated render names, one run folder deep', () => {
+  const root = 'D:\\out';
+  const name = 'final_0123456789ab.png';
+  assert.equal(resolveRenderFile(root, `run/${name}`), path.join(root, 'run', name));
+  assert.equal(resolveRenderFile(root, `run/s000000100_0123456789ab.png`), path.join(root, 'run', 's000000100_0123456789ab.png'));
+  for (const bad of [name, `..\\..\\${name}`, 'run/photo.png', 'run/scores.json', `a/b/${name}`, `../${name}`, `irl/${name}`]) {
+    assert.equal(resolveRenderFile(root, bad), null, bad);
+  }
+});
 
 test('promote paths match promote.py, including klein before flux and the real library folder', () => {
   const real = p => `X:\\real\\${path.win32.basename(p)}`;

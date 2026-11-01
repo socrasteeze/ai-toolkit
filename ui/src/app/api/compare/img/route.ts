@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { getTrainingFolder } from '@/server/settings';
-import { COMPARE_ROOT, isForbiddenPath, isUnder, readRunInfo, resolveReference, resolveRunFolder } from '@/server/compare';
+import { getCompareOutputFolder } from '@/server/compareOutput';
+import { readRunInfo, resolveReference, resolveRenderFile, resolveRunFolder } from '@/server/compare';
 
 // Fork-only (see FORK_NOTES.md). Public in middleware.ts like /api/img, because <img> cannot
 // send the bearer token. Serves only cached renders and images in a run's own dataset.
@@ -17,15 +18,13 @@ const TYPES: Record<string, string> = {
 
 const locate = async (q: URLSearchParams): Promise<string | null> => {
   const file = q.get('file');
-  if (file) {
-    const full = path.resolve(COMPARE_ROOT, file);
-    return isUnder(full, COMPARE_ROOT) && !isForbiddenPath(full) && full.endsWith('.png') ? full : null;
-  }
+  if (file) return resolveRenderFile(await getCompareOutputFolder(), file);
   const run = q.get('run');
   const reference = q.get('reference');
   if (!run || !reference) return null;
   const trainingRoot = await getTrainingFolder();
-  const full = resolveReference(readRunInfo(resolveRunFolder(run, trainingRoot), trainingRoot), reference);
+  const info = readRunInfo(resolveRunFolder(run, trainingRoot), trainingRoot, await getCompareOutputFolder());
+  const full = resolveReference(info, reference);
   if (!q.has('thumb')) return full;
   // the same pre-generated thumbs /api/img serves
   const thumb = path.join(path.dirname(full), '.thumbs', path.basename(full));

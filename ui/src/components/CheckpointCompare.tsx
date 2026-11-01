@@ -17,6 +17,8 @@ interface RunData {
   supported: boolean;
   hasTrigger: boolean;
   blockedDatasets: number;
+  outputDir: string;
+  promoteFolder: string | null;
   sample: { steps: number; cfg: number; neg: string };
   checkpoints: { file: string; label: string }[];
   references: string[];
@@ -44,6 +46,7 @@ const fmt = (score: number | null | undefined) => (score == null ? '-' : score.t
 export default function CheckpointCompare({ job }: { job?: Job }) {
   const [runInput, setRunInput] = useState('');
   const [runs, setRuns] = useState<string[]>([]);
+  const [outputFolder, setOutputFolder] = useState('');
   const [run, setRun] = useState(job?.name ?? '');
   const [data, setData] = useState<RunData | null>(null);
   const [reference, setReference] = useState<string | null>(null);
@@ -64,12 +67,26 @@ export default function CheckpointCompare({ job }: { job?: Job }) {
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    if (job) return;
     apiClient
       .get('/api/compare')
-      .then(r => setRuns(r.data.runs))
+      .then(r => {
+        setRuns(r.data.runs);
+        setOutputFolder(r.data.outputFolder);
+      })
       .catch(e => setError(errorOf(e)));
-  }, [job]);
+  }, []);
+
+  const saveOutputFolder = () =>
+    apiClient
+      .post('/api/compare', { action: 'output', folder: outputFolder })
+      .then(r => {
+        setOutputFolder(r.data.outputFolder);
+        setNotice(`Renders now go to ${r.data.outputFolder}`);
+        setError(null);
+        // the run's own output path changes with it
+        return run ? apiClient.get('/api/compare', { params: { run } }).then(d => setData(d.data)) : undefined;
+      })
+      .catch(e => setError(errorOf(e)));
 
   useEffect(() => {
     setData(null);
@@ -192,6 +209,26 @@ export default function CheckpointCompare({ job }: { job?: Job }) {
           </button>
         </form>
       )}
+
+      <form
+        className="flex items-end gap-2"
+        onSubmit={e => {
+          e.preventDefault();
+          saveOutputFolder();
+        }}
+      >
+        <label className="flex-1">
+          <span className="block text-xs text-gray-400 mb-1">Output Folder (Each Run Gets a Subfolder)</span>
+          <input
+            value={outputFolder}
+            onChange={e => setOutputFolder(e.target.value)}
+            className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5"
+          />
+        </label>
+        <button type="submit" className="px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600">
+          Save Folder
+        </button>
+      </form>
 
       {error && <div className="rounded bg-rose-950/70 text-rose-200 px-3 py-2 whitespace-pre-wrap">{error}</div>}
       {notice && <div className="rounded bg-emerald-950/70 text-emerald-200 px-3 py-2 break-all">{notice}</div>}
@@ -432,7 +469,10 @@ export default function CheckpointCompare({ job }: { job?: Job }) {
                       ))}
                     </tbody>
                   </table>
-                  {method && <p className="mt-2 text-xs text-gray-400">Method: {method}.</p>}
+                  {data.promoteFolder && (
+                    <p className="mt-2 text-xs text-gray-400 break-all">Promote copies to {data.promoteFolder}.</p>
+                  )}
+                  {method && <p className="text-xs text-gray-400">Method: {method}.</p>}
                   {hasBleed && (
                     <p className="text-xs text-gray-400">
                       High bleed similarity means the identity shows up in prompts without the trigger.

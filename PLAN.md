@@ -3020,6 +3020,15 @@ Decisions:
   path, mtime kept, and a 409 that the UI turns into an overwrite confirmation. Files are
   named `<run>_s<step>`, or `<run>` for the final.
 
+- **The output folder is a setting, edited on the Compare screen.** Renders go to
+  `<output folder>\<run>\`, and the value is a `COMPARE_OUTPUT_FOLDER` row in `Settings`, so
+  no workstation path ships in the code. Because the folder can now be anything, the public
+  image route accepts only a generated render name one run folder deep.
+- **Training checkpoints are separate.** They follow Settings' Training Folder, as upstream
+  does. Changing that hides older runs from their job pages unless they move too.
+- **Promote shows its destination first.** The Compare screen prints the arch's real library
+  folder, so the target drive is visible before the click.
+
 Likeness method: CLIP ViT-L/14 image similarity on CPU, labelled in the UI as whole-image
 and not face identity. insightface and onnxruntime are not in the venv, and DINOv2 weights
 are not cached. CLIP's are, under `timm/vit_large_patch14_clip_224.openai`, loaded with the

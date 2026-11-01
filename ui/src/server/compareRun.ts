@@ -8,7 +8,7 @@ import path from 'path';
 import { resolvePythonPath } from '../../cron/pythonPath';
 import { TOOLKIT_ROOT } from '../../cron/paths';
 import { readEngineFrames } from '../utils/engineStream';
-import { compareDir, isUnder, type PlanItem, type RunInfo } from './compare';
+import { isUnder, type PlanItem, type RunInfo } from './compare';
 import type { EngineEndpoint } from './inferenceEngine';
 
 export interface CompareJob {
@@ -72,9 +72,8 @@ const renderOne = async (info: RunInfo, item: PlanItem, ep: EngineEndpoint, curr
   if (failure) throw new Error(failure);
   if (!resultPath) return false; // cancelled
 
-  const dir = compareDir(info.runName);
-  await fs.promises.mkdir(dir, { recursive: true });
-  const dest = path.join(dir, item.key);
+  await fs.promises.mkdir(info.outputDir, { recursive: true });
+  const dest = path.join(info.outputDir, item.key);
   await fs.promises.copyFile(resultPath, `${dest}.part`);
   await fs.promises.rename(`${dest}.part`, dest);
   // the engine's copy was only a stopover; its request folder holds this one render
@@ -83,12 +82,12 @@ const renderOne = async (info: RunInfo, item: PlanItem, ep: EngineEndpoint, curr
   return true;
 };
 
-const scoresPath = (runName: string) => path.join(compareDir(runName), 'scores.json');
+const scoresPath = (outputDir: string) => path.join(outputDir, 'scores.json');
 export type Scores = Record<string, { score: number; method: string }>;
 
-export const readScores = (runName: string): Scores => {
+export const readScores = (outputDir: string): Scores => {
   try {
-    return JSON.parse(fs.readFileSync(scoresPath(runName), 'utf-8'));
+    return JSON.parse(fs.readFileSync(scoresPath(outputDir), 'utf-8'));
   } catch {
     return {};
   }
@@ -121,8 +120,8 @@ const runScorer = (reference: string, images: string[]) =>
   });
 
 const scoreRendered = async (info: RunInfo, items: PlanItem[], reference: string, current: CompareJob) => {
-  const dir = compareDir(info.runName);
-  const scores = readScores(info.runName);
+  const dir = info.outputDir;
+  const scores = readScores(dir);
   const missing = items.filter(i => !scores[scoreKey(i.key, reference)] && fs.existsSync(path.join(dir, i.key)));
   if (!missing.length) return;
   current.message = `Scoring ${missing.length} renders`;
@@ -134,13 +133,12 @@ const scoreRendered = async (info: RunInfo, items: PlanItem[], reference: string
     const score = result.scores[path.join(dir, item.key)];
     if (typeof score === 'number') scores[scoreKey(item.key, reference)] = { score, method: result.method };
   }
-  await fs.promises.writeFile(scoresPath(info.runName), JSON.stringify(scores, null, 1));
+  await fs.promises.writeFile(scoresPath(dir), JSON.stringify(scores, null, 1));
 };
 
 export const startRender = (info: RunInfo, items: PlanItem[], reference: string, endpoint: EngineEndpoint) => {
   if (job?.status === 'running') throw new Error('A compare render is already running.');
-  const dir = compareDir(info.runName);
-  const todo = items.filter(i => !fs.existsSync(path.join(dir, i.key)));
+  const todo = items.filter(i => !fs.existsSync(path.join(info.outputDir, i.key)));
   const current: CompareJob = {
     runName: info.runName,
     status: 'running',

@@ -8,7 +8,7 @@ Windows / PowerShell. Venv: D:\ai-toolkit\.venv.
 - Never read/move/copy/write/delete any _Archive folder or any IRL dataset folder.
 - No full fork test suite (run_fork_tests.ps1 / next build / npm test). Quick verify only: verify_fork.py, py_compile, tsc --noEmit on touched files.
 - No real training runs. Don't restart the UI if a job is running (check Job.status in aitk_db.db).
-- Generated images go under D:\Output\atk\compare\<run>\ (never D:\Pictures).
+- Generated images go under the Compare output folder setting, as <output folder>\<run>\ (never D:\Pictures).
 
 ## Goal
 Pick a training run, render the same prompt + seed with every saved checkpoint, scrub them with a slider, compare each against the real training image, and score likeness so the best checkpoint is obvious. Then promote the winner.
@@ -22,7 +22,7 @@ Pick a training run, render the same prompt + seed with every saved checkpoint, 
 
 ## Behavior
 1. Load the base model once; for each checkpoint (plus optional no-LoRA baseline) swap the LoRA and render. Reuse the fork's existing generate/inference path (ui/src/app/generate/page.tsx, ui/src/app/api/inference/[...path], components/generate/LoraBrowserModal) rather than building a second pipeline.
-2. Cache renders by (checkpoint file, mtime, prompt, seed, size, steps, cfg) under D:\Output\atk\compare\<run>\ so reopening doesn't re-render. Show progress and allow cancel.
+2. Cache renders by (checkpoint file, mtime, prompt, seed, size, steps, cfg) under <output folder>\<run>\ so reopening doesn't re-render. Show progress and allow cancel.
 3. Viewer:
    - Checkpoint slider (step 100 -> final) over the rendered image.
    - Before/after wipe slider: render vs the actual training image.

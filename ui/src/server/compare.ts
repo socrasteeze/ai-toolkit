@@ -4,8 +4,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 
-// shortcut: workstation paths from the operator's spec, move to Settings if this runs elsewhere
-export const COMPARE_ROOT = 'D:\\Output\\atk\\compare';
+// shortcut: the operator's library path from the spec, move to Settings if this runs elsewhere
 const LORA_LIBRARY = 'E:\\models\\loras';
 
 // same order as promote.py: 'flux2_klein_9b' must hit klein before flux
@@ -110,6 +109,7 @@ export const listCheckpoints = (folder: string): Checkpoint[] =>
 export interface RunInfo {
   folder: string;
   runName: string;
+  outputDir: string; // <output folder>\<run>, where renders and scores.json live
   arch: string;
   supported: boolean;
   model: Record<string, unknown>;
@@ -121,8 +121,10 @@ export interface RunInfo {
   sample: { steps: number; cfg: number; neg: string };
 }
 
-export const readRunInfo = (folder: string, trainingRoot: string): RunInfo => {
+export const readRunInfo = (folder: string, trainingRoot: string, outputRoot: string): RunInfo => {
   const runName = path.basename(folder);
+  const outputDir = path.join(outputRoot, runName);
+  assertAllowed(outputDir);
   // a promoted folder holds no config: fall back to the run it came from
   const configPath = [folder, path.join(trainingRoot, runName)]
     .map(dir => path.join(dir, '.job_config.json'))
@@ -140,6 +142,7 @@ export const readRunInfo = (folder: string, trainingRoot: string): RunInfo => {
   return {
     folder,
     runName,
+    outputDir,
     arch,
     supported: arch in BUCKET_DIVISIBILITY,
     model,
@@ -238,11 +241,6 @@ export interface PlanItem {
   params: RenderParams;
 }
 
-export const compareDir = (runName: string) => {
-  assertAllowed(runName);
-  return path.join(COMPARE_ROOT, runName);
-};
-
 type CacheIdentity = Pick<Checkpoint, 'file' | 'mtimeMs' | 'step'> | null;
 
 const slugOf = (c: CacheIdentity) =>
@@ -297,6 +295,22 @@ export const buildPlan = (info: RunInfo, req: PlanRequest): PlanItem[] => {
       };
     }),
   );
+};
+
+/** The output folder is the operator's choice, so it must be a real absolute path off the forbidden list. */
+export const validateOutputFolder = (folder: unknown): string => {
+  if (typeof folder !== 'string' || !path.isAbsolute(folder.trim())) throw new Error('Enter a full folder path.');
+  const resolved = path.resolve(folder.trim());
+  assertAllowed(resolved);
+  return resolved;
+};
+
+/** A public image URL's file: only <run>\<generated render name> under the output folder, never any other png there. */
+export const resolveRenderFile = (outputRoot: string, file: string): string | null => {
+  const parts = file.split(/[\\/]+/);
+  if (parts.length !== 2 || !/^(baseline|final|s\d{9})_[0-9a-f]{12}\.png$/.test(parts[1])) return null;
+  const full = path.resolve(outputRoot, parts[0], parts[1]);
+  return isUnder(full, outputRoot) && !isForbiddenPath(full) ? full : null;
 };
 
 /** promote.py: <real library folder for the arch>\trained\<run>\<name>.safetensors */

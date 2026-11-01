@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Settings, BrainCircuit, Images, Plus, X, Sparkles } from 'lucide-react';
+import { Home, Settings, BrainCircuit, Images, Plus, X, Sparkles, GitCompare } from 'lucide-react';
 import { FaXTwitter, FaDiscord, FaYoutube } from 'react-icons/fa6';
 import { createGlobalState } from 'react-global-hooks';
 import ThemeToggle from './ThemeToggle';
@@ -37,6 +37,7 @@ const Sidebar = () => {
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: Home },
     { name: 'Generate', href: '/generate', icon: Sparkles, badge: 'alpha' },
+    { name: 'Checkpoint Compare', href: '/generate/compare', icon: GitCompare },
     { name: 'New Job', href: '/jobs/new', icon: Plus },
     { name: 'Queue', href: '/jobs', icon: BrainCircuit },
     { name: 'Datasets', href: '/datasets', icon: Images },

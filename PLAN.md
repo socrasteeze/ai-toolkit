@@ -2988,3 +2988,57 @@ SHIP: source changes validated. Production rebuild/restart remains pending.
 
 All 167 UI tests, TypeScript checking, and fork verification passed. Browser checks
 rendered the actual components with synthetic hooks and logs, without live job APIs.
+
+## Checkpoint Compare (2026-11-01)
+
+Pick a run, render one prompt and seed with every saved checkpoint, compare each against
+the training image, score likeness, and promote the winner. It lives in the job page's
+Compare tab and at `/generate/compare` (sidebar entry under Generate).
+
+Decisions:
+
+- **The render loop runs on the server, not in the browser.** The job page unmounts a tab
+  when you switch away, so a browser loop would stop mid-run. `compareRun.ts` keeps going,
+  and the component only polls. A UI restart forgets the job but not the cached files.
+- **It reuses the resident engine, and starting it stays on the Generate page.** Every
+  request sends the same model block with `lora_mode: hook`, so `_ensure_holder` keeps the
+  base loaded and `_apply_loras` swaps only the LoRA. The start logic is inline in
+  `generate/page.tsx`, so Compare links there instead of duplicating it.
+- **The cache needs no index.** The file name is a hash of checkpoint file, mtime, prompt,
+  negative prompt, seed, size, steps and CFG, so "is it cached" is "does the file exist".
+  The negative prompt is in the hash because it changes the output. Seed -1 is refused,
+  because a random seed would make the cache wrong.
+- **Size comes from `get_bucket_for_image_size` at the model's divisibility.** The data
+  loader overwrites `bucket_tolerance` with `get_bucket_divisibility()`, so the 64 default
+  is never what training uses: Anima 32, Krea 2 and Klein 16.
+- **Model settings are an allow-list.** `compile`, `block_compile`, `model_kwargs` and the
+  training adapters stay out, matching what the Generate page sends.
+- **Archive and IRL folders are refused in code.** The "any run folder" input could
+  otherwise point at one, so `isForbiddenPath` guards run folders, dataset walks, reference
+  lookups and promote destinations, after resolving junctions.
+- **Promote copies only.** It ports `promote.py`: same arch map and order, real library
+  path, mtime kept, and a 409 that the UI turns into an overwrite confirmation. Files are
+  named `<run>_s<step>`, or `<run>` for the final.
+
+Likeness method: CLIP ViT-L/14 image similarity on CPU, labelled in the UI as whole-image
+and not face identity. insightface and onnxruntime are not in the venv, and DINOv2 weights
+are not cached. CLIP's are, under `timm/vit_large_patch14_clip_224.openai`, loaded with the
+`ViT-L-14-quickgelu` config. ArcFace was left out: it adds a model download and no-face
+handling, which is more than a few lines. Treat CLIP as a ranking aid, because a whole-image
+score also rewards composition and style, and center-crops portrait images.
+
+Limits:
+
+- Measured on Anima only. Krea 2 and Klein 9B share the code path but have not been rendered.
+- A prompt containing `--` is parsed as flags by `GenerateImageConfig`, unlike a training
+  caption. It is left as is, since the Generate page behaves the same way.
+- A promoted folder with no `.job_config.json` needs a training run of the same name.
+- The dataset picker lists everything in the first dataset's folder and ignores
+  `include_loose_files` / `include_subfolders`.
+
+LoRA Royale (read-only check of Fizgig): Anima checkpoints load. Royale accepts the
+trainer's `diffusion_model.blocks.N.<module>.lora_A/B.weight` keys, resolves all 280 modules,
+and detects the family as Anima. Royale's scan expects `<name>-NNNNNN.safetensors`, so
+ai-toolkit's `_NNNNNNNNN` names drop to its "compared by filename" mode, with no epoch labels
+and the final file sorted first. Files carry no `.alpha` key, which Royale reads as scale
+1.0; that is right at rank = alpha and was not checked on a run where they differ.

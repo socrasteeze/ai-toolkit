@@ -3028,6 +3028,14 @@ Decisions:
   does. Changing that hides older runs from their job pages unless they move too.
 - **Promote shows its destination first.** The Compare screen prints the arch's real library
   folder, so the target drive is visible before the click.
+- **A refresh restores the session (2026-11-03).** The server keeps rendering through a
+  refresh, but its job is only visible through a poll carrying a reference and prompt, so a
+  refresh used to hide it. The browser now keeps the last run, plus each run's reference and
+  settings, in `localStorage`. It stays per browser, so a render started in another browser
+  still needs its reference picked again to appear.
+- **The run picker is a react-select creatable (2026-11-03).** A native `datalist` filters to
+  the current value, so a loaded run hid every other option. Typed paths must keep working,
+  because promoted folders are not in the list, which rules out a plain select.
 
 Likeness method: CLIP ViT-L/14 image similarity on CPU, labelled in the UI as whole-image
 and not face identity. insightface and onnxruntime are not in the venv, and DINOv2 weights

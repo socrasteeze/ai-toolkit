@@ -3,6 +3,7 @@
 // Fork-only (see FORK_NOTES.md). Used by the job page's Compare tab (job set) and by
 // /generate/compare (any run folder). Renders run on the server, so this only polls state.
 import { useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { Loader2 } from 'lucide-react';
 import { Job } from '@prisma/client';
@@ -42,12 +43,23 @@ interface StateData {
 
 const errorOf = (e: any) => e?.response?.data?.error || e?.message || String(e);
 const fmt = (score: number | null | undefined) => (score == null ? '-' : score.toFixed(3));
+const RunSelect = dynamic(() => import('react-select/creatable'), { ssr: false });
+const LAST_RUN_KEY = 'checkpointCompare.lastRun';
+const settingsKey = (run: string) => `checkpointCompare.settings.${run}`;
+const readSaved = (run: string) => {
+  try {
+    return JSON.parse(localStorage.getItem(settingsKey(run)) ?? 'null');
+  } catch {
+    return null;
+  }
+};
 
 export default function CheckpointCompare({ job }: { job?: Job }) {
-  const [runInput, setRunInput] = useState('');
   const [runs, setRuns] = useState<string[]>([]);
   const [outputFolder, setOutputFolder] = useState('');
   const [run, setRun] = useState(job?.name ?? '');
+  // settings save only once this run's own values are in state, never the previous run's
+  const [loadedRun, setLoadedRun] = useState('');
   const [data, setData] = useState<RunData | null>(null);
   const [reference, setReference] = useState<string | null>(null);
   const [prompt, setPrompt] = useState('');
@@ -88,22 +100,51 @@ export default function CheckpointCompare({ job }: { job?: Job }) {
       })
       .catch(e => setError(errorOf(e)));
 
+  // read after mount: the server render has no localStorage
+  useEffect(() => {
+    if (!job) setRun(localStorage.getItem(LAST_RUN_KEY) ?? '');
+  }, [job]);
+
+  useEffect(() => {
+    if (!job && run) localStorage.setItem(LAST_RUN_KEY, run);
+  }, [job, run]);
+
   useEffect(() => {
     setData(null);
     setState(null);
     setReference(null);
+    setLoadedRun('');
     if (!run) return;
     setError(null);
+    let stale = false;
     apiClient
       .get('/api/compare', { params: { run } })
       .then(r => {
+        if (stale) return;
         const d: RunData = r.data;
+        const saved = readSaved(run);
+        const restore = !!saved && d.references.includes(saved.reference);
         setData(d);
-        setSteps(d.sample.steps);
-        setCfg(d.sample.cfg);
-        setNeg(d.sample.neg);
+        setSteps(restore ? saved.steps : d.sample.steps);
+        setCfg(restore ? saved.cfg : d.sample.cfg);
+        setNeg(restore ? saved.neg : d.sample.neg);
+        if (restore) {
+          setReference(saved.reference);
+          setPrompt(saved.prompt);
+          setBleed(saved.bleed);
+          setSeed(saved.seed);
+          setWidth(saved.width);
+          setHeight(saved.height);
+          setBaseline(saved.baseline);
+        }
+        setLoadedRun(run);
       })
-      .catch(e => setError(errorOf(e)));
+      .catch(e => {
+        if (!stale) setError(errorOf(e));
+      });
+    return () => {
+      stale = true;
+    };
   }, [run]);
 
   const pickReference = async (rel: string) => {
@@ -123,6 +164,12 @@ export default function CheckpointCompare({ job }: { job?: Job }) {
     () => ({ run, reference, prompt, bleed, neg, seed, width, height, steps, cfg, baseline }),
     [run, reference, prompt, bleed, neg, seed, width, height, steps, cfg, baseline],
   );
+
+  useEffect(() => {
+    if (request.reference && loadedRun === request.run) {
+      localStorage.setItem(settingsKey(request.run), JSON.stringify(request));
+    }
+  }, [request, loadedRun]);
 
   usePollLoop(
     () =>
@@ -177,37 +224,31 @@ export default function CheckpointCompare({ job }: { job?: Job }) {
   const missing = rows.filter(r => !r.cached).length;
   const hasBleed = !!bleed.trim();
   const renderUrl = (key: string) => `/api/compare/img?file=${encodeURIComponent(`${data?.runName}/${key}`)}`;
-  const refUrl = (rel: string, thumb = false) =>
-    `/api/compare/img?run=${encodeURIComponent(run)}&reference=${encodeURIComponent(rel)}${thumb ? '&thumb=1' : ''}`;
+  // the server's .thumbs are center-cropped squares, which would cut the 3:4 tiles short
+  const refUrl = (rel: string) => `/api/compare/img?run=${encodeURIComponent(run)}&reference=${encodeURIComponent(rel)}`;
 
   return (
     <div className="space-y-4 text-sm text-gray-200">
       {!job && (
-        <form
-          className="flex items-end gap-2"
-          onSubmit={e => {
-            e.preventDefault();
-            setRun(runInput.trim());
-          }}
-        >
-          <label className="flex-1">
-            <span className="block text-xs text-gray-400 mb-1">Run Name or Promoted Folder</span>
-            <input
-              list="compare-runs"
-              value={runInput}
-              onChange={e => setRunInput(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5"
-            />
-            <datalist id="compare-runs">
-              {runs.map(r => (
-                <option key={r} value={r} />
-              ))}
-            </datalist>
-          </label>
-          <button type="submit" className="px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600">
-            Load Run
-          </button>
-        </form>
+        <div>
+          <span id="compare-run-label" className="block text-xs text-gray-400 mb-1">
+            Run Name or Promoted Folder
+          </span>
+          <RunSelect
+            aria-labelledby="compare-run-label"
+            className="aitk-react-select-container"
+            classNamePrefix="aitk-react-select"
+            menuPosition="fixed"
+            menuPlacement="auto"
+            placeholder="Pick a run, or type a promoted folder path"
+            value={run ? { value: run, label: run } : null}
+            options={runs.map(r => ({ value: r, label: r }))}
+            formatCreateLabel={(path: string) => `Load ${path}`}
+            onChange={selected => {
+              if (selected) setRun((selected as { value: string }).value.trim());
+            }}
+          />
+        </div>
       )}
 
       <form
@@ -251,7 +292,8 @@ export default function CheckpointCompare({ job }: { job?: Job }) {
           {!data.references.length && <p className="text-amber-300">This run has no reachable dataset images.</p>}
           <section>
             <h2 className="text-xs text-gray-400 mb-1">Reference Image</h2>
-            <div className="flex gap-1 overflow-x-auto pb-1">
+            {/* 9rem columns at 3:4 are 12rem tall, so this height shows exactly 2 rows */}
+            <div className="grid grid-cols-[repeat(auto-fill,9rem)] gap-2 overflow-y-auto max-h-[24.5rem]">
               {data.references.map(rel => (
                 <button
                   key={rel}
@@ -260,10 +302,10 @@ export default function CheckpointCompare({ job }: { job?: Job }) {
                   aria-label={`Use ${rel} as the reference`}
                   aria-pressed={rel === reference}
                   onClick={() => pickReference(rel)}
-                  className={`h-20 w-20 shrink-0 rounded overflow-hidden border-2 ${rel === reference ? 'border-blue-500' : 'border-transparent hover:border-gray-600'}`}
+                  className={`aspect-[3/4] rounded overflow-hidden border-2 ${rel === reference ? 'border-blue-500' : 'border-transparent hover:border-gray-600'}`}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={refUrl(rel, true)} alt="" loading="lazy" className="w-full h-full object-cover" />
+                  <img src={refUrl(rel)} alt="" loading="lazy" className="w-full h-full object-cover" />
                 </button>
               ))}
             </div>

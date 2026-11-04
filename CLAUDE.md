@@ -62,9 +62,11 @@ decisions in §9).
 ## Fork hygiene rules (apply to any future change)
 
 1. New functionality goes in new files. Upstream files should only ever get small,
-   easy-to-reapply insertions. As of 2026-10-30 that is **61 files** (the new touchpoint is
-   `extensions_built_in/diffusion_models/anima/anima.py` for block_compile discovery;
-   59 on 2026-09-12, then
+   easy-to-reapply insertions. As of 2026-11-01 that is **64 files** (the new touchpoint is
+   `jobs/process/BaseSDTrainProcess.py` so resume ignores sidecar files; 63 earlier that day
+   with `ui/src/components/Sidebar.tsx` and `ui/src/middleware.ts` for Checkpoint Compare; 61 on
+   2026-10-30 when `extensions_built_in/diffusion_models/anima/anima.py` was added for
+   block_compile discovery; 59 on 2026-09-12, then
    60 when upstream's per-job notes feature added a 19th Next-15-param-type route handler,
    `jobs/[jobID]/notes/route.ts` — see `FORK_NOTES.md`'s 2026-09-19 (2nd) sync row). It jumped from 26 to 57 on
    2026-08-13 (a Next 15 route/page `params` type fix — see FORK_NOTES.md — touched 16 App
@@ -139,7 +141,7 @@ Standing instructions for `/sync-upstream` (or any "pull in upstream" request):
 4. Validate before pushing: `npm ci` + `npx tsc --noEmit` + `npx next build` + `npm test`
    in `ui/` (the last runs the fork's 32 Node contract tests), the fork's Python suites in
    `testing/` (`test_dataset_selection`, `test_fork_speed`, `test_ideogram4_prompt`,
-   `test_lora_compile_scalars`, `test_qol_scripts`, `test_clean_captions`, `test_presets` — via the
+   `test_lora_compile_scalars`, `test_resume_path`, `test_qol_scripts`, `test_clean_captions`, `test_presets` — via the
    repo `.venv`; `scripts/run_fork_tests.ps1` runs the lot and reports a missing dep as SKIP), and `-m py_compile` on any touched
    Python. **The interpreter on this Windows box is `python`, not `python3`** — bare
    `python3` hits the Microsoft Store alias stub and fails; `python3` only works in the

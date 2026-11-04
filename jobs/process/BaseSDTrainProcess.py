@@ -843,6 +843,8 @@ class BaseSDTrainProcess(BaseTrainProcess):
             # Filter out non-existent paths and sort by creation time
             if paths:
                 paths = [p for p in paths if os.path.exists(p)]
+                # fork: {name}* also matches sidecars like .swarm.json, which cannot be resumed from
+                paths = [p for p in paths if os.path.isdir(p) or p.endswith(('.safetensors', '.pt'))]
                 # remove false positives
                 if '_LoRA' not in name:
                     paths = [p for p in paths if '_LoRA' not in p]

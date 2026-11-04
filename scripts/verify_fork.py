@@ -34,7 +34,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Keep in step with FORK_NOTES.md's "Upstream files modified" table.
-EXPECTED_TOUCHPOINTS = 63
+EXPECTED_TOUCHPOINTS = 64
 
 # (file, needle, what it is). Substring match, not regex — these are anchors that
 # survive reformatting, not exact lines.
@@ -42,6 +42,7 @@ INSERTIONS = [
     ("ui/src/app/jobs/[jobID]/page.tsx", "CheckpointCompare", "Compare tab"),
     ("ui/src/components/Sidebar.tsx", "/generate/compare", "Checkpoint Compare nav entry"),
     ("ui/src/middleware.ts", "/api/compare/img", "public compare images"),
+    ("jobs/process/BaseSDTrainProcess.py", "os.path.isdir(p) or", "resume ignores sidecars"),
     ("ui/src/app/jobs/new/page.tsx", "PresetManager", "Presets dialog mount"),
     ("ui/src/app/jobs/new/page.tsx", "HelpModeButton", "Help mode button mount"),
     ("ui/src/app/jobs/new/page.tsx", "useMachines", "peer-aware GPU picker hook"),

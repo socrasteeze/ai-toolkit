@@ -3059,3 +3059,15 @@ and detects the family as Anima. Royale's scan expects `<name>-NNNNNN.safetensor
 ai-toolkit's `_NNNNNNNNN` names drop to its "compared by filename" mode, with no epoch labels
 and the final file sorted first. Files carry no `.alpha` key, which Royale reads as scale
 1.0; that is right at rank = alpha and was not checked on a run where they differ.
+
+## Resume ignores sidecar files (2026-11-01)
+
+A job crashed on resume with `Unsupported operand 123` from `torch.load`. That operand is the
+`{` opening a 33-byte `.swarm.json` sidecar. `get_latest_save_path` also globs `{name}*` to
+find diffusers-format save folders, and it takes the newest match by creation time, so a
+sidecar written after the last checkpoint wins. 59 of 78 local run folders had sidecars. The
+writer is outside this repo and was not identified.
+
+The fix is a filter in `get_latest_save_path`, keeping only folders, `.safetensors` and `.pt`.
+Sidecars stay on disk because something else owns them. `weights_only=False` was rejected: it
+would not help, since the file is not weights. `testing/test_resume_path.py` pins this.

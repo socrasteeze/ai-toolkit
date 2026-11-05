@@ -5,6 +5,8 @@ import torch
 
 from extensions_built_in.sd_trainer.DiffusionTrainer import DiffusionTrainer
 from toolkit.data_transfer_object.data_loader import DataLoaderBatchDTO
+from toolkit.concept_slider import expand_slider_batch, slider_prompt_embeds
+from toolkit.print import print_acc
 from toolkit.prompt_utils import PromptEmbeds, concat_prompt_embeds
 from toolkit.train_tools import get_torch_dtype
 
@@ -50,6 +52,14 @@ class ConceptSliderTrainer(DiffusionTrainer):
         self.anchor_class_embeds: Optional[PromptEmbeds] = None
 
     def hook_before_train_loop(self):
+        if self.sd.encode_control_in_text_embeddings:
+            # Dataset caption caches cannot replace image-conditioned slider prompts.
+            self.is_caching_text_embeddings = False
+            self.train_config.unload_text_encoder = False
+            print_acc("Concept Slider: encoding prompts per control batch; keeping text encoder loaded")
+            super().hook_before_train_loop()
+            return
+
         # do this before calling parent as it unloads the text encoder if requested
         if self.is_caching_text_embeddings:
             # make sure model is on cpu for this part so we don't oom.
@@ -121,22 +131,12 @@ class ConceptSliderTrainer(DiffusionTrainer):
 
             batch_size = noisy_latents.shape[0]
 
-            positive_embeds = concat_prompt_embeds(
-                [self.positive_prompt_embeds] * batch_size
-            ).to(self.device_torch, dtype=dtype)
-            target_class_embeds = concat_prompt_embeds(
-                [self.target_class_embeds] * batch_size
-            ).to(self.device_torch, dtype=dtype)
-            negative_embeds = concat_prompt_embeds(
-                [self.negative_prompt_embeds] * batch_size
-            ).to(self.device_torch, dtype=dtype)
+            prompt_embeds = slider_prompt_embeds(self, batch, batch_size, dtype)
+            positive_embeds, target_class_embeds, negative_embeds = prompt_embeds[:3]
+            if self.anchor_class is not None:
+                anchor_embeds = prompt_embeds[3]
 
-            if self.anchor_class_embeds is not None:
-                anchor_embeds = concat_prompt_embeds(
-                    [self.anchor_class_embeds] * batch_size
-                ).to(self.device_torch, dtype=dtype)
-
-            if self.anchor_class_embeds is not None:
+            if self.anchor_class is not None:
                 # if we have an anchor, do it
                 combo_embeds = concat_prompt_embeds(
                     [
@@ -160,10 +160,10 @@ class ConceptSliderTrainer(DiffusionTrainer):
                 timestep=torch.cat([timesteps] * num_embeds, dim=0),
                 guidance_scale=1.0,
                 guidance_embedding_scale=1.0,
-                batch=batch,
+                batch=expand_slider_batch(batch, num_embeds),
             )
 
-            if self.anchor_class_embeds is not None:
+            if self.anchor_class is not None:
                 positive_pred, neutral_pred, negative_pred, anchor_target = (
                     combo_pred.chunk(4, dim=0)
                 )
@@ -216,7 +216,7 @@ class ConceptSliderTrainer(DiffusionTrainer):
             if self.network is not None:
                 self.network.is_active = was_network_active
 
-            if self.anchor_class_embeds is not None:
+            if self.anchor_class is not None:
                 # do a grad inference with our target prompt
                 embeds = concat_prompt_embeds([target_class_embeds, anchor_embeds]).to(
                     self.device_torch, dtype=dtype
@@ -226,6 +226,7 @@ class ConceptSliderTrainer(DiffusionTrainer):
                     self.device_torch, dtype=dtype
                 )
                 timesteps = torch.cat([timesteps, timesteps], dim=0)
+                batch = expand_slider_batch(batch, 2)
             else:
                 embeds = target_class_embeds.to(self.device_torch, dtype=dtype)
 
@@ -240,7 +241,7 @@ class ConceptSliderTrainer(DiffusionTrainer):
             batch=batch,
         )
 
-        if self.anchor_class_embeds is not None:
+        if self.anchor_class is not None:
             class_pred, anchor_pred = pred.chunk(2, dim=0)
         else:
             class_pred = pred
@@ -274,7 +275,7 @@ class ConceptSliderTrainer(DiffusionTrainer):
             batch=batch,
         )
 
-        if self.anchor_class_embeds is not None:
+        if self.anchor_class is not None:
             class_pred, anchor_pred = pred.chunk(2, dim=0)
         else:
             class_pred = pred

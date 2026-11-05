@@ -34,11 +34,14 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Keep in step with FORK_NOTES.md's "Upstream files modified" table.
-EXPECTED_TOUCHPOINTS = 64
+EXPECTED_TOUCHPOINTS = 65
 
 # (file, needle, what it is). Substring match, not regex — these are anchors that
 # survive reformatting, not exact lines.
 INSERTIONS = [
+    ("extensions_built_in/concept_slider/ConceptSliderTrainer.py", "expand_slider_batch(batch, num_embeds)", "slider combo controls"),
+    ("extensions_built_in/concept_slider/ConceptSliderTrainer.py", "expand_slider_batch(batch, 2)", "slider anchor controls"),
+    ("extensions_built_in/concept_slider/ConceptSliderTrainer.py", "slider_prompt_embeds(self, batch, batch_size, dtype)", "image-conditioned slider prompts"),
     ("ui/src/app/jobs/[jobID]/page.tsx", "CheckpointCompare", "Compare tab"),
     ("ui/src/components/Sidebar.tsx", "/generate/compare", "Checkpoint Compare nav entry"),
     ("ui/src/middleware.ts", "/api/compare/img", "public compare images"),

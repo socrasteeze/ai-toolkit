@@ -3071,3 +3071,39 @@ writer is outside this repo and was not identified.
 The fix is a filter in `get_latest_save_path`, keeping only folders, `.safetensors` and `.pt`.
 Sidecars stay on disk because something else owns them. `weights_only=False` was rejected: it
 would not help, since the file is not weights. `testing/test_resume_path.py` pins this.
+
+## Concept Slider control conditioning (2026-11-05)
+
+Concept Slider stacks a batch three or four times for the no-grad predictions,
+and twice for training with an anchor. The model-facing control tensor, per-sample
+control-image lists, and file-item metadata now follow the same whole-batch order.
+The fork helper shallow-copies the batch and creates new control containers. It
+does not mutate the dataloader batch or change the enhance/erase/anchor loss math.
+This covers Edit-Plus, Krea 2 and Klein paths that read controls during prediction.
+Qwen-Image-Edit already attaches control latents before the slider loss is called;
+those conditioned latents continue to be stacked together.
+
+The handoff also missed an earlier failure: Qwen-Image-Edit-Plus rejects slider
+prompt encoding without controls. Models with `encode_control_in_text_embeddings`
+now encode each slider prompt against the current batch's controls. The trainer
+disables its cached-caption path and `unload_text_encoder` at runtime for these
+models, and reports that choice at startup. Existing dataset caches can remain on
+disk, but they do not contain the image-conditioned slider prompts and are not
+used by this path. This adds per-step encoding work and retains the text encoder,
+which can increase VRAM use. Plain Qwen-Image, Anima and other text-only models
+keep the original startup prompt cache. No model implementations or UI code change.
+
+Verification commands (repo `.venv`):
+
+```powershell
+python -m py_compile extensions_built_in/concept_slider/ConceptSliderTrainer.py toolkit/concept_slider.py testing/test_concept_slider.py scripts/verify_fork.py
+python -m unittest testing.test_concept_slider
+python scripts/verify_fork.py
+```
+
+Synthetic CPU tests cover batch sizes 1 and 2, anchor on/off, tensor and multiple
+controls, whole-batch order, source-container preservation, finite loss/gradients,
+startup cache behavior, and different controls on consecutive steps. GPU training
+remains unverified. The operator smoke check is a roughly 50-step Qwen Edit or
+Edit-Plus Concept Slider job with controls and rank 4-8, followed by an optional
+plain Qwen-Image run. No full suite, UI build or npm test is required for this fix.

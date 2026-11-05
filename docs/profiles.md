@@ -73,7 +73,7 @@ preset says so in place. 1024 is the faithful reproduction if the card holds it.
 
 Klein 9B on the laptop: `k9b_laptop_char_lora` (added 2026-10-12) is the
 first Klein preset for this tier. It keeps `k9b_char_lora`'s recipe unchanged
-(1e-4 adamw8bit, sigmoid, batch 1 x accum 1) except rank, raised to 32/32 (v1.1: matches Adam's earlier
+(1e-4 adamw8bit, sigmoid, batch 1 x accum 1) except rank, raised to 32/32 (v1.1: matches the operator's earlier
 9B runs and BFL's complex-subject guidance; not compared against 16 at 1024), and trains at **1024 only** - the parent's
 768 bucket is dropped, a third deliberate exception to the inherit-everything rule. Memory:
 quantize + quantize_te (qfloat8, rewritten to torchao float8 by layer_offloading), low_vram,

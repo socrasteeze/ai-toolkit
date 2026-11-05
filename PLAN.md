@@ -3137,7 +3137,7 @@ The panel displays the selected GPU's free/total memory, rank, dataset batch siz
 target resolutions and steps. Available memory is context, not a model-fit estimate.
 GPU detection for the existing batch plan also uses the selected local card; it no
 longer selects the largest card on the machine. Disconnected monitor data cannot
-produce advice. Remote or multi-GPU jobs can still use the existing manual tier.
+produce performance advice. Remote or multi-GPU jobs can still use the existing manual tier.
 
 Explicit cache buttons enable disk plus RAM latents across all selected datasets,
 or the train-level text embedding cache. Image augmentation/random crops block
@@ -3150,8 +3150,8 @@ optimizer parameters, model precision or offloading.
 Compilation, checkpointing and precision/offload choices are labelled Untested
 or Review, with no Apply action. No throughput, compile-payback or peak-memory
 measurements exist for these Automagic v4 profiles. The local preflight found
-Torch 2.9.1+cu128 and triton-windows 3.7.1.post27, outside the project's documented
-Torch 2.9/Triton 3.5 pairing; imports succeeded, but GPU compilation was not tested.
+Torch 2.9.1+cu128 and triton-windows 3.7.1.post27, outside the [documented
+Torch 2.9/Triton 3.5 pairing](https://github.com/triton-lang/triton-windows#3-pytorch); imports succeeded, but GPU compilation was not tested.
 No environment changes were made. This machine-specific observation is not a
 hardcoded UI rule and must be rechecked before a later compile trial.
 
@@ -3161,3 +3161,12 @@ The tests cover GPU selection, unsupported jobs, missing/invalid memory, optimiz
 and accumulation preservation, cache eligibility and unmeasured settings.
 No GPU tests, training, sampling, UI build/restart or browser check ran.
 The running production UI needs a later build/restart to display the new panel.
+
+Delivery validation (2026-11-05): the documented fork runner passed all 13 checks
+with CUDA hidden and its live-tree build skipped. An independent source export
+with its own `npm ci` dependencies passed `npm run build`; Next reported only the
+optional macOS temperature-sensor dependency warning. No live UI restart or GPU
+test ran. Delivery cleanup replaced personal references in documentation, a
+preset description and an advisor comment; training configuration values did
+not change. Public upstream references, generic paths, fixtures and permitted
+Git identity values remain intact.

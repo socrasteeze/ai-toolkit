@@ -82,7 +82,7 @@ const ARCH_HEURISTICS: Record<string, StepHeuristic | ((tier: SizeTier, itemCoun
   // validated against, so krea2 is exempt from it — it already expresses the size effect.
   // Note the maxSteps ceiling (4000), not steps/item, is what still under-reports very large
   // sets — at 400 images the ceiling binds first. Trust sample grids over the gauge there.
-  // 2026-10-12 (Adam: compute for the exact count, never snap to a bracket): the three tier
+  // 2026-10-12 (operator: compute for the exact count, never snap to a bracket): the three tier
   // values are now ANCHORS of a continuous curve - 45 at <=20 images, 32 at the measured 36,
   // 20 at >=250 - interpolated in log(count), so 25, 27 and 29 images each get their own
   // target instead of all reading the 'small' 45. 0 items (no dataset yet) keeps 32.

@@ -12,13 +12,16 @@ import { JobConfig } from '@/types';
 import { suggestSteps, exposureGauge, formatExposureCount, analyzeBuckets, resolutionAdvice, getArchRecipe, StepTable } from '@/utils/stepSuggestion';
 import { weightedBatchSize } from '@/utils/advisorBatch';
 import { suggestBatch, tierForVramMb, TIER_LABEL, MachineTier } from '@/utils/batchAdvisor';
-import useGPUInfo from '@/hooks/useGPUInfo';
+import useMonitorStream from '@/hooks/useMonitorStream';
+import PerformanceAdvisor from '@/components/PerformanceAdvisor';
+import { performancePlan, selectedLocalGpu } from '@/utils/performanceAdvisor';
 import { defaultDatasetConfig } from '@/app/jobs/new/jobConfig';
 import { useModelArchs } from '@/extensions/modelArchs';
 import { ModelArch } from '@/app/jobs/new/options';
 import useSettings from '@/hooks/useSettings';
 
 type Props = {
+  gpuIDs: string | null;
   jobConfig: JobConfig;
   setJobConfig: (value: any, key: string) => void;
 };
@@ -180,7 +183,7 @@ const bandColor: Record<string, string> = {
 
 const datasetLabel = (d: DatasetSelection) => (d.subPath ? `${d.datasetName}/${d.subPath}` : d.datasetName);
 
-export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
+export default function StepSuggestion({ jobConfig, setJobConfig, gpuIDs }: Props) {
   const { settings } = useSettings();
   const process = jobConfig.config.process[0];
   const datasets = process.datasets || [];
@@ -194,11 +197,12 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
   const layerOffloading = !!(process.model as any)?.layer_offloading;
   const optimizerFused = ((process.train.optimizer_params || {}) as { fused?: boolean }).fused;
 
-  // Machine tier for the batch plan (2026-09-11): read live from the monitor stream, with a
-  // manual override for planning a run for the other machine. Largest card wins on a
-  // multi-GPU box; the trainer runs on one device.
-  const { gpuList } = useGPUInfo();
-  const detectedVramMb = useMemo(() => gpuList.reduce((m, g) => Math.max(m, g.memory?.total ?? 0), 0), [gpuList]);
+  // Use only the selected local GPU; remote or disconnected stats cannot size this job.
+  const { gpu, connected } = useMonitorStream();
+  const gpuList = useMemo(() => connected ? gpu?.gpus ?? [] : [], [gpu, connected]);
+  const selectedGpu = selectedLocalGpu(gpuIDs, gpuList);
+  const detectedVramMb = selectedGpu?.memory.total ?? 0;
+  const performanceAdvice = performancePlan(jobConfig, gpuIDs, gpuList);
   const detectedTier = tierForVramMb(detectedVramMb);
   const [tierOverride, setTierOverride] = useState<MachineTier | 'auto'>('auto');
   const tier: MachineTier | null = tierOverride === 'auto' ? detectedTier : tierOverride;
@@ -561,6 +565,8 @@ export default function StepSuggestion({ jobConfig, setJobConfig }: Props) {
           </>
         )}
       </div>
+
+      <PerformanceAdvisor plan={performanceAdvice} setJobConfig={setJobConfig} />
 
       {showAnalysis && (hasAnalysis || failedAnalyses.length > 0) && (
         <div className="mt-2 p-2 rounded border border-gray-700 bg-gray-900/50 space-y-2">

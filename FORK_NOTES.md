@@ -305,7 +305,17 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
   replaces stale error/success messages without moving the list (2026-10-15).
 - `ui/src/components/jobLog.css` — shared theme-aware vertical scrollbars, stable
   scrollbar space, and wrapping of long preformatted lines in job and caption logs.
+- `ui/src/components/PerformanceAdvisor.tsx`, `ui/src/utils/performanceAdvisor.ts` and
+  `ui/tests/performanceAdvisor.test.mjs` (2026-11-05): 5090 Performance panel for ordinary
+  Anima/Krea 2 LoRA or LoKr jobs with Automagic v4 and accumulation 1. Cache Apply
+  actions respect image/token augmentation and text-encoder training. Compile,
+  checkpoint and precision/offload choices remain untested advice without Apply
+  actions. No speed or fit claim. The panel uses the existing shared monitor stream.
 - `ui/src/components/StepSuggestion.tsx` — step suggestion + dataset analyzer panel.
+  2026-11-05: `SimpleJob.tsx` passes `gpuIDs` into its existing mount. The advisor
+  uses only that local GPU while the monitor is connected, instead of the largest
+  card. Remote, multi-GPU or missing selections need the existing manual tier
+  override for batch planning. Preserve the `gpuIDs` prop after upstream merges.
   Derives the dataset name/subPath to query via `deriveDatasetSelection`, which needs
   `DATASETS_FOLDER` (fetched with `useSettings()`) to split `folder_path` correctly for
   nested selections. Per-dataset batch overrides feed the mixed-batch step/exposure math,

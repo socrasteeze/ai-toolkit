@@ -2289,9 +2289,10 @@ advisory — the user still set batch and accumulation by hand, and nothing knew
 **What was added** — `ui/src/utils/batchAdvisor.ts` + `ui/tests/batchAdvisor.test.mjs`, mounted
 in `StepSuggestion.tsx`:
 
-1. `tierForVramMb()` from the live GPU monitor (`useGPUInfo`, nvidia-smi MiB): ≤18k → 16 GB
-   laptop, ≤28k → 24 GB, else 32 GB+ desktop. A select overrides it to plan for the other
-   machine.
+1. `tierForVramMb()` from the shared GPU monitor (nvidia-smi MiB): ≤18k → 16 GB
+   laptop, ≤28k → 24 GB, else 32 GB+ desktop. Since 2026-11-05 it uses the selected
+   local GPU only while the monitor is connected. A select overrides it to plan
+   for another machine or a selection without local telemetry.
 2. `VRAM_TABLE` — **the operator's own measurements, 2026-09-11**, max `batch_size` that fit:
 
    | | SDXL/Illustrious | Anima | Klein 4B/9B | Krea 2 |
@@ -3107,3 +3108,56 @@ startup cache behavior, and different controls on consecutive steps. GPU trainin
 remains unverified. The operator smoke check is a roughly 50-step Qwen Edit or
 Edit-Plus Concept Slider job with controls and rank 4-8, followed by an optional
 plain Qwen-Image run. No full suite, UI build or npm test is required for this fix.
+
+### Deferred TODO: control-aware slider caching
+
+- [ ] Deferred by user on 2026-11-05. Evaluate caching control-image latents and
+  image-conditioned slider prompt embeddings before training. No implementation
+  is authorized for this follow-up until the user resumes it. Cache validity must
+  cover model, prompt, control content, crop/resolution and augmentation; preserve
+  or explicitly qualify VAE latent-sampling behavior. Measure training time and
+  peak VRAM, then check output quality against the uncached path. The committed
+  Concept Slider correctness fix remains in place. This TODO does not block
+  ordinary character/style LoRA training.
+
+## 5090 performance advisor (2026-11-05)
+
+Scope: prepare the advisor without GPU tests. The operator mainly trains Krea 2
+and Anima, prefers Automagic v4, and normally uses accumulation 1 on the 5090.
+The earlier control-aware slider cache TODO remains deferred.
+
+The Training card's step advisor now includes a collapsed **5090 Performance**
+panel after the batch plan, once a dataset count is available. It covers ordinary
+Anima/Krea 2 LoRA and LoKr jobs on one selected local desktop RTX 5090. Edit,
+slider, video, audio and full fine-tune jobs are excluded. A different optimizer
+or accumulation mode produces guidance without Apply actions. The panel preserves
+fused/unfused mode and never chooses an optimizer or learning rate.
+
+The panel displays the selected GPU's free/total memory, rank, dataset batch sizes,
+target resolutions and steps. Available memory is context, not a model-fit estimate.
+GPU detection for the existing batch plan also uses the selected local card; it no
+longer selects the largest card on the machine. Disconnected monitor data cannot
+produce advice. Remote or multi-GPU jobs can still use the existing manual tier.
+
+Explicit cache buttons enable disk plus RAM latents across all selected datasets,
+or the train-level text embedding cache. Image augmentation/random crops block
+the latent-cache action. Text encoder training, shuffled tokens and token dropout
+block the text-cache action. Caption dropout remains supported by the trainer's
+cached blank embedding. Existing cache settings produce no duplicate writes.
+The buttons do not change batch size, accumulation, steps, rank, learning rate,
+optimizer parameters, model precision or offloading.
+
+Compilation, checkpointing and precision/offload choices are labelled Untested
+or Review, with no Apply action. No throughput, compile-payback or peak-memory
+measurements exist for these Automagic v4 profiles. The local preflight found
+Torch 2.9.1+cu128 and triton-windows 3.7.1.post27, outside the project's documented
+Torch 2.9/Triton 3.5 pairing; imports succeeded, but GPU compilation was not tested.
+No environment changes were made. This machine-specific observation is not a
+hardcoded UI rule and must be rechecked before a later compile trial.
+
+Validation: 50 focused Node tests passed, including the actual panel's static React
+render and cache-button callbacks; TypeScript `--noEmit --incremental false` passed.
+The tests cover GPU selection, unsupported jobs, missing/invalid memory, optimizer
+and accumulation preservation, cache eligibility and unmeasured settings.
+No GPU tests, training, sampling, UI build/restart or browser check ran.
+The running production UI needs a later build/restart to display the new panel.

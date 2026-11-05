@@ -50,6 +50,7 @@ INSERTIONS = [
     ("ui/src/app/jobs/new/page.tsx", "HelpModeButton", "Help mode button mount"),
     ("ui/src/app/jobs/new/page.tsx", "useMachines", "peer-aware GPU picker hook"),
     ("ui/src/app/jobs/new/SimpleJob.tsx", "StepSuggestion", "step advisor mount"),
+    ("ui/src/app/jobs/new/SimpleJob.tsx", "<StepSuggestion jobConfig={jobConfig} setJobConfig={setJobConfig} gpuIDs={gpuIDs} />", "selected GPU for advisors"),
     ("ui/src/app/jobs/new/SimpleJob.tsx", "OptimizerHint", "optimizer hint mount"),
     ("ui/src/app/jobs/new/SimpleJob.tsx", "DatasetFolderPickerModal", "folder picker mount"),
     ("ui/src/app/jobs/new/SimpleJob.tsx", "useHelpMode", "help mode hook"),

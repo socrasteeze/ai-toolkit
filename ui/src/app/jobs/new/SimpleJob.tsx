@@ -1036,7 +1036,7 @@ export default function SimpleJob({
             </div>
             {/* fork addition, see FORK_NOTES.md — full-width row below the column grid so
                 the suggestion + dataset analysis use the whole card, not just column 1 */}
-            <StepSuggestion jobConfig={jobConfig} setJobConfig={setJobConfig} />
+            <StepSuggestion jobConfig={jobConfig} setJobConfig={setJobConfig} gpuIDs={gpuIDs} />
           </Card>
         </div>
         <div>

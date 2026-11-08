@@ -3189,3 +3189,23 @@ Decisions a later reader might otherwise undo:
   while the saves remain.
 - A saved empty selection is restored as empty, because Clear and baseline-only sessions mean it.
 - The sparkline is an inline SVG of about 300 points, not a uPlot mount.
+
+## Jobs page status filter (2026-11-08)
+
+A status dropdown above the Jobs table, saved per browser in `localStorage`. The filter is client-side over
+the existing 5 s poll, so no API or schema change. The dashboard's `onlyActive` table ignores it.
+
+Decisions a later reader might otherwise undo:
+- Inside `JobsTable`, `jobs` means the filtered list. Select-all and mass delete read it, so neither can reach
+  a hidden row. Changing the filter also clears the selection.
+- A filter matching nothing keeps the GPU groups, because their headers hold the queue START/STOP buttons and
+  the filter persists between visits.
+- The status list is fixed rather than built from current jobs, so a status with no jobs yet can be chosen.
+
+## Job step totals (2026-11-08)
+
+`getTotalSteps` now reads a training job's length from its config and keeps `total_steps` for caption jobs.
+The only live writer of that column is the captioner, plus the remote mirror copying a peer's value. One
+training row held a stale 2500 against a config of 3000, so it showed 3000 / 2500 with the bar overflowing.
+Bars are also clamped to 100, because lowering a finished job's steps in its config can still leave step
+above total, and that number is true.

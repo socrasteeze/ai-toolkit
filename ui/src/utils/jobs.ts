@@ -123,7 +123,9 @@ export const getNumberOfSamples = (job: Job) => {
 };
 
 export const getTotalSteps = (job: Job) => {
-  if (job.total_steps != null) {
+  // fork addition, see FORK_NOTES.md — total_steps is the captioner's file count;
+  // a training job's length is always its config, which a stale column must not override
+  if (job.total_steps != null && job.job_type !== 'train') {
     return job.total_steps;
   }
   const jobConfig = getJobConfig(job);

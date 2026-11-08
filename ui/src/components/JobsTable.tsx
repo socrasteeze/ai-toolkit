@@ -15,6 +15,7 @@ import { deleteJob, getTotalSteps, stopJob } from '@/utils/jobs';
 import { Trash2 } from 'lucide-react';
 // fork addition, see FORK_NOTES.md
 import { splitPeerGpu } from '@/utils/gpuIds';
+import JobStatusFilter, { useJobStatusFilter } from './JobStatusFilter';
 
 interface JobsTableProps {
   autoStartQueue?: boolean;
@@ -23,7 +24,15 @@ interface JobsTableProps {
 }
 
 export default function JobsTable({ onlyActive = false, job_type = null }: JobsTableProps) {
-  const { jobs, status, refreshJobs } = useJobsList({ onlyActive, reloadInterval: 5000, job_type });
+  const { jobs: allJobs, status, refreshJobs } = useJobsList({ onlyActive, reloadInterval: 5000, job_type });
+  // fork addition, see FORK_NOTES.md — `jobs` is the filtered list so select-all and
+  // mass delete can never reach a row the filter is hiding
+  const [savedStatusFilter, setSavedStatusFilter] = useJobStatusFilter();
+  const statusFilter = onlyActive ? '' : savedStatusFilter;
+  const jobs = useMemo(
+    () => (statusFilter ? allJobs.filter(job => job.status === statusFilter) : allJobs),
+    [allJobs, statusFilter],
+  );
   const { queues, status: queueStatus, refreshQueues } = useQueueList();
   const { gpuList, isGPUInfoLoaded } = useGPUInfo();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -175,7 +184,7 @@ export default function JobsTable({ onlyActive = false, job_type = null }: JobsT
             <div className="bg-gray-700 rounded-full h-1.5">
               <div
                 className="bg-blue-500 h-1.5 rounded-full"
-                style={{ width: `${(row.step / totalSteps) * 100}%` }}
+                style={{ width: `${Math.min(100, (row.step / totalSteps) * 100)}%` }}
               ></div>
             </div>
           </div>
@@ -215,7 +224,8 @@ export default function JobsTable({ onlyActive = false, job_type = null }: JobsT
 
   const jobsDict = useMemo(() => {
     if (!isGPUInfoLoaded) return {};
-    if (jobs.length === 0) return {};
+    // fork: allJobs, so a filter matching nothing keeps the queue START/STOP headers
+    if (allJobs.length === 0) return {};
     let jd: { [key: string]: { name: string; jobs: Job[] } } = {};
     gpuList.forEach(gpu => {
       jd[`${gpu.index}`] = { name: `${gpu.name}`, jobs: [] };
@@ -274,6 +284,15 @@ export default function JobsTable({ onlyActive = false, job_type = null }: JobsT
 
   return (
     <div>
+      {!onlyActive && (
+        <JobStatusFilter
+          value={statusFilter}
+          onChange={value => {
+            setSavedStatusFilter(value);
+            setSelectedIds(new Set());
+          }}
+        />
+      )}
       {(selectedIds.size > 0 || isDeleting) && (
         <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-2 bg-gray-800 rounded-lg border border-gray-700 shadow-lg">
           {isDeleting ? (

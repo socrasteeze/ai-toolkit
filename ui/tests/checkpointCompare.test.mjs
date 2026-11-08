@@ -153,6 +153,36 @@ test('run info, plan and references work from a config, and the plan rejects a r
   assert.throws(() => buildPlan(info, { ...params, cfg: 'x' }), /CFG/);
 }));
 
+test('a files filter limits the plan, and picking nothing is refused', scratch(root => {
+  const run = path.join(root, 'r');
+  mkdirSync(run);
+  writeFileSync(path.join(run, 'r_000000100.safetensors'), '');
+  writeFileSync(path.join(run, 'r.safetensors'), '');
+  writeFileSync(path.join(run, '.job_config.json'), JSON.stringify({ process: [{ model: { arch: 'anima' }, datasets: [{}] }] }));
+  const info = readRunInfo(run, root, root);
+  const files = plan => plan.map(p => p.file);
+
+  assert.deepEqual(files(buildPlan(info, params)), ['r_000000100.safetensors', 'r.safetensors']);
+  assert.deepEqual(files(buildPlan(info, { ...params, files: ['r.safetensors'] })), ['r.safetensors']);
+  assert.deepEqual(files(buildPlan(info, { ...params, files: ['r.safetensors', 'gone.safetensors'] })), ['r.safetensors']);
+  assert.deepEqual(files(buildPlan(info, { ...params, files: [], baseline: true })), [null]);
+  for (const bad of [[], ['gone.safetensors'], null, 'r.safetensors', [1]]) {
+    assert.throws(() => buildPlan(info, { ...params, files: bad }), /Pick at least one checkpoint/, JSON.stringify(bad));
+  }
+}));
+
+test('a header step never changes a final file\'s identity, so cached renders and promote names hold', scratch(dir => {
+  const json = Buffer.from(JSON.stringify({ __metadata__: { training_info: JSON.stringify({ step: 3000 }) } }));
+  const size = Buffer.alloc(8);
+  size.writeBigUInt64LE(BigInt(json.length));
+  writeFileSync(path.join(dir, 'r.safetensors'), Buffer.concat([size, json]));
+  const [final] = listCheckpoints(dir);
+  assert.equal(final.step, null);
+  assert.equal(final.label, 'final');
+  assert.match(renderKey(final, params), /^final_/);
+  assert.equal(promotedName('r', final), 'r');
+}));
+
 test('unsupported archs say so, and FLUX.1 is not supported', scratch(root => {
   const run = path.join(root, 'r');
   mkdirSync(run);

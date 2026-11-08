@@ -254,7 +254,10 @@ export const renderKey = (c: CacheIdentity, p: RenderParams) => {
 export interface PlanRequest extends RenderParams {
   bleed?: string;
   baseline?: boolean;
+  files?: unknown; // absent means every checkpoint
 }
+
+const NOTHING_PICKED = 'Pick at least one checkpoint.';
 
 const intIn = (v: unknown, min: number, max: number, name: string) => {
   if (!Number.isInteger(v) || (v as number) < min || (v as number) > max) {
@@ -279,8 +282,11 @@ export const buildPlan = (info: RunInfo, req: PlanRequest): PlanItem[] => {
   };
   const prompts: [PlanItem['kind'], string][] = [['main', injectTrigger(req.prompt, info.trigger)]];
   if (req.bleed?.trim()) prompts.push(['bleed', injectTrigger(req.bleed, null)]);
-  const checkpoints: (Checkpoint | null)[] = listCheckpoints(info.folder);
+  const picks = req.files;
+  if (picks !== undefined && !(Array.isArray(picks) && picks.every(f => typeof f === 'string'))) throw new Error(NOTHING_PICKED);
+  const checkpoints: (Checkpoint | null)[] = listCheckpoints(info.folder).filter(c => picks === undefined || (picks as string[]).includes(c.file));
   if (req.baseline) checkpoints.unshift(null);
+  if (picks !== undefined && !checkpoints.length) throw new Error(NOTHING_PICKED);
   return checkpoints.flatMap(c =>
     prompts.map(([kind, prompt]) => {
       const params = { ...base, prompt };

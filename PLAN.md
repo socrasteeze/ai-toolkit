@@ -3170,3 +3170,22 @@ test ran. Delivery cleanup replaced personal references in documentation, a
 preset description and an advisor comment; training configuration values did
 not change. Public upstream references, generic paths, fixtures and permitted
 Git identity values remain intact.
+
+## Checkpoint Compare candidate picker (2026-11-08)
+
+Compare now reads the run's `loss_log.db`, flags about 3-4 recommended saves with plain-language
+reasons, and renders a chosen subset. Loss rules out spikes, undertraining and rising loss; renders and
+CLIP still decide. After the plateau the gaps are only 1-2 standard errors, so exact picks move with the
+window. That is why the default score averages three trailing windows (50/75/100% of a save interval).
+
+Decisions a later reader might otherwise undo:
+- `listCheckpoints` keeps filename-only steps. The header step would turn the final file's `step:null` into
+  its real step, which renames its cache key and its promoted name, and would read every header on the 2 s
+  poll. Header steps live only in `royalCandidates.ts`.
+- The `state` poll sends no `files`; the client filters the rows. Selection can then never race a poll or
+  hide a running job's Cancel. Only `render` sends `files`.
+- A save further past the end of the log than 5 steps, or one logging interval if that is longer, has no
+  loss evidence and is left unscored. Resume pruning and the Loss tab's range delete can both cut the tail
+  while the saves remain.
+- A saved empty selection is restored as empty, because Clear and baseline-only sessions mean it.
+- The sparkline is an inline SVG of about 300 points, not a uPlot mount.

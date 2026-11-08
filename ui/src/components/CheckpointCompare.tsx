@@ -2,7 +2,7 @@
 
 // Fork-only (see FORK_NOTES.md). Used by the job page's Compare tab (job set) and by
 // /generate/compare (any run folder). Renders run on the server, so this only polls state.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { Loader2 } from 'lucide-react';
@@ -41,6 +41,68 @@ interface StateData {
   job: { status: string; total: number; done: number; message: string; error: string | null } | null;
 }
 
+interface Candidates {
+  lossAvailable: boolean;
+  interval: number;
+  plateauStep: number | null;
+  sparkline: { steps: number[]; values: number[] };
+  checkpoints: {
+    file: string;
+    step: number | null;
+    score: number | null;
+    reasons: string[];
+    recommended: boolean;
+    isFinal: boolean;
+  }[];
+}
+
+const NO_LOSS: Candidates = {
+  lossAvailable: false,
+  interval: 0,
+  plateauStep: null,
+  sparkline: { steps: [], values: [] },
+  checkpoints: [],
+};
+
+function LossSparkline({ candidates, chosen }: { candidates: Candidates; chosen: Set<string> }) {
+  const { steps, values } = candidates.sparkline;
+  if (steps.length < 2) return null;
+  const [w, h] = [600, 72];
+  const [low, high] = [Math.min(...values), Math.max(...values)];
+  const x = (step: number) => Math.min(w, ((step - steps[0]) / (steps[steps.length - 1] - steps[0])) * w);
+  const y = (v: number) => h - 4 - ((v - low) / (high - low || 1)) * (h - 8);
+  const saves = candidates.checkpoints.filter(c => c.step !== null);
+  const plateau = candidates.plateauStep;
+  return (
+    <svg
+      viewBox={`0 0 ${w} ${h}`}
+      preserveAspectRatio="none"
+      className="w-full h-16 rounded bg-gray-900"
+      role="img"
+      aria-label={`Smoothed loss with ${saves.length} saves${plateau === null ? '' : `, flat from step ${plateau}`}.`}
+    >
+      {plateau !== null && <rect x={x(plateau)} y={0} width={w - x(plateau)} height={h} className="fill-emerald-900/30" />}
+      {saves.map(c => (
+        <line
+          key={c.file}
+          x1={x(c.step as number)}
+          x2={x(c.step as number)}
+          y1={0}
+          y2={h}
+          vectorEffect="non-scaling-stroke"
+          className={chosen.has(c.file) ? 'stroke-blue-400' : c.recommended ? 'stroke-emerald-500' : 'stroke-gray-700'}
+        />
+      ))}
+      <polyline
+        points={steps.map((s, i) => `${x(s)},${y(values[i])}`).join(' ')}
+        fill="none"
+        vectorEffect="non-scaling-stroke"
+        className="stroke-gray-200"
+      />
+    </svg>
+  );
+}
+
 const errorOf = (e: any) => e?.response?.data?.error || e?.message || String(e);
 const fmt = (score: number | null | undefined) => (score == null ? '-' : score.toFixed(3));
 const RunSelect = dynamic(() => import('react-select/creatable'), { ssr: false });
@@ -77,6 +139,9 @@ export default function CheckpointCompare({ job }: { job?: Job }) {
   const [grid, setGrid] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [candidates, setCandidates] = useState<Candidates | null>(null);
+  // null until this run's selection is known; `selected` above is the slider index
+  const [chosenFiles, setChosenFiles] = useState<string[] | null>(null);
 
   useEffect(() => {
     apiClient
@@ -114,6 +179,8 @@ export default function CheckpointCompare({ job }: { job?: Job }) {
     setState(null);
     setReference(null);
     setLoadedRun('');
+    setCandidates(null);
+    setChosenFiles(null);
     if (!run) return;
     setError(null);
     let stale = false;
@@ -147,6 +214,40 @@ export default function CheckpointCompare({ job }: { job?: Job }) {
     };
   }, [run]);
 
+  // the poll re-lists the run, so a save written during training shows up here without a reload
+  const polled = (state?.rows ?? []).flatMap(r => (r.kind === 'main' && r.file ? [{ file: r.file, label: r.label }] : []));
+  const inventory = state ? polled : (data?.checkpoints ?? []);
+  const inventoryKey = inventory.map(c => c.file).join('|');
+  const recommendedFiles = inventory
+    .filter(c => candidates?.checkpoints.some(k => k.file === c.file && k.recommended))
+    .map(c => c.file);
+
+  // shortcut: refreshes only when the save list changes, so a log edited with this page open shows after a reload; poll if that starts to matter
+  useEffect(() => {
+    if (!run || loadedRun !== run) return;
+    let stale = false;
+    apiClient
+      .get('/api/compare/candidates', { params: { run } })
+      .then(r => {
+        if (!stale) setCandidates(r.data);
+      })
+      .catch(() => {
+        if (!stale) setCandidates(NO_LOSS);
+      });
+    return () => {
+      stale = true;
+    };
+  }, [run, loadedRun, inventoryKey]);
+
+  useEffect(() => {
+    if (!data || !candidates || chosenFiles !== null || loadedRun !== run) return;
+    const names = inventory.map(c => c.file);
+    const saved = readSaved(run)?.files;
+    if (Array.isArray(saved) && !saved.length) return setChosenFiles([]); // Clear and baseline-only save this on purpose
+    const kept = Array.isArray(saved) ? names.filter(f => saved.includes(f)) : [];
+    setChosenFiles(kept.length ? kept : recommendedFiles.length ? recommendedFiles : names);
+  }, [data, candidates, chosenFiles, loadedRun, run, inventoryKey]);
+
   const pickReference = async (rel: string) => {
     setError(null);
     try {
@@ -166,21 +267,29 @@ export default function CheckpointCompare({ job }: { job?: Job }) {
   );
 
   useEffect(() => {
-    if (request.reference && loadedRun === request.run) {
-      localStorage.setItem(settingsKey(request.run), JSON.stringify(request));
+    if (request.reference && loadedRun === request.run && chosenFiles !== null) {
+      localStorage.setItem(settingsKey(request.run), JSON.stringify({ ...request, files: chosenFiles }));
     }
-  }, [request, loadedRun]);
+  }, [request, loadedRun, chosenFiles]);
 
+  // a slow reply from a previous run or prompt must not land on this one
+  const latestRequest = useRef(request);
+  latestRequest.current = request;
+
+  // no `files` here: every row and the job status come back whatever is selected, and `rows` filters below
   usePollLoop(
     () =>
       reference && prompt.trim()
         ? apiClient
             .post('/api/compare', { action: 'state', ...request })
             .then(r => {
+              if (latestRequest.current !== request) return;
               setState(r.data);
               setError(null);
             })
-            .catch(e => setError(errorOf(e)))
+            .catch(e => {
+              if (latestRequest.current === request) setError(errorOf(e));
+            })
         : Promise.resolve(),
     2000,
     [request],
@@ -188,7 +297,7 @@ export default function CheckpointCompare({ job }: { job?: Job }) {
 
   const render = () =>
     apiClient
-      .post('/api/compare', { action: 'render', ...request })
+      .post('/api/compare', { action: 'render', ...request, files: chosenFiles })
       .then(r => setState(s => (s ? { ...s, job: r.data.job } : s)))
       .catch(e => setError(errorOf(e)));
 
@@ -211,7 +320,10 @@ export default function CheckpointCompare({ job }: { job?: Job }) {
         });
       });
 
-  const rows = state?.rows ?? [];
+  const chosen = new Set(chosenFiles ?? []);
+  const rows = chosenFiles ? (state?.rows ?? []).filter(r => r.file === null || chosen.has(r.file)) : [];
+  const toggleFile = (file: string, on: boolean) =>
+    setChosenFiles(list => (on ? [...(list ?? []), file] : (list ?? []).filter(f => f !== file)));
   const mains = rows.filter(r => r.kind === 'main');
   const bleedOf = (m: Row) => rows.find(r => r.kind === 'bleed' && r.label === m.label && r.file === m.file);
   const rendered = mains.filter(r => r.cached);
@@ -341,11 +453,71 @@ export default function CheckpointCompare({ job }: { job?: Job }) {
                 </div>
               </section>
 
+              {chosenFiles && (
+                <section className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-xs text-gray-400 mr-2">Checkpoints to Render</h2>
+                    <button
+                      type="button"
+                      disabled={!recommendedFiles.length}
+                      onClick={() => setChosenFiles(recommendedFiles)}
+                      className="px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-40 text-xs"
+                    >
+                      Select Recommended
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setChosenFiles(inventory.map(c => c.file))}
+                      className="px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-xs"
+                    >
+                      Select All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setChosenFiles([])}
+                      className="px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-xs"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  {candidates?.lossAvailable ? (
+                    <LossSparkline candidates={candidates} chosen={chosen} />
+                  ) : (
+                    <p className="text-xs text-gray-400">No loss log, select manually.</p>
+                  )}
+                  <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
+                    {inventory.map(c => {
+                      const info = candidates?.lossAvailable ? candidates.checkpoints.find(k => k.file === c.file) : undefined;
+                      const why = info?.reasons.join('; ') ?? '';
+                      return (
+                        <li key={c.file} className="flex items-center gap-2">
+                          <Checkbox label={c.label} checked={chosen.has(c.file)} onChange={on => toggleFile(c.file, on)} />
+                          {info?.recommended && (
+                            <span title={why} className="px-1.5 rounded bg-emerald-900 text-emerald-200 text-xs">
+                              Recommended<span className="sr-only">: {why}</span>
+                            </span>
+                          )}
+                          {info?.isFinal && <span className="px-1.5 rounded bg-gray-800 text-gray-300 text-xs">Final</span>}
+                          {info?.reasons.some(r => r.startsWith('early pick')) && (
+                            <span className="px-1.5 rounded bg-gray-800 text-gray-300 text-xs">Early</span>
+                          )}
+                          {info?.score != null && (
+                            <span title={why} className="text-xs text-gray-400">
+                              {info.score.toFixed(2)}
+                            </span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              )}
+
               <section className="flex flex-wrap items-center gap-3">
                 <button
                   type="button"
                   onClick={render}
-                  disabled={running || !state?.engineReady}
+                  disabled={running || !state?.engineReady || chosenFiles === null || (!baseline && !inventory.some(c => chosen.has(c.file)))}
                   className="px-3 py-1.5 rounded bg-blue-700 hover:bg-blue-600 disabled:opacity-40 text-white"
                 >
                   {missing ? `Render ${missing} Missing` : 'Score Renders'}

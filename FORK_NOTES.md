@@ -177,6 +177,7 @@ in fork-only files: the presets, the example config, and the advisor recipe.)
   - `ui/src/components/CheckpointCompare.tsx` — the one viewer, used by the job page's Compare tab and by `ui/src/app/generate/compare/page.tsx`
   - `scripts/compare_likeness.py` — CLIP ViT-L/14 similarity on CPU from cached weights. Never downloads
   - `ui/tests/checkpointCompare.test.mjs` — contract tests for `compare.ts`
+  - `ui/src/server/royalCandidates.ts` and `ui/src/app/api/compare/candidates/route.ts` — the loss-based candidate picker (2026-11-08): scores saves from `loss_log.db`, read-only. `ui/tests/royalCandidates.test.mjs` is its contract suite
 - `PLAN.md`, `FORK_NOTES.md`
 - `ANIMA_INTEGRATION_SPEC.md` — spec for Anima 2B model port + TrainFlow QoL consolidation (COMPLETE; kept as the requirements record, see its status banner)
 - `docs/anima_delta_catalog.md` — A1 recon artifact: Anima 2B architecture/training-math/LoRA-key catalog + ai-toolkit port mapping (key finding: Anima support is native upstream kohya sd-scripts v0.10.5, not TrainFlow-authored)

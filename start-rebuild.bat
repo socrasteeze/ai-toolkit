@@ -32,14 +32,15 @@ if errorlevel 1 (
 rem --- 1. refuse to touch a dirty tree -------------------------------------
 rem Tracked changes only: a fast-forward that would overwrite an untracked file
 rem stops with its own error, so stray output folders must not block a rebuild.
+rem -uno, not --untracked-files=no: for /f turns an unescaped = into a space.
 set "DIRTY="
-for /f "delims=" %%i in ('git status --porcelain --untracked-files=no') do set "DIRTY=1"
+for /f "delims=" %%i in ('git status --porcelain -uno') do set "DIRTY=1"
 if defined DIRTY (
     echo.
     echo You have uncommitted changes. Commit or stash them first - this script
     echo will not pull over a dirty working tree.
     echo.
-    git status --short --untracked-files=no
+    git status --short -uno
     pause
     exit /b 1
 )

@@ -3192,8 +3192,10 @@ Decisions a later reader might otherwise undo:
 
 ## Jobs page status filter (2026-11-08)
 
-A status dropdown above the Jobs table, saved per browser in `localStorage`. The filter is client-side over
-the existing 5 s poll, so no API or schema change. The dashboard's `onlyActive` table ignores it.
+A row of status buttons above the Jobs table, saved per browser in `localStorage`. The filter is client-side over
+the existing 5 s poll, so no API or schema change. The dashboard's `onlyActive` table ignores it. It was first a
+dropdown, replaced the same day because it looked out of place; the row wraps rather than scrolls so the saved
+filter is always visible on a phone.
 
 Decisions a later reader might otherwise undo:
 - Inside `JobsTable`, `jobs` means the filtered list. Select-all and mass delete read it, so neither can reach

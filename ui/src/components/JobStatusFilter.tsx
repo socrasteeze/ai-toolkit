@@ -1,6 +1,6 @@
 // fork addition, see FORK_NOTES.md
 import { useEffect, useState } from 'react';
-import { SelectInput } from '@/components/formInputs';
+import classNames from 'classnames';
 
 const STORAGE_KEY = 'aitk_jobs_status_filter';
 const OPTIONS = [
@@ -26,5 +26,22 @@ export function useJobStatusFilter() {
 }
 
 export default function JobStatusFilter({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  return <SelectInput className="mb-4 w-48" label="Status" value={value} onChange={onChange} options={OPTIONS} />;
+  return (
+    // wraps instead of scrolling so the saved filter is never off-screen on a phone
+    <div className="mb-3 flex flex-wrap gap-1">
+      {OPTIONS.map(option => (
+        <button
+          key={option.value}
+          aria-pressed={option.value === value}
+          onClick={() => onChange(option.value)}
+          className={classNames(
+            'rounded-md px-3 py-2 text-sm capitalize sm:py-1',
+            option.value === value ? 'bg-gray-700 text-gray-100' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200',
+          )}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
 }

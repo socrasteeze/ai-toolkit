@@ -3198,10 +3198,12 @@ dropdown, replaced the same day because it looked out of place; the row wraps ra
 filter is always visible on a phone.
 
 Decisions a later reader might otherwise undo:
-- Inside `JobsTable`, `jobs` means the filtered list. Select-all and mass delete read it, so neither can reach
-  a hidden row. Changing the filter also clears the selection.
-- A filter matching nothing keeps the GPU groups, because their headers hold the queue START/STOP buttons and
-  the filter persists between visits.
+- Queue grouping reads unfiltered `allJobs`; the status filter applies only to Idle (2026-11-14).
+  Local queue START/STOP headers and queued/running/stopping rows remain visible under every filter.
+- Remote queue headers require at least one active job for the exact raw `gpu_ids` key. Stopped/completed
+  remote jobs go to Idle and do not create a remote header. No queue or job rows are changed.
+- The bulk-action `jobs` list comes from rendered groups and excludes Idle on the active-only dashboard.
+  Select-all and mass delete cannot reach hidden rows. Changing the filter also clears the selection.
 - The status list is fixed rather than built from current jobs, so a status with no jobs yet can be chosen.
 
 ## Job step totals (2026-11-08)
@@ -3211,3 +3213,16 @@ The only live writer of that column is the captioner, plus the remote mirror cop
 training row held a stale 2500 against a config of 3000, so it showed 3000 / 2500 with the bar overflowing.
 Bars are also clamped to 100, because lowering a finished job's steps in its config can still leave step
 above total, and that number is true.
+
+**Completed progress display (2026-11-14):** `getDisplayStep` returns `getTotalSteps(job)` for a completed
+job and `job.step` otherwise. JobsTable and JobOverview use it for both step text and bar width. Stored
+steps, configs, action eligibility, and Python resume remain unchanged. Tests use invented jobs and inert
+API hooks in `ui/tests/jobTotalSteps.test.mjs` and `ui/tests/jobsTable.test.mjs`.
+
+The current training loop increments `self.step_num` before `end_step_hook`; the N-1 display is not a
+required consequence of zero-based iteration. `DiffusionTrainer.end_step_hook` can skip the final DB
+write when `ui_db_poll_seconds` throttles it. `done_hook` writes completed status without a final step
+write. A no-database check of those real hook bodies reproduced 749 persisted at completion of 750.
+Checkpoint metadata records the full `self.step_num`; resume restores that value, and the pre-loop hook
+publishes it even when no training iterations remain. This explains how a resumed job can display N/N;
+it does not establish the history of any particular stored job.

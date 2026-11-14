@@ -131,3 +131,6 @@ export const getTotalSteps = (job: Job) => {
   const jobConfig = getJobConfig(job);
   return jobConfig.config.process[0].train?.steps || 0;
 };
+
+// fork addition, see FORK_NOTES.md - presentation only; resume uses the stored step
+export const getDisplayStep = (job: Job) => (job.status === 'completed' ? getTotalSteps(job) : job.step);

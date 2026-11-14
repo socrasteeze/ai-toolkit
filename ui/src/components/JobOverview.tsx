@@ -4,7 +4,7 @@ import useCPUInfo from '@/hooks/useCPUInfo';
 import GPUWidget from '@/components/GPUWidget';
 import CPUWidget from '@/components/CPUWidget';
 import FilesWidget from '@/components/FilesWidget';
-import { getTotalSteps } from '@/utils/jobs';
+import { getDisplayStep, getTotalSteps } from '@/utils/jobs';
 import { Cpu, HardDrive, Info, Gauge } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import useJobLog from '@/hooks/useJobLog';
@@ -36,7 +36,8 @@ export default function JobOverview({ job }: JobOverviewProps) {
   const { gpuList, isGPUInfoLoaded } = useGPUInfo(gpuIds, 5000);
   const { cpuInfo, isCPUInfoLoaded } = useCPUInfo(5000);
   const totalSteps = getTotalSteps(job);
-  const progress = Math.min(100, (job.step / totalSteps) * 100);
+  const displayStep = getDisplayStep(job);
+  const progress = Math.min(100, (displayStep / totalSteps) * 100);
   const isStopping = job.stop && job.status === 'running';
 
   const logLines: string[] = useMemo(() => {
@@ -111,7 +112,7 @@ export default function JobOverview({ job }: JobOverviewProps) {
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-400">Progress</span>
                 <span className="text-gray-200">
-                  Step {job.step} of {totalSteps}
+                  Step {displayStep} of {totalSteps}
                 </span>
               </div>
               <div className="w-full bg-gray-800 rounded-full h-2">

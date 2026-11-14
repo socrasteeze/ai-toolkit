@@ -11,7 +11,7 @@ import { startQueue, stopQueue } from '@/utils/queue';
 import { CgSpinner } from 'react-icons/cg';
 import useGPUInfo from '@/hooks/useGPUInfo';
 import { openConfirm } from '@/components/ConfirmModal';
-import { deleteJob, getTotalSteps, stopJob } from '@/utils/jobs';
+import { deleteJob, getDisplayStep, getTotalSteps, stopJob } from '@/utils/jobs';
 import { Trash2 } from 'lucide-react';
 // fork addition, see FORK_NOTES.md
 import { splitPeerGpu } from '@/utils/gpuIds';
@@ -25,14 +25,9 @@ interface JobsTableProps {
 
 export default function JobsTable({ onlyActive = false, job_type = null }: JobsTableProps) {
   const { jobs: allJobs, status, refreshJobs } = useJobsList({ onlyActive, reloadInterval: 5000, job_type });
-  // fork addition, see FORK_NOTES.md — `jobs` is the filtered list so select-all and
-  // mass delete can never reach a row the filter is hiding
+  // fork addition, see FORK_NOTES.md - the status filter applies only to Idle
   const [savedStatusFilter, setSavedStatusFilter] = useJobStatusFilter();
   const statusFilter = onlyActive ? '' : savedStatusFilter;
-  const jobs = useMemo(
-    () => (statusFilter ? allJobs.filter(job => job.status === statusFilter) : allJobs),
-    [allJobs, statusFilter],
-  );
   const { queues, status: queueStatus, refreshQueues } = useQueueList();
   const { gpuList, isGPUInfoLoaded } = useGPUInfo();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -42,6 +37,68 @@ export default function JobsTable({ onlyActive = false, job_type = null }: JobsT
     refreshJobs();
     refreshQueues();
   };
+
+  const jobsDict = useMemo(() => {
+    if (!isGPUInfoLoaded) return {};
+    // fork: allJobs, so a filter matching nothing keeps the queue START/STOP headers
+    if (allJobs.length === 0) return {};
+    let jd: { [key: string]: { name: string; jobs: Job[] } } = {};
+    gpuList.forEach(gpu => {
+      jd[`${gpu.index}`] = { name: `${gpu.name}`, jobs: [] };
+    });
+    jd['Idle'] = { name: 'Idle', jobs: [] };
+    allJobs.forEach(job => {
+      const isActive = ['queued', 'running', 'stopping'].includes(job.status);
+      if (!isActive) {
+        if (!statusFilter || job.status === statusFilter) jd['Idle'].jobs.push(job);
+        return;
+      }
+      // fork addition, see FORK_NOTES.md — a job on another machine gets its own
+      // group. Without this it fell through to `gpu?.index || '0'` and was listed
+      // under THIS machine's GPU 0, which says the local card is busy when it is not.
+      // The key is the raw `gpu_ids` because the group header below looks the
+      // queue up by it (`queues.find(q => q.gpu_ids === gpuKey)`) to drive its
+      // START/STOP button — and the hub really does hold a Queue row named that.
+      const remote = splitPeerGpu(job.gpu_ids);
+      if (remote) {
+        const remoteKey = job.gpu_ids;
+        if (!(remoteKey in jd)) {
+          jd[remoteKey] = { name: `${remote.peerId} — GPU ${remote.localGpuIds}`, jobs: [] };
+        }
+        jd[remoteKey].jobs.push(job);
+        return;
+      }
+      const gpu = gpuList.find(gpu => job.gpu_ids?.split(',').includes(gpu.index.toString())) as GpuInfo;
+      const key = `${gpu?.index || '0'}`;
+      if (key in jd) {
+        jd[key].jobs.push(job);
+      } else if (!statusFilter || job.status === statusFilter) {
+        jd['Idle'].jobs.push(job);
+      }
+    });
+    // sort the queued/running jobs by queue position
+    Object.keys(jd).forEach(key => {
+      if (key === 'Idle') {
+        jd[key].jobs.sort((a, b) => {
+          // sort by updated_at, newest first
+          return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+        });
+      } else {
+        jd[key].jobs.sort((a, b) => {
+          if (a.queue_position === null) return 1;
+          if (b.queue_position === null) return -1;
+          return a.queue_position - b.queue_position;
+        });
+      }
+    });
+    return jd;
+  }, [allJobs, statusFilter, gpuList, isGPUInfoLoaded]);
+
+  // Bulk actions use exactly the rendered rows, including the unfiltered queues.
+  const jobs = useMemo(
+    () => Object.entries(jobsDict).flatMap(([key, group]) => (onlyActive && key === 'Idle' ? [] : group.jobs)),
+    [jobsDict, onlyActive],
+  );
 
   const isDeleting = deleteProgress !== null;
   const allSelected = jobs.length > 0 && jobs.every(job => selectedIds.has(job.id));
@@ -172,6 +229,7 @@ export default function JobsTable({ onlyActive = false, job_type = null }: JobsT
       key: 'steps',
       render: row => {
         const totalSteps = getTotalSteps(row);
+        const displayStep = getDisplayStep(row);
         if (!totalSteps) {
           return <></>;
         }
@@ -179,12 +237,12 @@ export default function JobsTable({ onlyActive = false, job_type = null }: JobsT
         return (
           <div>
             <div className="text-xs text-gray-400">
-              {row.step} / {totalSteps}
+              {displayStep} / {totalSteps}
             </div>
             <div className="bg-gray-700 rounded-full h-1.5">
               <div
                 className="bg-blue-500 h-1.5 rounded-full"
-                style={{ width: `${Math.min(100, (row.step / totalSteps) * 100)}%` }}
+                style={{ width: `${Math.min(100, (displayStep / totalSteps) * 100)}%` }}
               ></div>
             </div>
           </div>
@@ -221,61 +279,6 @@ export default function JobsTable({ onlyActive = false, job_type = null }: JobsT
       },
     },
   ];
-
-  const jobsDict = useMemo(() => {
-    if (!isGPUInfoLoaded) return {};
-    // fork: allJobs, so a filter matching nothing keeps the queue START/STOP headers
-    if (allJobs.length === 0) return {};
-    let jd: { [key: string]: { name: string; jobs: Job[] } } = {};
-    gpuList.forEach(gpu => {
-      jd[`${gpu.index}`] = { name: `${gpu.name}`, jobs: [] };
-    });
-    jd['Idle'] = { name: 'Idle', jobs: [] };
-    jobs.forEach(job => {
-      // fork addition, see FORK_NOTES.md — a job on another machine gets its own
-      // group. Without this it fell through to `gpu?.index || '0'` and was listed
-      // under THIS machine's GPU 0, which says the local card is busy when it is not.
-      // The key is the raw `gpu_ids` because the group header below looks the
-      // queue up by it (`queues.find(q => q.gpu_ids === gpuKey)`) to drive its
-      // START/STOP button — and the hub really does hold a Queue row named that.
-      const remote = splitPeerGpu(job.gpu_ids);
-      if (remote) {
-        const remoteKey = job.gpu_ids;
-        if (!(remoteKey in jd)) {
-          jd[remoteKey] = { name: `${remote.peerId} — GPU ${remote.localGpuIds}`, jobs: [] };
-        }
-        if (['queued', 'running', 'stopping'].includes(job.status)) {
-          jd[remoteKey].jobs.push(job);
-        } else {
-          jd['Idle'].jobs.push(job);
-        }
-        return;
-      }
-      const gpu = gpuList.find(gpu => job.gpu_ids?.split(',').includes(gpu.index.toString())) as GpuInfo;
-      const key = `${gpu?.index || '0'}`;
-      if (['queued', 'running', 'stopping'].includes(job.status) && key in jd) {
-        jd[key].jobs.push(job);
-      } else {
-        jd['Idle'].jobs.push(job);
-      }
-    });
-    // sort the queued/running jobs by queue position
-    Object.keys(jd).forEach(key => {
-      if (key === 'Idle') {
-        jd[key].jobs.sort((a, b) => {
-          // sort by updated_at, newest first
-          return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
-        });
-      } else {
-        jd[key].jobs.sort((a, b) => {
-          if (a.queue_position === null) return 1;
-          if (b.queue_position === null) return -1;
-          return a.queue_position - b.queue_position;
-        });
-      }
-    });
-    return jd;
-  }, [jobs, queues, isGPUInfoLoaded]);
 
   let isLoading = status === 'loading' || queueStatus === 'loading' || !isGPUInfoLoaded;
 

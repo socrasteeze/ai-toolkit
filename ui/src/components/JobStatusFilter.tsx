@@ -27,15 +27,15 @@ export function useJobStatusFilter() {
 
 export default function JobStatusFilter({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   return (
-    // wraps instead of scrolling so the saved filter is never off-screen on a phone
-    <div className="mb-3 flex flex-wrap gap-1">
+    // Keep overflow inside this row so every status remains reachable on a phone.
+    <div className="no-scrollbar mb-3 flex w-full min-w-0 flex-nowrap gap-1 overflow-x-auto whitespace-nowrap sm:w-auto sm:flex-1">
       {OPTIONS.map(option => (
         <button
           key={option.value}
           aria-pressed={option.value === value}
           onClick={() => onChange(option.value)}
           className={classNames(
-            'rounded-md px-3 py-2 text-sm capitalize sm:py-1',
+            'shrink-0 rounded-md px-2 py-1 text-xs capitalize sm:px-3 sm:text-sm',
             option.value === value ? 'bg-gray-700 text-gray-100' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200',
           )}
         >

@@ -353,6 +353,22 @@ test('search control exposes a labelled input and an explicit clear button', () 
   assert.equal(elements(tree, element => element.type === 'button').length, 0);
 });
 
+test('the scrolling status picker keeps every status selectable and reports the active choice', () => {
+  const JobStatusFilter = load('../src/components/JobStatusFilter.tsx', {
+    react: {}, classnames: { default: require('classnames') },
+  }).default;
+  const statuses = ['', 'queued', 'running', 'stopping', 'completed', 'stopped', 'error'];
+  for (const value of statuses) {
+    const changes = [];
+    const tree = JobStatusFilter({ value, onChange: status => changes.push(status) });
+    const buttons = elements(tree, element => element.type === 'button');
+    assert.deepEqual(buttons.map(text), ['All', ...statuses.slice(1)]);
+    assert.deepEqual(buttons.map(button => button.props['aria-pressed']), statuses.map(status => status === value));
+    buttons.forEach(button => button.props.onClick());
+    assert.deepEqual(changes, statuses);
+  }
+});
+
 test('list and overview render completed steps and a full bar without mutating the job', () => {
   const completed = Object.freeze(job('done', 'completed'));
   const h = harness([completed]);

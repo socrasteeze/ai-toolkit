@@ -317,7 +317,7 @@ export default function JobsTable({ onlyActive = false, job_type = null }: JobsT
   return (
     <div>
       {!onlyActive && (
-        <div className="flex flex-wrap items-start gap-x-3">
+        <div className="flex min-w-0 flex-col items-start gap-x-3 sm:flex-row">
           <JobSearch
             value={search}
             onChange={value => {

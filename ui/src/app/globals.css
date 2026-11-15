@@ -2,6 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
+/* fork addition, see FORK_NOTES.md - scrollable status tabs without a scrollbar */
+@layer utilities {
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /* Light mode (default root values, overridden by .dark) */
 :root {
   --background: #fafafa;

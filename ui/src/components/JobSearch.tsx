@@ -3,7 +3,7 @@ import { X } from 'lucide-react';
 
 export default function JobSearch({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   return (
-    <div className="relative mb-3 w-full sm:w-64">
+    <div className="relative mb-3 w-full min-w-0 sm:w-64 sm:shrink-0">
       <input
         type="text"
         aria-label="Search Jobs"

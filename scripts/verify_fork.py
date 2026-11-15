@@ -34,7 +34,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Keep in step with FORK_NOTES.md's "Upstream files modified" table.
-EXPECTED_TOUCHPOINTS = 66
+EXPECTED_TOUCHPOINTS = 67
 
 # (file, needle, what it is). Substring match, not regex — these are anchors that
 # survive reformatting, not exact lines.
@@ -62,6 +62,7 @@ INSERTIONS = [
     ("ui/src/components/JobsTable.tsx", "splitPeerGpu", "remote job grouping"),
     ("ui/src/components/JobsTable.tsx", "JobSearch", "job name search mount"),
     ("ui/src/components/JobsTable.tsx", "useJobNameSort", "persisted job name sorting"),
+    ("ui/src/app/globals.css", ".no-scrollbar", "hidden status scrollbar utility"),
     ("ui/cron/actions/startJob.ts", "startRemoteJob", "remote handoff branch"),
     ("ui/cron/actions/startJob.ts", "markJobError", "crash-safe job launch"),
     ("ui/cron/worker.ts", "unhandledRejection", "worker crash safety net"),

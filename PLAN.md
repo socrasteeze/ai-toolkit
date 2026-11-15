@@ -3194,8 +3194,10 @@ Decisions a later reader might otherwise undo:
 
 A row of status buttons above the Jobs table, saved per browser in `localStorage`. The filter is client-side over
 the existing 5 s poll, so no API or schema change. The dashboard's `onlyActive` table ignores it. It was first a
-dropdown, replaced the same day because it looked out of place; the row wraps rather than scrolls so the saved
-filter is always visible on a phone.
+dropdown, replaced the same day because it looked out of place. **2026-11-14 mobile follow-up:** the row now
+scrolls sideways without wrapping, with a hidden scrollbar and compact tabs below `sm`. Tab sizing from `sm`
+up is unchanged. Search occupies its own full-width row on phones; search and tabs sit inline from `sm` up.
+The tab row can shrink and scroll within the available width rather than widening the page.
 
 Decisions a later reader might otherwise undo:
 - Queue grouping reads unfiltered `allJobs`; the status filter applies only to Idle (2026-11-14).

@@ -12,10 +12,13 @@ import { CgSpinner } from 'react-icons/cg';
 import useGPUInfo from '@/hooks/useGPUInfo';
 import { openConfirm } from '@/components/ConfirmModal';
 import { deleteJob, getDisplayStep, getTotalSteps, stopJob } from '@/utils/jobs';
-import { Trash2 } from 'lucide-react';
 // fork addition, see FORK_NOTES.md
+import { ArrowDown, ArrowUp, ArrowUpDown, Trash2 } from 'lucide-react';
 import { splitPeerGpu } from '@/utils/gpuIds';
 import JobStatusFilter, { useJobStatusFilter } from './JobStatusFilter';
+import JobSearch from './JobSearch';
+import useJobNameSort from '@/hooks/useJobNameSort';
+import { matchesJobSearch, sortJobsByName } from '@/utils/jobListView';
 
 interface JobsTableProps {
   autoStartQueue?: boolean;
@@ -28,6 +31,8 @@ export default function JobsTable({ onlyActive = false, job_type = null }: JobsT
   // fork addition, see FORK_NOTES.md - the status filter applies only to Idle
   const [savedStatusFilter, setSavedStatusFilter] = useJobStatusFilter();
   const statusFilter = onlyActive ? '' : savedStatusFilter;
+  const [search, setSearch] = useState('');
+  const [nameSort, cycleNameSort] = useJobNameSort();
   const { queues, status: queueStatus, refreshQueues } = useQueueList();
   const { gpuList, isGPUInfoLoaded } = useGPUInfo();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -76,8 +81,11 @@ export default function JobsTable({ onlyActive = false, job_type = null }: JobsT
         jd['Idle'].jobs.push(job);
       }
     });
+    // fork addition, see FORK_NOTES.md - search after grouping to retain queue controls.
+    // Remote groups still require an active job in allJobs.
     // sort the queued/running jobs by queue position
     Object.keys(jd).forEach(key => {
+      jd[key].jobs = jd[key].jobs.filter(job => matchesJobSearch(job, search));
       if (key === 'Idle') {
         jd[key].jobs.sort((a, b) => {
           // sort by updated_at, newest first
@@ -90,11 +98,12 @@ export default function JobsTable({ onlyActive = false, job_type = null }: JobsT
           return a.queue_position - b.queue_position;
         });
       }
+      jd[key].jobs = sortJobsByName(jd[key].jobs, nameSort);
     });
     return jd;
-  }, [allJobs, statusFilter, gpuList, isGPUInfoLoaded]);
+  }, [allJobs, statusFilter, search, nameSort, gpuList, isGPUInfoLoaded]);
 
-  // Bulk actions use exactly the rendered rows, including the unfiltered queues.
+  // Bulk actions use exactly the rendered rows after search and status filtering.
   const jobs = useMemo(
     () => Object.entries(jobsDict).flatMap(([key, group]) => (onlyActive && key === 'Idle' ? [] : group.jobs)),
     [jobsDict, onlyActive],
@@ -190,7 +199,27 @@ export default function JobsTable({ onlyActive = false, job_type = null }: JobsT
       ),
     },
     {
-      title: 'Name',
+      // fork addition, see FORK_NOTES.md - ReactNode titles need no UniversalTable change
+      title: (
+        <button
+          type="button"
+          onClick={cycleNameSort}
+          title={nameSort === 'default' ? 'Sort A to Z' : nameSort === 'asc' ? 'Sort Z to A' : 'Restore default order'}
+          className="inline-flex items-center gap-1 uppercase hover:text-white focus-visible:outline focus-visible:outline-blue-500"
+        >
+          Name
+          {nameSort === 'default' ? (
+            <ArrowUpDown className="h-3.5 w-3.5" aria-hidden="true" />
+          ) : nameSort === 'asc' ? (
+            <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />
+          ) : (
+            <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />
+          )}
+          <span className="sr-only">
+            {nameSort === 'default' ? 'Default order' : nameSort === 'asc' ? 'A to Z' : 'Z to A'}
+          </span>
+        </button>
+      ),
       key: 'name',
       render: row => {
         let title = row.name;
@@ -288,13 +317,22 @@ export default function JobsTable({ onlyActive = false, job_type = null }: JobsT
   return (
     <div>
       {!onlyActive && (
-        <JobStatusFilter
-          value={statusFilter}
-          onChange={value => {
-            setSavedStatusFilter(value);
-            setSelectedIds(new Set());
-          }}
-        />
+        <div className="flex flex-wrap items-start gap-x-3">
+          <JobSearch
+            value={search}
+            onChange={value => {
+              setSearch(value);
+              setSelectedIds(new Set());
+            }}
+          />
+          <JobStatusFilter
+            value={statusFilter}
+            onChange={value => {
+              setSavedStatusFilter(value);
+              setSelectedIds(new Set());
+            }}
+          />
+        </div>
       )}
       {(selectedIds.size > 0 || isDeleting) && (
         <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-2 bg-gray-800 rounded-lg border border-gray-700 shadow-lg">

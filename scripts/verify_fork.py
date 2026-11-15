@@ -60,6 +60,8 @@ INSERTIONS = [
     ("ui/src/components/JobOverview.tsx", "parseLocalGpuIndices", "remote-safe GPU parse"),
     ("ui/src/components/CaptionMonitor.tsx", "parseLocalGpuIndices", "remote-safe GPU parse"),
     ("ui/src/components/JobsTable.tsx", "splitPeerGpu", "remote job grouping"),
+    ("ui/src/components/JobsTable.tsx", "JobSearch", "job name search mount"),
+    ("ui/src/components/JobsTable.tsx", "useJobNameSort", "persisted job name sorting"),
     ("ui/cron/actions/startJob.ts", "startRemoteJob", "remote handoff branch"),
     ("ui/cron/actions/startJob.ts", "markJobError", "crash-safe job launch"),
     ("ui/cron/worker.ts", "unhandledRejection", "worker crash safety net"),

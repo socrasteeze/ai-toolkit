@@ -3199,12 +3199,24 @@ filter is always visible on a phone.
 
 Decisions a later reader might otherwise undo:
 - Queue grouping reads unfiltered `allJobs`; the status filter applies only to Idle (2026-11-14).
-  Local queue START/STOP headers and queued/running/stopping rows remain visible under every filter.
+  Local queue START/STOP headers and queued/running/stopping rows remain visible under every status filter.
 - Remote queue headers require at least one active job for the exact raw `gpu_ids` key. Stopped/completed
   remote jobs go to Idle and do not create a remote header. No queue or job rows are changed.
 - The bulk-action `jobs` list comes from rendered groups and excludes Idle on the active-only dashboard.
   Select-all and mass delete cannot reach hidden rows. Changing the filter also clears the selection.
 - The status list is fixed rather than built from current jobs, so a status with no jobs yet can be chosen.
+
+**Search and name sort (2026-11-14):** Search matches a case-insensitive name substring across all queue
+and Idle rows, after grouping. Status still narrows only Idle. Queue headers remain available when search
+hides running jobs; remote headers still require an active job before search. Search and status changes
+clear selection, and bulk actions use only rendered rows. Search is not persisted and is omitted on the
+active-only dashboard alongside the status controls.
+
+The Name header cycles default, A to Z, Z to A, then default. Sort applies within each section and is
+saved as `aitk_jobs_name_sort` in browser storage, restored after mount. Default remains queue position
+for queues and newest `updated_at` for Idle. Locale-aware comparison ignores case and uses numeric
+ordering; ties preserve the section's default order. UniversalTable already accepts ReactNode headers,
+so it needs no extension. Synthetic component tests cover filtering, selection, sort cycles and storage.
 
 ## Job step totals (2026-11-08)
 

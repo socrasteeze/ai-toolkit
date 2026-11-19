@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { CgSpinner } from 'react-icons/cg';
 import useJobsList from '@/hooks/useJobsList';
-import { getTotalSteps } from '@/utils/jobs';
+import { displayJobInfo, getTotalSteps } from '@/utils/jobs';
 
 export default function ActiveJobWidget() {
   const { jobs } = useJobsList({ onlyActive: true, reloadInterval: 5000 });
@@ -57,14 +57,14 @@ export default function ActiveJobWidget() {
                         <div className="bg-blue-500 h-1 rounded-full transition-all" style={{ width: `${pct}%` }} />
                       </div>
                       <div className="flex justify-between gap-2 mt-0.5 min-w-0">
-                        <span className={`text-[10px] truncate min-w-0 ${statusColor}`}>{job.info || job.status}</span>
+                        <span className={`text-[10px] truncate min-w-0 ${statusColor}`}>{displayJobInfo(job) || job.status}</span>
                         <span className="text-[10px] text-gray-400 flex-shrink-0">
                           {job.step} / {totalSteps}
                         </span>
                       </div>
                     </div>
                   ) : (
-                    <div className={`text-[10px] mt-0.5 truncate ${statusColor}`}>{job.info || job.status}</div>
+                    <div className={`text-[10px] mt-0.5 truncate ${statusColor}`}>{displayJobInfo(job) || job.status}</div>
                   )}
                 </Link>
               </li>

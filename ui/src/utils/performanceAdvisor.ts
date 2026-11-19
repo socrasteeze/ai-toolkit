@@ -47,9 +47,10 @@ export function performancePlan(job: JobConfig, gpuIDs: string | null, gpus: Gpu
 
   const gpu = selectedLocalGpu(gpuIDs, gpus);
   if (gpu && (!/\bRTX\s*5090\b/i.test(gpu.name) || /laptop/i.test(gpu.name))) return null;
-  const freeMiB = gpu && Number.isFinite(gpu.memory.free) && gpu.memory.free >= 0 &&
-    Number.isFinite(gpu.memory.total) && gpu.memory.total > 0 && gpu.memory.free <= gpu.memory.total
-    ? gpu.memory.free : null;
+  const free = gpu?.memory.free;
+  const total = gpu?.memory.total;
+  const freeMiB = typeof free === 'number' && typeof total === 'number' && free >= 0 && total > 0 && free <= total
+    ? free : null;
   const resolutions = [...new Set(datasets.flatMap(d => d.resolution || []))]
     .filter(r => Number.isFinite(r) && r > 0).sort((a, b) => a - b);
   const batches = [...new Set(datasets.map(d => d.batch_size || train.batch_size))].sort((a, b) => a - b);

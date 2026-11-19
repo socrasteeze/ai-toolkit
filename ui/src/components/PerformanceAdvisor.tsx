@@ -15,7 +15,7 @@ export default function PerformanceAdvisor({ plan, setJobConfig }: Props) {
       <div className="mt-2 space-y-2">
         <div className="text-gray-300">{plan.model} · Automagic v4</div>
         <div>{plan.context}</div>
-        {plan.gpu && plan.freeMiB !== null && (
+        {plan.gpu && plan.freeMiB !== null && typeof plan.gpu.memory.total === 'number' && (
           <div>
             GPU {plan.gpu.index} · {(plan.freeMiB / 1024).toFixed(1)} GiB free of{' '}
             {(plan.gpu.memory.total / 1024).toFixed(1)} GiB

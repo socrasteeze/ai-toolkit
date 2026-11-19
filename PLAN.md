@@ -3157,6 +3157,27 @@ hardcoded UI rule and must be rechecked before a later compile trial.
 
 Validation: 50 focused Node tests passed, including the actual panel's static React
 render and cache-button callbacks; TypeScript `--noEmit --incremental false` passed.
+
+## Dashboard peer GPU cards and collapsible queues (2026-11-19)
+
+The hub already probes each peer's `/api/gpu` from `GET /api/machines` and returns that
+GPU array unchanged. Those objects already carry temperature, fan, clocks, load, memory,
+and power. The dashboard monitor only subscribed to the local `/api/monitor` stream, so
+a peer card never rendered. `?live=1` caches the same probe for 5 s. `GPUMonitor` appends
+each online peer GPU to the local grid and uses the same `GPUWidget`. A null sensor
+renders "-". nvidia-smi `[N/A]` and `[Not Supported]` are now null, not a fake `0`, in
+both `/api/gpu` and the local monitor loop. A reported zero stays zero. The job page and
+caption dock show that peer's card when `gpu_ids` names a machine.
+
+Queue cards on the dashboard and the Queue page collapse from the header. The choice is
+per `gpu_ids` in `localStorage` (`aitk_queue_collapsed`), default expanded. Collapsed
+keeps Start/Stop and shows running, queued, stopped, and error counts. The Idle section
+does not collapse.
+
+A queued job whose info still begins with "Stopping" displays "Job queued". That is
+presentation only. The database row is not rewritten. The race is `processQueue` setting
+`info` to "Stopping job..." on a row it already read as running, after the trainer has
+set the status back to queued.
 The tests cover GPU selection, unsupported jobs, missing/invalid memory, optimizer
 and accumulation preservation, cache eligibility and unmeasured settings.
 No GPU tests, training, sampling, UI build/restart or browser check ran.

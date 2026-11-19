@@ -134,3 +134,11 @@ export const getTotalSteps = (job: Job) => {
 
 // fork addition, see FORK_NOTES.md - presentation only; resume uses the stored step
 export const getDisplayStep = (job: Job) => (job.status === 'completed' ? getTotalSteps(job) : job.step);
+
+// A stopped queue writes "Stopping job..." before the trainer requeues. If that
+// write lands last, a queued row keeps the stopping text. Display only.
+export function displayJobInfo(job: { status: string; info?: string | null }): string {
+  const info = job.info ?? '';
+  if (job.status === 'queued' && /^\s*stopping\b/i.test(info)) return 'Job queued';
+  return info;
+}

@@ -3,37 +3,37 @@
  */
 
 export interface GpuUtilization {
-  gpu: number;
-  memory: number;
+  gpu: number | null;
+  memory: number | null;
 }
 
 export interface GpuMemory {
-  total: number;
-  free: number;
-  used: number;
+  total: number | null;
+  free: number | null;
+  used: number | null;
   // unified memory (e.g. GB10): figures are the system RAM pool the GPU shares
   shared?: boolean;
 }
 
 export interface GpuPower {
-  draw: number;
-  limit: number;
+  draw: number | null;
+  limit: number | null;
 }
 
 export interface GpuClocks {
-  graphics: number;
-  memory: number;
+  graphics: number | null;
+  memory: number | null;
 }
 
 export interface GpuFan {
-  speed: number;
+  speed: number | null;
 }
 
 export interface GpuInfo {
   index: number;
   name: string;
   driverVersion: string;
-  temperature: number;
+  temperature: number | null;
   utilization: GpuUtilization;
   memory: GpuMemory;
   power: GpuPower;

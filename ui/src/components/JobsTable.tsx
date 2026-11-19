@@ -11,10 +11,11 @@ import { startQueue, stopQueue } from '@/utils/queue';
 import { CgSpinner } from 'react-icons/cg';
 import useGPUInfo from '@/hooks/useGPUInfo';
 import { openConfirm } from '@/components/ConfirmModal';
-import { deleteJob, getDisplayStep, getTotalSteps, stopJob } from '@/utils/jobs';
+import { deleteJob, displayJobInfo, getDisplayStep, getTotalSteps, stopJob } from '@/utils/jobs';
 // fork addition, see FORK_NOTES.md
-import { ArrowDown, ArrowUp, ArrowUpDown, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 import { splitPeerGpu } from '@/utils/gpuIds';
+import useCollapsedQueues from '@/hooks/useCollapsedQueues';
 import JobStatusFilter, { useJobStatusFilter } from './JobStatusFilter';
 import JobSearch from './JobSearch';
 import useJobNameSort from '@/hooks/useJobNameSort';
@@ -26,6 +27,21 @@ interface JobsTableProps {
   job_type?: string | null;
 }
 
+function queueSummary(jobs: { status: string }[]): string {
+  const counts = { running: 0, queued: 0, stopped: 0, error: 0, stopping: 0 };
+  for (const job of jobs) {
+    if (job.status in counts) counts[job.status as keyof typeof counts] += 1;
+  }
+  const parts = [
+    `${counts.running} running`,
+    `${counts.queued} queued`,
+    `${counts.stopped} stopped`,
+    `${counts.error} error`,
+  ];
+  if (counts.stopping > 0) parts.push(`${counts.stopping} stopping`);
+  return parts.join(' · ');
+}
+
 export default function JobsTable({ onlyActive = false, job_type = null }: JobsTableProps) {
   const { jobs: allJobs, status, refreshJobs } = useJobsList({ onlyActive, reloadInterval: 5000, job_type });
   // fork addition, see FORK_NOTES.md - the status filter applies only to Idle
@@ -35,6 +51,7 @@ export default function JobsTable({ onlyActive = false, job_type = null }: JobsT
   const [nameSort, cycleNameSort] = useJobNameSort();
   const { queues, status: queueStatus, refreshQueues } = useQueueList();
   const { gpuList, isGPUInfoLoaded } = useGPUInfo();
+  const { isCollapsed, toggleQueue } = useCollapsedQueues();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleteProgress, setDeleteProgress] = useState<{ done: number; total: number } | null>(null);
 
@@ -298,6 +315,7 @@ export default function JobsTable({ onlyActive = false, job_type = null }: JobsT
       title: 'Info',
       key: 'info',
       className: 'truncate max-w-xs',
+      render: row => displayJobInfo(row),
     },
     {
       title: 'Actions',
@@ -370,22 +388,38 @@ export default function JobsTable({ onlyActive = false, job_type = null }: JobsT
         .filter(key => key !== 'Idle')
         .map(gpuKey => {
           const queue = queues.find(q => `${q.gpu_ids}` === gpuKey) as Queue;
+          const collapsed = isCollapsed(gpuKey);
+          const jobsInQueue = jobsDict[gpuKey].jobs;
+          const summary = queueSummary(jobsInQueue);
           return (
             <div key={gpuKey} className="mb-6">
               <div
                 className={classNames(
-                  'text-md flex flex-wrap gap-y-1 px-2 sm:px-4 py-1 rounded-t-lg',
+                  'text-md flex flex-wrap items-center gap-y-1 px-2 sm:px-4 py-1 rounded-t-lg',
                   { 'bg-green-600 dark:bg-green-900': queue?.is_running },
                   { 'bg-red-600 dark:bg-red-900': !queue?.is_running },
+                  { 'rounded-b-lg': collapsed },
                 )}
               >
+                <button
+                  type="button"
+                  aria-expanded={!collapsed}
+                  onClick={() => toggleQueue(gpuKey)}
+                  className="mr-1 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded text-white hover:bg-black/20"
+                >
+                  {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  <span className="sr-only">{collapsed ? 'Expand queue' : 'Collapse queue'}</span>
+                </button>
                 <div className="flex items-center space-x-2 flex-1 min-w-0 py-2">
                   <h2 className="font-semibold text-white truncate">{jobsDict[gpuKey].name}</h2>
                   <span className="px-2 py-0.5 bg-gray-700 rounded-full text-xs text-gray-300 flex-shrink-0">
                     # {queue?.gpu_ids}
                   </span>
                 </div>
-                <div className="text-sm text-gray-300 italic flex items-center flex-shrink-0">
+                {collapsed && (
+                  <p className="basis-full sm:basis-auto text-xs not-italic text-white/90 px-1">{summary}</p>
+                )}
+                <div className="text-sm text-gray-300 italic flex items-center flex-shrink-0 ml-auto">
                   {queue?.is_running ? (
                     <>
                       <span className="text-green-100 dark:text-green-400 mr-2">Queue Running</span>
@@ -415,17 +449,19 @@ export default function JobsTable({ onlyActive = false, job_type = null }: JobsT
                   )}
                 </div>
               </div>
-              <UniversalTable
-                columns={columns}
-                rows={jobsDict[gpuKey].jobs}
-                isLoading={isLoading}
-                onRefresh={refresh}
-                theadClassName={
-                  queue?.is_running
-                    ? 'bg-green-700 dark:bg-green-950 text-white dark:text-gray-400'
-                    : 'bg-red-700 dark:bg-red-950 text-white dark:text-gray-400'
-                }
-              />
+              {!collapsed && (
+                <UniversalTable
+                  columns={columns}
+                  rows={jobsInQueue}
+                  isLoading={isLoading}
+                  onRefresh={refresh}
+                  theadClassName={
+                    queue?.is_running
+                      ? 'bg-green-700 dark:bg-green-950 text-white dark:text-gray-400'
+                      : 'bg-red-700 dark:bg-red-950 text-white dark:text-gray-400'
+                  }
+                />
+              )}
             </div>
           );
         })}

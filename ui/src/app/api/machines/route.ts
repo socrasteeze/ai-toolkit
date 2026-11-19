@@ -58,11 +58,13 @@ async function collect(): Promise<MachineReport[]> {
   return Promise.all(peers.map(probePeer));
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    // 30 s: peers don't come and go on the GPU list's 5 s cadence, and a probe can cost a
-    // full timeout per offline peer. POST invalidates this, so edits still show at once.
-    const machines = await cached('peer-machines', collect, 30_000);
+    // 30 s for the picker: peers don't come and go on the GPU list's cadence, and a probe
+    // can cost a full timeout per offline peer. `?live=1` is the dashboard monitor, which
+    // wants the same full `/api/gpu` payload on a 5 s cadence. POST invalidates both.
+    const live = new URL(request.url).searchParams.get('live') === '1';
+    const machines = await cached(live ? 'peer-machines-live' : 'peer-machines', collect, live ? 5_000 : 30_000);
     return NextResponse.json({ machines });
   } catch (error) {
     console.error('Error listing machines:', error);
@@ -75,6 +77,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const saved = await savePeers(body?.peers);
     invalidateCache('peer-machines');
+    invalidateCache('peer-machines-live');
     return NextResponse.json({ peers: saved.map(toPublic) });
   } catch (error) {
     console.error('Error saving machines:', error);

@@ -2,11 +2,16 @@ import React, { useMemo } from 'react';
 import Loading from '@/components/Loading';
 import GPUWidget from '@/components/GPUWidget';
 import useMonitorStream from '@/hooks/useMonitorStream';
+// fork addition, see FORK_NOTES.md — peer cards use the same widget as the local GPU
+import usePeerMachines from '@/hooks/usePeerMachines';
+import { peerGpuCards } from '@/utils/peerGpu';
 
 const GpuMonitor: React.FC = () => {
   // Live samples arrive every MONITOR_TICK_MS over the shared /api/monitor SSE stream
   const { gpu: gpuData, lastUpdated } = useMonitorStream();
-  const loading = gpuData === null;
+  const machines = usePeerMachines(5000);
+  const peerCards = useMemo(() => peerGpuCards(machines), [machines]);
+  const loading = gpuData === null && peerCards.length === 0;
   const error = null;
 
   const getGridClasses = (gpuCount: number): string => {
@@ -41,7 +46,13 @@ const GpuMonitor: React.FC = () => {
   });
 
   const content = useMemo(() => {
-    if (loading && !gpuData) {
+    const localGpus = gpuData?.gpus ?? [];
+    const cards = [
+      ...localGpus.map(gpu => ({ key: `local-${gpu.index}`, gpu, machineLabel: undefined as string | undefined })),
+      ...peerCards.map(card => ({ key: card.key, gpu: card.gpu, machineLabel: card.label })),
+    ];
+
+    if (loading && cards.length === 0) {
       return <Loading />;
     }
 
@@ -54,7 +65,7 @@ const GpuMonitor: React.FC = () => {
       );
     }
 
-    if (!gpuData) {
+    if (cards.length === 0 && !gpuData) {
       return (
         <div className="bg-yellow-900 border border-yellow-700 text-yellow-300 px-4 py-3 rounded relative" role="alert">
           <span className="block sm:inline">No GPU data available.</span>
@@ -62,7 +73,7 @@ const GpuMonitor: React.FC = () => {
       );
     }
 
-    if (!gpuData.hasNvidiaSmi && !gpuData.isMac) {
+    if (cards.length === 0 && gpuData && !gpuData.hasNvidiaSmi && !gpuData.isMac) {
       return (
         <div className="bg-yellow-900 border border-yellow-700 text-yellow-300 px-4 py-3 rounded relative" role="alert">
           <strong className="font-bold">No NVIDIA GPUs detected!</strong>
@@ -72,7 +83,7 @@ const GpuMonitor: React.FC = () => {
       );
     }
 
-    if (gpuData.gpus.length === 0) {
+    if (cards.length === 0) {
       return (
         <div className="bg-yellow-900 border border-yellow-700 text-yellow-300 px-4 py-3 rounded relative" role="alert">
           <span className="block sm:inline">No GPUs found, but nvidia-smi is available.</span>
@@ -80,16 +91,16 @@ const GpuMonitor: React.FC = () => {
       );
     }
 
-    const gridClass = getGridClasses(gpuData?.gpus?.length || 1);
+    const gridClass = getGridClasses(cards.length);
 
     return (
       <div className={`grid ${gridClass} gap-3`}>
-        {gpuData.gpus.map((gpu, idx) => (
-          <GPUWidget key={idx} gpu={gpu} />
+        {cards.map(card => (
+          <GPUWidget key={card.key} gpu={card.gpu} machineLabel={card.machineLabel} />
         ))}
       </div>
     );
-  }, [loading, gpuData, error]);
+  }, [loading, gpuData, error, peerCards]);
 
   return (
     <div className="w-full">

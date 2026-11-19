@@ -4,6 +4,7 @@ import { promisify } from 'util';
 import os from 'os';
 import { cached } from '@/server/apiCache';
 import { loadMacstats } from '@/server/macstats';
+import { smiNumber } from '@/server/smiNumber';
 
 const execAsync = promisify(exec);
 const NVIDIA_SMI_TIMEOUT_MS = 10_000;
@@ -221,33 +222,36 @@ async function getGpuStats(isWindows: boolean) {
         fanSpeed,
       ] = line.split(', ').map(item => item.trim());
 
+      const indexN = smiNumber(index);
+      if (indexN === null) return null;
       return {
-        index: parseInt(index),
+        index: indexN,
         name,
         driverVersion,
-        temperature: parseInt(temperature),
+        temperature: smiNumber(temperature),
         utilization: {
-          gpu: parseInt(gpuUtil),
-          memory: parseInt(memoryUtil),
+          gpu: smiNumber(gpuUtil),
+          memory: smiNumber(memoryUtil),
         },
         memory: {
-          total: parseInt(memoryTotal),
-          free: parseInt(memoryFree),
-          used: parseInt(memoryUsed),
+          total: smiNumber(memoryTotal),
+          free: smiNumber(memoryFree),
+          used: smiNumber(memoryUsed),
         },
         power: {
-          draw: parseFloat(powerDraw),
-          limit: parseFloat(powerLimit),
+          draw: smiNumber(powerDraw, true),
+          limit: smiNumber(powerLimit, true),
         },
         clocks: {
-          graphics: parseInt(clockGraphics),
-          memory: parseInt(clockMemory),
+          graphics: smiNumber(clockGraphics),
+          memory: smiNumber(clockMemory),
         },
         fan: {
-          speed: parseInt(fanSpeed) || 0, // Some GPUs might not report fan speed, default to 0
+          speed: smiNumber(fanSpeed),
         },
       };
-    });
+    })
+    .filter(gpu => gpu !== null);
 
   return gpus;
 }

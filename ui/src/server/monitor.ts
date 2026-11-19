@@ -6,6 +6,7 @@ import { loadMacstats } from '@/server/macstats';
 import { createLoadSampler, readCpuTemperature, readMemory } from '@/server/cpuStats';
 import { CpuInfo, GpuInfo, GPUApiResponse, MonitorHistoryPoint, MonitorInit, MonitorSample } from '@/types';
 import { historyPointFromSample, MONITOR_HISTORY_LENGTH, MONITOR_TICK_MS } from '@/utils/monitorSample';
+import { smiNumber } from '@/server/smiNumber';
 
 const execFileAsync = promisify(execFile);
 
@@ -70,31 +71,34 @@ function parseGpuLine(line: string): GpuInfo | null {
     clockMemory,
     fanSpeed,
   ] = line.split(', ').map(item => item.trim());
-  if (isNaN(parseInt(index))) return null;
+  const indexN = smiNumber(index);
+  if (indexN === null) return null;
+  const reportedLimit = smiNumber(powerLimit, true);
+  const fallbackLimit = knownPowerLimit(name);
   return {
-    index: parseInt(index),
+    index: indexN,
     name,
     driverVersion,
-    temperature: parseInt(temperature),
+    temperature: smiNumber(temperature),
     utilization: {
-      gpu: parseInt(gpuUtil),
-      memory: parseInt(memoryUtil),
+      gpu: smiNumber(gpuUtil),
+      memory: smiNumber(memoryUtil),
     },
     memory: {
-      total: parseInt(memoryTotal),
-      free: parseInt(memoryFree),
-      used: parseInt(memoryUsed),
+      total: smiNumber(memoryTotal),
+      free: smiNumber(memoryFree),
+      used: smiNumber(memoryUsed),
     },
     power: {
-      draw: parseFloat(powerDraw),
-      limit: isNaN(parseFloat(powerLimit)) ? knownPowerLimit(name) : parseFloat(powerLimit),
+      draw: smiNumber(powerDraw, true),
+      limit: reportedLimit ?? (Number.isFinite(fallbackLimit) ? fallbackLimit : null),
     },
     clocks: {
-      graphics: parseInt(clockGraphics),
-      memory: parseInt(clockMemory),
+      graphics: smiNumber(clockGraphics),
+      memory: smiNumber(clockMemory),
     },
     fan: {
-      speed: parseInt(fanSpeed) || 0, // Some GPUs might not report fan speed, default to 0
+      speed: smiNumber(fanSpeed),
     },
   };
 }
@@ -110,7 +114,7 @@ const UNIFIED_MEMORY_GPU = /\b(GB10|RTX Spark)\b/i;
  * the Mac path does for Apple silicon.
  */
 function isSharedMemoryGpu(g: GpuInfo): boolean {
-  return isNaN(g.memory.total) || UNIFIED_MEMORY_GPU.test(g.name);
+  return (typeof g.memory.total === 'number' && Number.isNaN(g.memory.total)) || UNIFIED_MEMORY_GPU.test(g.name);
 }
 
 function withSharedMemory(gpu: GPUApiResponse, cpu: CpuInfo | null): GPUApiResponse {

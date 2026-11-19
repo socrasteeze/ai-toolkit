@@ -16,8 +16,8 @@ export function historyPointFromSample(sample: MonitorSample): MonitorHistoryPoi
       memUsedMb: sample.cpu ? sample.cpu.totalMemory - sample.cpu.availableMemory : 0,
     },
     gpus: sample.gpu.gpus.map(gpu => ({
-      load: gpu.utilization.gpu,
-      memUsedMb: gpu.memory.used,
+      load: gpu.utilization.gpu ?? 0,
+      memUsedMb: gpu.memory.used ?? 0,
     })),
   };
 }

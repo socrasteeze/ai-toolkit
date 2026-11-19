@@ -105,7 +105,7 @@ function harness(allJobs, filter = '', savedSort = null) {
     classnames: { default: () => '' },
     '@/utils/queue': {},
     'react-icons/cg': { CgSpinner: noop },
-    'lucide-react': { Trash2: noop, ArrowUp: noop, ArrowDown: noop, ArrowUpDown: noop },
+    'lucide-react': { Trash2: noop, ArrowUp: noop, ArrowDown: noop, ArrowUpDown: noop, ChevronDown: noop, ChevronRight: noop },
     '@/components/ConfirmModal': { openConfirm: options => state.confirmations.push(options) },
     '@/utils/jobs': {
       ...jobUtils,
@@ -115,6 +115,7 @@ function harness(allJobs, filter = '', savedSort = null) {
     '@/utils/gpuIds': gpuUtils,
     '@/utils/jobListView': viewUtils,
     '@/hooks/useJobNameSort': load('../src/hooks/useJobNameSort.ts', { react: hooks, '@/utils/jobListView': viewUtils }, storage),
+    '@/hooks/useCollapsedQueues': load('../src/hooks/useCollapsedQueues.ts', { react: hooks }, storage),
     './JobSearch': { default: Search },
     './JobStatusFilter': { default: Filter, useJobStatusFilter: () => [state.filter, value => { state.filter = value; }] },
   };
@@ -133,6 +134,8 @@ function harness(allJobs, filter = '', savedSort = null) {
   state.overview = load('../src/components/JobOverview.tsx', {
     ...imports,
     '@/hooks/useCPUInfo': { default: () => ({ isCPUInfoLoaded: false }) },
+    '@/hooks/usePeerMachines': { default: () => [] },
+    '@/utils/peerGpu': { peerGpuForIds: () => null },
     '@/components/GPUWidget': { default: noop },
     '@/components/CPUWidget': { default: noop },
     '@/components/FilesWidget': { default: noop },
@@ -141,6 +144,36 @@ function harness(allJobs, filter = '', savedSort = null) {
   }).default;
   return state;
 }
+
+test('queued rows show Job queued when info is a stale stopping message', () => {
+  assert.equal(jobUtils.displayJobInfo({ status: 'queued', info: 'Stopping job...' }), 'Job queued');
+  assert.equal(jobUtils.displayJobInfo({ status: 'queued', info: 'Stopping on peer…' }), 'Job queued');
+  assert.equal(jobUtils.displayJobInfo({ status: 'running', info: 'Stopping job...' }), 'Stopping job...');
+  assert.equal(jobUtils.displayJobInfo({ status: 'queued', info: 'Step 10' }), 'Step 10');
+  const h = harness([job('queued', 'queued')]);
+  const column = h.tables(h.render())[0].props.columns.find(item => item.key === 'info');
+  assert.equal(column.render({ status: 'queued', info: 'Stopping job...' }), 'Job queued');
+});
+
+test('each queue collapses independently and remembers it', () => {
+  const h = harness([job('run', 'running'), job('wait', 'queued'), job('peer', 'running', 'peer:0')]);
+  h.queues = [{ gpu_ids: '0', is_running: true }, { gpu_ids: 'peer:0', is_running: false }];
+  let tree = h.render();
+  assert.equal(h.tables(tree).length, 3);
+  const collapse = elements(tree, element => element.type === 'button' && text(element) === 'Collapse queue');
+  assert.equal(collapse.length, 2);
+  collapse[0].props.onClick();
+  tree = h.render();
+  assert.equal(h.tables(tree).length, 2);
+  assert.match(text(tree), /1 running · 1 queued · 0 stopped · 0 error/);
+  assert.equal(elements(tree, element => element.type === 'button' && text(element) === 'STOP').length, 1);
+  assert.equal(elements(tree, element => element.type === 'button' && text(element) === 'START').length, 1);
+  assert.equal(h.storage.get('aitk_queue_collapsed'), JSON.stringify({ '0': true }));
+  h.render();
+  tree = h.render();
+  assert.equal(elements(tree, element => element.type === 'button' && text(element) === 'Expand queue').length, 1);
+  assert.equal(h.tables(tree).length, 2);
+});
 
 test('every status filter keeps local and remote active queues and filters only Idle', () => {
   const active = ['queued', 'running', 'stopping'].flatMap(status => [job(`local-${status}`, status), job(`remote-${status}`, status, 'peer:0')]);

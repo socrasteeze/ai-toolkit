@@ -34,7 +34,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Keep in step with FORK_NOTES.md's "Upstream files modified" table.
-EXPECTED_TOUCHPOINTS = 67
+EXPECTED_TOUCHPOINTS = 71
 
 # (file, needle, what it is). Substring match, not regex — these are anchors that
 # survive reformatting, not exact lines.
@@ -62,6 +62,14 @@ INSERTIONS = [
     ("ui/src/components/JobsTable.tsx", "splitPeerGpu", "remote job grouping"),
     ("ui/src/components/JobsTable.tsx", "JobSearch", "job name search mount"),
     ("ui/src/components/JobsTable.tsx", "useJobNameSort", "persisted job name sorting"),
+    ("ui/src/components/JobsTable.tsx", "useCollapsedQueues", "collapsible queues"),
+    ("ui/src/components/GPUMonitor.tsx", "usePeerMachines", "peer GPU cards"),
+    ("ui/src/components/GPUWidget.tsx", "machineLabel", "peer GPU label"),
+    ("ui/src/components/ActiveJobWidget.tsx", "displayJobInfo", "stale stopping info"),
+    ("ui/src/utils/jobs.ts", "displayJobInfo", "stale stopping info"),
+    ("ui/src/utils/monitorSample.ts", "gpu.utilization.gpu ?? 0", "nullable GPU history"),
+    ("ui/src/server/monitor.ts", "smiNumber", "unreported GPU sensors"),
+    ("ui/src/app/api/gpu/route.ts", "smiNumber", "unreported GPU sensors"),
     ("ui/src/app/globals.css", ".no-scrollbar", "hidden status scrollbar utility"),
     ("ui/cron/actions/startJob.ts", "startRemoteJob", "remote handoff branch"),
     ("ui/cron/actions/startJob.ts", "markJobError", "crash-safe job launch"),

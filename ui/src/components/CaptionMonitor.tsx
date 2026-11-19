@@ -8,9 +8,11 @@ import './jobLog.css';
 import useGPUInfo from '@/hooks/useGPUInfo';
 import GPUWidget from '@/components/GPUWidget';
 import JobActionBar from '@/components/JobActionBar';
-import { getTotalSteps } from '@/utils/jobs';
+import { displayJobInfo, getTotalSteps } from '@/utils/jobs';
 // fork addition, see FORK_NOTES.md
-import { parseLocalGpuIndices } from '@/utils/gpuIds';
+import { parseLocalGpuIndices, splitPeerGpu } from '@/utils/gpuIds';
+import usePeerMachines from '@/hooks/usePeerMachines';
+import { peerGpuForIds } from '@/utils/peerGpu';
 
 interface CaptionMonitorProps {
   datasetPath: string;
@@ -41,6 +43,12 @@ export default function CaptionMonitor({ datasetPath, onHeightChange }: CaptionM
     return parseLocalGpuIndices(job.gpu_ids);
   }, [job?.gpu_ids]);
 
+  const remoteMachine = splitPeerGpu(job?.gpu_ids)?.peerId ?? null;
+  const peerMachines = usePeerMachines(remoteMachine ? 5000 : null);
+  const remoteGpu = useMemo(
+    () => (remoteMachine ? peerGpuForIds(job?.gpu_ids, peerMachines) : null),
+    [remoteMachine, job?.gpu_ids, peerMachines],
+  );
   const { gpuList, isGPUInfoLoaded } = useGPUInfo(gpuIds, 5000);
   const { log, status: statusLog } = useJobLog(job?.id ?? '', isActive ? 2000 : null);
 
@@ -103,7 +111,9 @@ export default function CaptionMonitor({ datasetPath, onHeightChange }: CaptionM
           <span className="px-2 py-0.5 rounded-full text-xs bg-emerald-500/10 text-emerald-500 whitespace-nowrap">
             {job?.status ?? '...'}
           </span>
-          <h2 className="text-sm text-gray-100 truncate min-w-0 flex-shrink">{job?.info || 'Captioning...'}</h2>
+          <h2 className="text-sm text-gray-100 truncate min-w-0 flex-shrink">
+            {job ? displayJobInfo(job) || 'Captioning...' : 'Captioning...'}
+          </h2>
           {totalSteps > 0 && (
             <div className="hidden sm:flex items-center gap-2 flex-1 min-w-0">
               <div className="flex-1 bg-gray-700 rounded-full h-2 min-w-0">
@@ -148,8 +158,12 @@ export default function CaptionMonitor({ datasetPath, onHeightChange }: CaptionM
             </div>
           </div>
           <div className="w-96 flex-shrink-0 overflow-y-auto p-3 pl-0 hidden md:block">
-            {isGPUInfoLoaded && gpuList.length > 0 ? (
+            {gpuList.length > 0 ? (
               <GPUWidget gpu={gpuList[0]} />
+            ) : remoteGpu ? (
+              <GPUWidget gpu={remoteGpu.gpu} machineLabel={remoteGpu.label} />
+            ) : isGPUInfoLoaded && remoteMachine ? (
+              <div className="flex items-center gap-2 text-xs text-gray-500 p-2">GPU stats unavailable</div>
             ) : (
               <div className="flex items-center gap-2 text-xs text-gray-500 p-2">
                 <Cpu className="w-4 h-4" /> Loading GPU info...

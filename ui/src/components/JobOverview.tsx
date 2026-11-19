@@ -4,13 +4,15 @@ import useCPUInfo from '@/hooks/useCPUInfo';
 import GPUWidget from '@/components/GPUWidget';
 import CPUWidget from '@/components/CPUWidget';
 import FilesWidget from '@/components/FilesWidget';
-import { getDisplayStep, getTotalSteps } from '@/utils/jobs';
+import { displayJobInfo, getDisplayStep, getTotalSteps } from '@/utils/jobs';
 import { Cpu, HardDrive, Info, Gauge } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import useJobLog from '@/hooks/useJobLog';
 import './jobLog.css';
 // fork addition, see FORK_NOTES.md
 import { parseLocalGpuIndices, splitPeerGpu } from '@/utils/gpuIds';
+import usePeerMachines from '@/hooks/usePeerMachines';
+import { peerGpuForIds } from '@/utils/peerGpu';
 
 interface JobOverviewProps {
   job: Job;
@@ -28,6 +30,11 @@ export default function JobOverview({ job }: JobOverviewProps) {
   }, [job.gpu_ids]);
   // fork addition — which machine this job is on, for the header line below
   const remoteMachine = useMemo(() => splitPeerGpu(job.gpu_ids)?.peerId ?? null, [job.gpu_ids]);
+  const peerMachines = usePeerMachines(remoteMachine ? 5000 : null);
+  const remoteGpu = useMemo(
+    () => (remoteMachine ? peerGpuForIds(job.gpu_ids, peerMachines) : null),
+    [remoteMachine, job.gpu_ids, peerMachines],
+  );
   const { log, status: statusLog, refresh: refreshLog } = useJobLog(job.id, 2000);
   const logRef = useRef<HTMLDivElement>(null);
   // Track whether we should auto-scroll to bottom
@@ -100,7 +107,7 @@ export default function JobOverview({ job }: JobOverviewProps) {
       <div className="md:col-span-2 bg-gray-900 rounded-xl shadow-lg overflow-hidden border border-gray-800 flex flex-col">
         <div className="bg-gray-800 px-4 py-3 flex items-center justify-between">
           <h2 className="text-gray-100">
-            <Info className="w-5 h-5 mr-2 -mt-1 text-amber-600 dark:text-amber-400 inline-block" /> {job.info}
+            <Info className="w-5 h-5 mr-2 -mt-1 text-amber-600 dark:text-amber-400 inline-block" /> {displayJobInfo(job)}
           </h2>
           <span className={`px-3 py-1 rounded-full text-sm ${getStatusColor(job.status)}`}>{job.status}</span>
         </div>
@@ -175,7 +182,15 @@ export default function JobOverview({ job }: JobOverviewProps) {
       {/* GPU Widget Panel */}
       <div className="md:col-span-1">
         <div>{isCPUInfoLoaded && cpuInfo && <CPUWidget cpu={cpuInfo} />}</div>
-        <div className="mt-4">{isGPUInfoLoaded && gpuList.length > 0 && <GPUWidget gpu={gpuList[0]} />}</div>
+        <div className="mt-4">
+          {gpuList.length > 0 ? (
+            <GPUWidget gpu={gpuList[0]} />
+          ) : remoteGpu ? (
+            <GPUWidget gpu={remoteGpu.gpu} machineLabel={remoteGpu.label} />
+          ) : remoteMachine && isGPUInfoLoaded ? (
+            <p className="text-xs text-gray-500">GPU stats unavailable</p>
+          ) : null}
+        </div>
         {jobType === 'train' && (
           <div className="mt-4">
             <FilesWidget jobID={job.id} jobName={job.name} />

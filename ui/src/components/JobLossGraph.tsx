@@ -28,19 +28,56 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
-// Fallback canvas height used before the container has been measured.
-const FALLBACK_CANVAS_HEIGHT = 360;
 const MIN_CANVAS_HEIGHT = 160;
+const DEFAULT_LOSS_KEYS = ['loss', 'loss/loss', 'val/loss'];
 
 // Compute canvas size so uPlot's canvas + its HTML legend fit inside `host`.
 // `host` should be a layout-controlled wrapper (NOT the uPlot mount node, since
 // uPlot's stylesheet sets `width: min-content` on its mount node).
 function computeCanvasSize(host: HTMLElement): { width: number; height: number } | null {
-  const { width, height } = host.getBoundingClientRect();
+  const { clientWidth: width, clientHeight: height } = host;
   if (width <= 0 || height <= 0) return null;
   const legend = host.querySelector('.u-legend') as HTMLElement | null;
   const legendH = legend?.getBoundingClientRect().height ?? 0;
   return { width, height: Math.max(MIN_CANVAS_HEIGHT, height - legendH) };
+}
+
+function bindTouchZoom(plot: uPlot) {
+  const { over } = plot;
+  let start: { id: number; x: number } | null = null;
+  const point = (event: PointerEvent) => {
+    const rect = over.getBoundingClientRect();
+    return {
+      left: Math.max(0, Math.min(rect.width, event.clientX - rect.left)),
+      top: Math.max(0, Math.min(rect.height, event.clientY - rect.top)),
+    };
+  };
+
+  // uPlot handles mouse drags itself. A horizontal touch drag selects an X range.
+  over.addEventListener('pointerdown', event => {
+    if (event.pointerType !== 'touch' || !event.isPrimary) return;
+    const cursor = point(event);
+    start = { id: event.pointerId, x: cursor.left };
+    over.setPointerCapture(event.pointerId);
+    plot.setCursor(cursor);
+  });
+  over.addEventListener('pointermove', event => {
+    if (start?.id === event.pointerId) plot.setCursor(point(event));
+  });
+  over.addEventListener('pointercancel', () => {
+    start = null;
+  });
+  over.addEventListener('pointerup', event => {
+    if (start?.id !== event.pointerId) return;
+    const left = start.x;
+    const right = point(event).left;
+    start = null;
+    if (Math.abs(right - left) < 12) return;
+    plot.setScale('x', {
+      min: plot.posToVal(Math.min(left, right), 'x'),
+      max: plot.posToVal(Math.max(left, right), 'x'),
+    });
+  });
 }
 
 // One-directional bias-corrected EMA. The accumulator starts at 0 and each
@@ -213,7 +250,7 @@ export default function JobLossGraph({ job }: Props) {
     }
   }, [hydrated, useLogScale, showTrend, smoothing, plotStride, clipOutliers, enabled]);
 
-  // keep enabled map in sync with discovered keys. "loss/loss" and "val/loss"
+  // keep enabled map in sync with discovered keys. "loss", "loss/loss" and "val/loss"
   // are on by default; every other metric starts deactivated (user can toggle
   // it on).
   useEffect(() => {
@@ -223,8 +260,7 @@ export default function JobLossGraph({ job }: Props) {
     setEnabled(prev => {
       const next = { ...prev };
       for (const k of lossKeys) {
-        if (next[k] === undefined)
-          next[k] = persistedEnabledRef.current?.[k] ?? (k === 'loss/loss' || k === 'val/loss');
+        if (next[k] === undefined) next[k] = persistedEnabledRef.current?.[k] ?? DEFAULT_LOSS_KEYS.includes(k);
       }
       for (const k of Object.keys(next)) {
         if (!lossKeys.includes(k)) delete next[k];
@@ -237,10 +273,7 @@ export default function JobLossGraph({ job }: Props) {
   // before the sync effect above has run) take their default here rather than
   // rendering as enabled and getting pruned a frame later.
   const activeKeys = useMemo(
-    () =>
-      lossKeys.filter(
-        k => enabled[k] ?? persistedEnabledRef.current?.[k] ?? (k === 'loss/loss' || k === 'val/loss'),
-      ),
+    () => lossKeys.filter(k => enabled[k] ?? persistedEnabledRef.current?.[k] ?? DEFAULT_LOSS_KEYS.includes(k)),
     [lossKeys, enabled],
   );
 
@@ -415,12 +448,14 @@ export default function JobLossGraph({ job }: Props) {
   const chartHostRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const uplotRef = useRef<uPlot | null>(null);
+  const builtRef = useRef(built);
 
   // Latest per-scale yClip read by the y-scale range fns — kept current via effect.
   const yClipRef = useRef<Record<string, { min: number; max: number }> | null>(null);
   useEffect(() => {
+    builtRef.current = built;
     yClipRef.current = built.yClip;
-  }, [built.yClip]);
+  }, [built]);
 
   // Track zoom state via ref so the data-update effect can decide whether to refit scales.
   const isZoomedRef = useRef(false);
@@ -440,63 +475,60 @@ export default function JobLossGraph({ job }: Props) {
   );
 
   useEffect(() => {
-    if (uplotRef.current) {
-      uplotRef.current.destroy();
-      uplotRef.current = null;
-    }
-    if (!containerRef.current || !chartHostRef.current) return;
-    if (!hasData) return;
-
     const host = chartHostRef.current;
-    const rect = host.getBoundingClientRect();
-    const initialHeight = rect.height > 0 ? Math.max(MIN_CANVAS_HEIGHT, rect.height - 40) : FALLBACK_CANVAS_HEIGHT;
-    const opts: uPlot.Options = {
-      width: rect.width || 800,
-      height: initialHeight,
-      padding: [12, 16, 0, 4],
-      series: built.seriesConfigs,
-      scales: built.scales,
-      axes: built.axes,
-      cursor: {
-        drag: { x: true, y: false, setScale: true },
-        points: { size: 6 },
-      },
-      legend: { show: true },
-      hooks: {
-        setScale: [
-          (u, key) => {
-            if (key !== 'x') return;
-            const xs = u.data[0] as number[];
-            if (!xs || !xs.length) return;
-            const sx = u.scales.x;
-            const zoomed = sx.min !== xs[0] || sx.max !== xs[xs.length - 1];
-            setIsZoomed(zoomed);
-          },
-        ],
-      },
+    const container = containerRef.current;
+    if (!host || !container) return;
+
+    let frame = 0;
+    const fit = () => {
+      const size = computeCanvasSize(host);
+      if (!size) return;
+      if (uplotRef.current) {
+        uplotRef.current.setSize(size);
+        return;
+      }
+
+      const { data, seriesConfigs, scales, axes } = builtRef.current;
+      const options: uPlot.Options = {
+        ...size,
+        padding: [12, 16, 0, 4],
+        series: seriesConfigs,
+        scales,
+        axes,
+        cursor: {
+          drag: { x: true, y: false, setScale: true },
+          points: { size: 6 },
+        },
+        legend: { show: true },
+        hooks: {
+          setScale: [
+            (u, key) => {
+              if (key !== 'x') return;
+              const xs = u.data[0];
+              if (!xs.length) return;
+              const sx = u.scales.x;
+              setIsZoomed(sx.min !== xs[0] || sx.max !== xs[xs.length - 1]);
+            },
+          ],
+        },
+      };
+      const plot = new uPlot(options, data, container);
+      uplotRef.current = plot;
+      bindTouchZoom(plot);
+      setIsZoomed(false);
+      // The first fit creates the legend. Refit when its height is available.
+      frame = requestAnimationFrame(fit);
     };
-
-    uplotRef.current = new uPlot(opts, built.data, containerRef.current);
-    setIsZoomed(false);
-
-    // Right-size the canvas against the legend height so it fills the remaining
-    // vertical space. Defer to the next frame: the legend's height depends on
-    // how many series wrap, and that layout isn't settled synchronously after
-    // construction — measuring now would read a stale height (the bug that
-    // previously required a manual resize to correct).
-    const raf = requestAnimationFrame(() => {
-      const u = uplotRef.current;
-      if (!u) return;
-      const fitted = computeCanvasSize(host);
-      if (fitted) u.setSize(fitted);
-    });
+    const observer = new ResizeObserver(fit);
+    observer.observe(host);
+    fit();
 
     return () => {
-      cancelAnimationFrame(raf);
+      observer.disconnect();
+      cancelAnimationFrame(frame);
       uplotRef.current?.destroy();
       uplotRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [structuralKey]);
 
   // Push new data without recreating — preserves zoom & cursor state.
@@ -513,24 +545,6 @@ export default function JobLossGraph({ job }: Props) {
       u.setData(built.data, true);
     }
   }, [built]);
-
-  // Resize observer — fit canvas to the wrapper's available space minus the
-  // HTML legend uPlot renders below it. Observe the layout wrapper, not the
-  // uPlot mount node (which uPlot pins to width:min-content).
-  // Re-runs on `hasData` because the observed element only exists once data
-  // has loaded (see the `!hasData` branch below).
-  useEffect(() => {
-    const el = chartHostRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => {
-      const u = uplotRef.current;
-      if (!u) return;
-      const fitted = computeCanvasSize(el);
-      if (fitted) u.setSize(fitted);
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [hasData]);
 
   const handleResetZoom = useCallback(() => {
     const u = uplotRef.current;
@@ -583,7 +597,7 @@ export default function JobLossGraph({ job }: Props) {
   const totalPoints = built.data[0]?.length ?? 0;
 
   return (
-    <div className="bg-gray-900 rounded-xl shadow-lg overflow-hidden border border-gray-800 flex flex-col h-full">
+    <div className="job-loss-graph bg-gray-900 rounded-xl shadow-lg overflow-hidden border border-gray-800 flex flex-col h-full">
       <div className="bg-gray-800 px-4 py-3 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <div className="h-2 w-2 rounded-full bg-blue-400" />

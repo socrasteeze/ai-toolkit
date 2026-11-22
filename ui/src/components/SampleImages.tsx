@@ -9,6 +9,7 @@ import { Button, Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headl
 import { FaDownload } from 'react-icons/fa';
 import { apiClient } from '@/utils/api';
 import { encodeFilePathForUrl } from '@/utils/basic';
+import { readKeyState } from '@/utils/readKey';
 import classNames from 'classnames';
 import { FaCaretDown, FaCaretUp } from 'react-icons/fa';
 import SampleImageViewer from './SampleImageViewer';
@@ -73,6 +74,8 @@ interface SampleImagesProps {
 }
 
 export default function SampleImages({ job }: SampleImagesProps) {
+  // Refresh media URLs in both the grid and the open viewer when the key changes.
+  readKeyState.useValue();
   const { sampleImages, status, refreshSampleImages } = useSampleImages(job.id, 5000);
   const [selectedSamplePath, setSelectedSamplePath] = useState<string | null>(null);
   // multi-select for bulk delete: shift-click ranges from the anchor, ctrl/cmd-click toggles
@@ -84,12 +87,13 @@ export default function SampleImages({ job }: SampleImagesProps) {
   const [scrollParent, setScrollParent] = useState<HTMLDivElement | null>(null);
   const scrollParentCallback = useCallback((el: HTMLDivElement | null) => setScrollParent(el), []);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const standalone = typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches;
   const numSamples = useMemo(() => {
     if (job?.job_config) {
       const jobConfig = JSON.parse(job.job_config) as JobConfig;
       const sampleConfig = jobConfig.config.process[0].sample;
-      const numPrompts = sampleConfig.prompts ? sampleConfig.prompts.length : 0;
-      const numSamples = sampleConfig.samples.length;
+      const numPrompts = sampleConfig?.prompts?.length ?? 0;
+      const numSamples = sampleConfig?.samples?.length ?? 0;
       return Math.max(numPrompts, numSamples, 1);
     }
     return 10;
@@ -269,8 +273,8 @@ export default function SampleImages({ job }: SampleImagesProps) {
   }, [job]);
 
   return (
-    <div ref={scrollParentCallback} className="absolute top-[80px] left-0 right-0 bottom-0 overflow-y-auto">
-      <div className="pb-4">
+    <div ref={scrollParentCallback} className="job-sample-scroll absolute top-[80px] left-0 right-0 bottom-0 overflow-y-auto">
+      <div className="job-sample-grid pb-4">
         {PageInfoContent}
         {sampleImages && rows.length > 0 && scrollParent && (
           <Virtuoso
@@ -303,6 +307,7 @@ export default function SampleImages({ job }: SampleImagesProps) {
                       onClick={e => handleCardClick(sample, e)}
                       selected={selectedSet.has(sample) || selectedSamplePath === sample}
                       observerRoot={scrollParent}
+                      nativeThumbnails={standalone}
                     />
                   ))}
                   {Array.from({ length: padsNeeded }).map((_, i) => (

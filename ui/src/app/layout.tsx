@@ -21,12 +21,14 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'Ostris - AI Toolkit',
   description: 'A toolkit for building AI things.',
+  appleWebApp: { capable: true, title: 'AI-Toolkit', statusBarStyle: 'black-translucent' },
 };
 
 export const viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 5,
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -38,7 +40,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <meta name="apple-mobile-web-app-title" content="AI-Toolkit" />
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -54,10 +55,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: `window.server_platform = "${platform}";` }} />
         <ThemeProvider>
           <AuthWrapper authRequired={authRequired}>
-            <div className="flex h-screen bg-gray-950">
+            <div className="app-shell flex h-screen bg-gray-950">
               <Sidebar />
-              <main className="flex-1 overflow-auto bg-gray-950 text-gray-100 relative">
-                <Suspense>{children}</Suspense>
+              <main className="flex-1 min-w-0 overflow-auto bg-gray-950 text-gray-100 relative">
+                <div className="app-page-area">
+                  <Suspense>{children}</Suspense>
+                </div>
               </main>
             </div>
           </AuthWrapper>

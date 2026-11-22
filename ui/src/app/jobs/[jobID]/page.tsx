@@ -155,7 +155,7 @@ export default function JobPage({ params }: { params: Promise<{ jobID: string }>
           </>
         )}
       </MainContent>
-      <div className="bg-gray-800 absolute top-12 left-0 w-full h-8 flex items-center px-0 sm:px-2 text-sm sm:overflow-x-auto whitespace-nowrap">
+      <div className="app-job-tabs bg-gray-800 absolute top-12 left-0 w-full h-8 flex items-center px-0 sm:px-2 text-sm sm:overflow-x-auto whitespace-nowrap">
         {pages.map(page => {
           if (page.jobTypes && !page.jobTypes.includes(jobType)) {
             return null;
@@ -166,6 +166,8 @@ export default function JobPage({ params }: { params: Promise<{ jobID: string }>
           return (
             <Button
               key={page.value}
+              aria-label={page.name}
+              aria-pressed={page.value === pageKey}
               onClick={() => setPageKey(page.value)}
               className={`flex-1 sm:flex-initial justify-center px-2 sm:px-4 py-1 h-8 flex items-center gap-1.5 sm:flex-shrink-0 ${page.value === pageKey ? 'bg-gray-300 dark:bg-gray-700 text-white' : ''}`}
             >

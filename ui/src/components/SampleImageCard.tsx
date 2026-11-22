@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, ReactNode } from 'react';
 import { isVideo, isAudio, isText, encodeFilePathForUrl } from '@/utils/basic';
-import { withReadKey } from '@/utils/readKey';
+import { READ_KEY_REJECTED_EVENT, withReadKey } from '@/utils/readKey';
 
 interface SampleImageCardProps {
   imageUrl: string;
@@ -14,6 +14,7 @@ interface SampleImageCardProps {
   selected?: boolean;
   /** pass your scroll container element (e.g. containerRef.current) */
   observerRoot?: Element | null;
+  nativeThumbnails?: boolean;
   /** optional: tweak pre-load buffer */
   rootMargin?: string; // default '200px 0px'
 }
@@ -28,6 +29,7 @@ const SampleImageCard: React.FC<SampleImageCardProps> = ({
   onClick = () => {},
   selected = false,
   observerRoot = null,
+  nativeThumbnails = false,
   rootMargin = '200px 0px',
 }) => {
   const cardRef = useRef<HTMLDivElement>(null);
@@ -41,14 +43,22 @@ const SampleImageCard: React.FC<SampleImageCardProps> = ({
   const isItAudio = isAudio(imageUrl);
   const isItVideo = isVideo(imageUrl);
   const isItText = isText(imageUrl);
+  const nativeThumbnail = nativeThumbnails && !isItText && !isItAudio && !isItVideo;
   const [text, setText] = useState<string | null>(null);
+  const sampleSrc = `/api/img/${encodeFilePathForUrl(imageUrl)}`;
+  const thumbSrc = `/api/img/${encodeFilePathForUrl(imageUrl, 'thumb=1')}`;
+  const audioArtSrc = withReadKey(`/api/audio/art/${encodeURIComponent(imageUrl)}`);
 
   // text samples: fetch the file body and render it in the card
   useEffect(() => {
     if (!isItText || !isVisible) return;
     const controller = new AbortController();
-    fetch(`/api/img/${encodeFilePathForUrl(imageUrl)}`, { signal: controller.signal })
-      .then(r => (r.ok ? r.text() : Promise.reject(new Error(`HTTP ${r.status}`))))
+    fetch(sampleSrc, { signal: controller.signal })
+      .then(r => {
+        if (r.status === 401) window.dispatchEvent(new Event(READ_KEY_REJECTED_EVENT));
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.text();
+      })
       .then(t => {
         setText(t);
         setLoaded(true);
@@ -61,10 +71,11 @@ const SampleImageCard: React.FC<SampleImageCardProps> = ({
       setText(null);
       setLoaded(false);
     };
-  }, [isItText, isVisible, imageUrl]);
+  }, [isItText, isVisible, sampleSrc]);
 
   // Observe both enter and exit
   useEffect(() => {
+    if (nativeThumbnail) return;
     const el = cardRef.current;
     if (!el) return;
 
@@ -85,14 +96,14 @@ const SampleImageCard: React.FC<SampleImageCardProps> = ({
 
     observer.observe(el);
     return () => observer.disconnect();
-  }, [observerRoot, rootMargin]);
+  }, [nativeThumbnail, observerRoot, rootMargin]);
 
   // Drive image loads through fetch + AbortController so scrolling past actually
   // cancels in-flight requests (browsers don't reliably cancel <img> fetches when
   // the element unmounts). A short debounce skips requests entirely during fast
   // scrolls where the card is only briefly visible.
   useEffect(() => {
-    if (isItAudio || isItText) return;
+    if (nativeThumbnail || isItAudio || isItText) return;
     if (!isVisible) return;
 
     const controller = new AbortController();
@@ -103,8 +114,9 @@ const SampleImageCard: React.FC<SampleImageCardProps> = ({
       // ?thumb=1: the server sends the small pre-generated thumbnail when one
       // exists, otherwise the full file. Videos without a thumb come back as
       // video/* — abort the transfer and render the <video> element instead.
-      fetch(`/api/img/${encodeFilePathForUrl(imageUrl, 'thumb=1')}`, { signal: controller.signal })
+      fetch(thumbSrc, { signal: controller.signal })
         .then(r => {
+          if (r.status === 401) window.dispatchEvent(new Event(READ_KEY_REJECTED_EVENT));
           if (!r.ok) throw new Error(`HTTP ${r.status}`);
           const contentType = r.headers.get('content-type') || '';
           if (isItVideo && !contentType.startsWith('image/')) {
@@ -137,7 +149,7 @@ const SampleImageCard: React.FC<SampleImageCardProps> = ({
       setLoaded(false);
       setVideoFallback(false);
     };
-  }, [isVisible, isItAudio, isItText, isItVideo, imageUrl]);
+  }, [nativeThumbnail, isVisible, isItAudio, isItText, isItVideo, thumbSrc]);
 
   return (
     <div className={`flex flex-col ${className}`}>
@@ -154,7 +166,9 @@ const SampleImageCard: React.FC<SampleImageCardProps> = ({
             selected ? 'inset-2' : 'inset-0'
           } ${isVisible && !isItAudio && !loaded ? 'animate-pulse' : ''}`}
         >
-          {isVisible ? (
+          {nativeThumbnail ? (
+            <img src={thumbSrc} alt={alt} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+          ) : isVisible ? (
             isItText ? (
               // font size scales with the card and the text length: a square of side W holds
               // ~W^2 / (0.6 f^2) characters at size f, so f ~ 120/sqrt(n) cqw fills the box
@@ -169,7 +183,8 @@ const SampleImageCard: React.FC<SampleImageCardProps> = ({
             ) : isItAudio ? (
               <div className="w-full h-full flex items-center justify-center bg-gray-900">
                 <img
-                  src={withReadKey(`/api/audio/art/${encodeURIComponent(imageUrl)}`)}
+                  key={audioArtSrc}
+                  src={audioArtSrc}
                   alt={alt}
                   className="w-full h-full object-cover"
                   onError={e => {
@@ -180,7 +195,7 @@ const SampleImageCard: React.FC<SampleImageCardProps> = ({
             ) : isItVideo && videoFallback ? (
               <video
                 ref={videoRef}
-                src={`/api/img/${encodeFilePathForUrl(imageUrl)}`}
+                src={sampleSrc}
                 className="w-full h-full object-cover"
                 preload="none"
                 playsInline
@@ -194,7 +209,9 @@ const SampleImageCard: React.FC<SampleImageCardProps> = ({
             ) : null
           ) : null}
 
-          {children && isVisible && <div className="absolute inset-0 flex items-center justify-center">{children}</div>}
+          {children && (nativeThumbnail || isVisible) && (
+            <div className="absolute inset-0 flex items-center justify-center">{children}</div>
+          )}
         </div>
       </div>
     </div>

@@ -9,7 +9,7 @@ import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react';
 import { openConfirm } from './ConfirmModal';
 import { apiClient } from '@/utils/api';
 import { isVideo, isAudio, isText, encodeFilePathForUrl } from '@/utils/basic';
-import { withReadKey } from '@/utils/readKey';
+import { READ_KEY_REJECTED_EVENT, withReadKey } from '@/utils/readKey';
 import AudioPlayer from './AudioPlayer';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import BoundingBoxOverlay, { parseBoundingBoxes } from './BoundingBoxOverlay';
@@ -199,6 +199,7 @@ export default function SampleImageViewer({
     }
     return imgPath;
   }, [showingControlIdx, controlImages, imgPath]);
+  const displayedSrc = displayedImgPath ? `/api/img/${encodeFilePathForUrl(displayedImgPath)}` : '';
 
   // text samples (LLM models): the file body is the sample
   const [sampleText, setSampleText] = useState<string | null>(null);
@@ -208,14 +209,18 @@ export default function SampleImageViewer({
       return;
     }
     const controller = new AbortController();
-    fetch(`/api/img/${encodeFilePathForUrl(displayedImgPath)}`, { signal: controller.signal })
-      .then(r => (r.ok ? r.text() : Promise.reject(new Error(`HTTP ${r.status}`))))
+    fetch(displayedSrc, { signal: controller.signal })
+      .then(r => {
+        if (r.status === 401) window.dispatchEvent(new Event(READ_KEY_REJECTED_EVENT));
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.text();
+      })
       .then(setSampleText)
       .catch(err => {
         if (err?.name !== 'AbortError') console.error('Sample text fetch failed:', err);
       });
     return () => controller.abort();
-  }, [displayedImgPath]);
+  }, [displayedImgPath, displayedSrc]);
 
   // control thumbnails: audio has no image thumb, it gets its waveform art
   const thumbSrc = (p: string) =>
@@ -342,14 +347,14 @@ export default function SampleImageViewer({
                 ) : isAudio(displayedImgPath) ? (
                   <div className="w-[500px] h-[500px] max-w-full sm:max-w-[95vw] max-h-[82vh]">
                     <AudioPlayer
-                      src={`/api/img/${encodeFilePathForUrl(displayedImgPath)}`}
+                      src={displayedSrc}
                       title={displayedImgPath.replace(/^.*[\\/]/, '')}
                       autoPlay
                     />
                   </div>
                 ) : isVideo(displayedImgPath) ? (
                   <video
-                    src={`/api/img/${encodeFilePathForUrl(displayedImgPath)}`}
+                    src={displayedSrc}
                     className="w-auto h-auto max-w-full sm:max-w-[95vw] max-h-[82vh] object-contain"
                     preload="none"
                     playsInline
@@ -373,7 +378,7 @@ export default function SampleImageViewer({
                     <TransformComponent>
                       <div className="relative">
                         <img
-                          src={`/api/img/${encodeFilePathForUrl(displayedImgPath)}`}
+                          src={displayedSrc}
                           alt="Sample Image"
                           draggable={false}
                           className="w-auto h-auto max-w-full sm:max-w-[95vw] max-h-[82vh] object-contain select-none !pointer-events-auto"

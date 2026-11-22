@@ -34,7 +34,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Keep in step with FORK_NOTES.md's "Upstream files modified" table.
-EXPECTED_TOUCHPOINTS = 71
+EXPECTED_TOUCHPOINTS = 78
 
 # (file, needle, what it is). Substring match, not regex — these are anchors that
 # survive reformatting, not exact lines.
@@ -71,6 +71,15 @@ INSERTIONS = [
     ("ui/src/server/monitor.ts", "smiNumber", "unreported GPU sensors"),
     ("ui/src/app/api/gpu/route.ts", "smiNumber", "unreported GPU sensors"),
     ("ui/src/app/globals.css", ".no-scrollbar", "hidden status scrollbar utility"),
+    ("ui/src/app/globals.css", "-webkit-backdrop-filter", "standalone header blur"),
+    ("ui/src/app/layout.tsx", "app-page-area", "standalone page inset"),
+    ("ui/src/components/layout.tsx", "app-top-bar", "standalone header hook"),
+    ("ui/src/components/JobLossGraph.tsx", "bindTouchZoom", "touch loss graph zoom"),
+    ("ui/src/components/AuthWrapper.tsx", "READ_KEY_REJECTED_EVENT", "media key recovery"),
+    ("ui/src/utils/readKey.ts", "readKeyState", "observable media key"),
+    ("ui/src/components/SampleImages.tsx", "nativeThumbnails", "standalone sample thumbnails"),
+    ("ui/src/components/SampleImageCard.tsx", "src={thumbSrc}", "same-origin native thumbnails"),
+    ("ui/src/components/SampleImageViewer.tsx", "displayedSrc", "media key rotation in sample viewer"),
     ("ui/cron/actions/startJob.ts", "startRemoteJob", "remote handoff branch"),
     ("ui/cron/actions/startJob.ts", "markJobError", "crash-safe job launch"),
     ("ui/cron/worker.ts", "unhandledRejection", "worker crash safety net"),

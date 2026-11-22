@@ -27,7 +27,7 @@ export const TopBar: React.FC<Props> = ({ children, className }) => {
   return (
     <div
       className={classNames(
-        'absolute top-0 left-0 w-full h-12 bg-gray-900 shadow-sm z-10 flex items-center px-2 overflow-x-auto whitespace-nowrap',
+        'app-top-bar absolute top-0 left-0 w-full h-12 bg-gray-900 shadow-sm z-10 flex items-center px-2 overflow-x-auto whitespace-nowrap',
         className,
       )}
     >
@@ -49,7 +49,7 @@ export const MainContent = React.forwardRef<HTMLDivElement, MainContentProps>(
         ref={ref}
         style={style}
         className={classNames(
-          'px-2 sm:px-4 absolute left-0 w-full overflow-auto',
+          'app-main-content px-2 sm:px-4 absolute left-0 w-full overflow-auto',
           belowTopBar ? 'pt-2 top-12 bottom-0' : 'pt-14 top-0 h-full',
           className,
         )}

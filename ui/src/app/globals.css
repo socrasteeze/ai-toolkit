@@ -55,6 +55,70 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+.app-page-area {
+  display: contents;
+}
+
+@media (display-mode: standalone) {
+  .app-shell {
+    --app-safe-top: env(safe-area-inset-top, 0px);
+    height: 100dvh;
+    padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  .app-mobile-sidebar {
+    padding: var(--app-safe-top) 0 env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  /* Keep existing page offsets below the status bar. The header spans the inset. */
+  .app-page-area {
+    display: block;
+    position: absolute;
+    inset: var(--app-safe-top) 0 0;
+  }
+
+  .app-top-bar {
+    top: calc(-1 * var(--app-safe-top));
+    height: calc(3rem + var(--app-safe-top));
+    padding-top: var(--app-safe-top);
+  }
+
+  @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    .app-top-bar {
+      background-color: rgb(var(--gray-900) / 0.72);
+      -webkit-backdrop-filter: blur(16px);
+      backdrop-filter: blur(16px);
+    }
+  }
+
+  .app-main-content {
+    z-index: 0;
+  }
+
+  .app-job-tabs {
+    z-index: 1;
+  }
+
+  .job-loss-graph {
+    height: auto;
+    min-height: 100%;
+  }
+
+  .job-sample-scroll {
+    top: 0;
+  }
+
+  .job-sample-grid {
+    padding-top: 80px;
+  }
+}
+
+@media (pointer: coarse) {
+  .job-loss-graph .u-over {
+    touch-action: pan-y pinch-zoom;
+  }
+}
+
 /* Prevent iOS Safari from auto-zooming when a form field is focused.
    iOS only zooms when the field's font-size is < 16px. */
 @media (max-width: 639px) {

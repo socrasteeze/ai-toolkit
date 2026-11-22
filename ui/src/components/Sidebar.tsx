@@ -143,7 +143,7 @@ const Sidebar = () => {
         aria-hidden="true"
       />
       <div
-        className={`md:hidden fixed top-0 left-0 bottom-0 w-64 max-w-[85vw] bg-gray-900 text-gray-100 z-50 flex flex-col shadow-xl transform transition-transform duration-300 ease-in-out ${
+        className={`app-mobile-sidebar md:hidden fixed top-0 left-0 bottom-0 w-64 max-w-[85vw] bg-gray-900 text-gray-100 z-50 flex flex-col shadow-xl transform transition-transform duration-300 ease-in-out ${
           isMobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >

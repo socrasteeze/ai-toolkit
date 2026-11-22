@@ -2990,6 +2990,17 @@ SHIP: source changes validated. Production rebuild/restart remains pending.
 All 167 UI tests, TypeScript checking, and fork verification passed. Browser checks
 rendered the actual components with synthetic hooks and logs, without live job APIs.
 
+## Installed UI on iPhone (2026-11-22)
+
+The standalone shell reserves the status bar and home indicator. The top bar spans
+the top inset and uses a translucent backdrop above the scrolling page. The loss
+graph waits for its host to have a measurable size and accepts horizontal touch
+drags for zoom. The virtualized sample gallery uses native lazy loading for still
+images in standalone mode and refreshes media URLs after key rotation.
+
+The fixes require a production UI rebuild and restart. The standard rebuild launcher
+restarts the queue worker and leaves detached training processes running.
+
 ## Checkpoint Compare (2026-11-01)
 
 Pick a run, render one prompt and seed with every saved checkpoint, compare each against

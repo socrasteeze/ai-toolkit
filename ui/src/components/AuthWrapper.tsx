@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { apiClient, isAuthorizedState } from '@/utils/api';
-import { setReadKey } from '@/utils/readKey';
+import { READ_KEY_REJECTED_EVENT, setReadKey } from '@/utils/readKey';
 import { createGlobalState } from 'react-global-hooks';
 
 interface AuthWrapperProps {
@@ -65,18 +65,25 @@ export default function AuthWrapper({ authRequired, children }: AuthWrapperProps
     const onVisible = () => {
       if (document.visibilityState === 'visible') refreshIfStale();
     };
+    const onReadKeyRejected = () => {
+      if (Date.now() - lastReadKeyFetch.current > 2_000) refreshReadKey();
+    };
     // resource load errors do not bubble; capture them from media elements
     const onLoadError = (e: Event) => {
       const el = e.target as { currentSrc?: unknown; src?: unknown } | null;
       const url = el?.currentSrc || el?.src;
-      if (typeof url === 'string' && url.includes('/api/')) refreshIfStale();
+      if (typeof url === 'string' && url.startsWith(`${window.location.origin}/api/`)) onReadKeyRejected();
     };
+    window.addEventListener('pageshow', refreshIfStale);
     window.addEventListener('focus', refreshIfStale);
     document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener(READ_KEY_REJECTED_EVENT, onReadKeyRejected);
     window.addEventListener('error', onLoadError, true);
     return () => {
+      window.removeEventListener('pageshow', refreshIfStale);
       window.removeEventListener('focus', refreshIfStale);
       document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener(READ_KEY_REJECTED_EVENT, onReadKeyRejected);
       window.removeEventListener('error', onLoadError, true);
       if (readKeyTimer.current) clearTimeout(readKeyTimer.current);
     };

@@ -46,6 +46,7 @@ INSERTIONS = [
     ("ui/src/components/Sidebar.tsx", "/generate/compare", "Checkpoint Compare nav entry"),
     ("ui/src/middleware.ts", "/api/compare/img", "public compare images"),
     ("jobs/process/BaseSDTrainProcess.py", "os.path.isdir(p) or", "resume ignores sidecars"),
+    ("jobs/process/BaseSDTrainProcess.py", "ATK_OPTIMIZER_STATE_ROOT", "optimizer state outside LoRA scan paths"),
     ("ui/src/app/jobs/new/page.tsx", "PresetManager", "Presets dialog mount"),
     ("ui/src/app/jobs/new/page.tsx", "HelpModeButton", "Help mode button mount"),
     ("ui/src/app/jobs/new/page.tsx", "useMachines", "peer-aware GPU picker hook"),

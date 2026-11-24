@@ -3272,3 +3272,17 @@ write. A no-database check of those real hook bodies reproduced 749 persisted at
 Checkpoint metadata records the full `self.step_num`; resume restores that value, and the pre-loop hook
 publishes it even when no training iterations remain. This explains how a resumed job can display N/N;
 it does not establish the history of any particular stored job.
+
+## Optimizer state outside LoRA scan paths (2026-11-24)
+
+Swarm and Comfy scan the LoRA roots, including the training folder under those roots.
+`optimizer.pt` lived in `save_root` (`<training_folder>\<job name>`), so those scanners
+listed it as a LoRA. Checkpoints, samples, `config.yaml`, and logs stay there.
+
+`optimizer.pt` now saves to `<state root>\<job name>\optimizer.pt`. The directory is
+created on save. The default root is `D:\atk_state`. A process or job key
+`optimizer_state_root` or `optimizer_state_folder` overrides that, then
+`ATK_OPTIMIZER_STATE_ROOT`, then `ATK_STATE_ROOT`. Resume loads the new path when the
+file is there, and otherwise the old `save_root\optimizer.pt`. A missing file on either
+side is not an error. The next job process picks this up; a process already training
+does not.

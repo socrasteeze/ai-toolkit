@@ -504,6 +504,25 @@ class BaseSDTrainProcess(BaseTrainProcess):
     def end_step_hook(self):
         pass
 
+    def optimizer_state_root(self):
+        # optimizer.pt is not a LoRA. Swarm and Comfy scan the training folder.
+        candidates = []
+        for key in ("optimizer_state_root", "optimizer_state_folder"):
+            candidates.append(self.get_conf(key, None))
+        job_get = getattr(self.job, "get_conf", None)
+        if callable(job_get):
+            for key in ("optimizer_state_root", "optimizer_state_folder"):
+                candidates.append(job_get(key, None))
+        for env_name in ("ATK_OPTIMIZER_STATE_ROOT", "ATK_STATE_ROOT"):
+            candidates.append(os.environ.get(env_name))
+        for value in candidates:
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return r"D:\atk_state"
+
+    def optimizer_state_save_path(self):
+        return os.path.join(self.optimizer_state_root(), self.name, "optimizer.pt")
+
     def save(self, step=None):
         if not self.accelerator.is_main_process:
             return
@@ -700,11 +719,11 @@ class BaseSDTrainProcess(BaseTrainProcess):
         
         print_acc(f"Saved checkpoint to {file_path}")
 
-        # save optimizer
+        # save optimizer outside the training folder so LoRA scanners skip it
         if self.optimizer is not None:
             try:
-                filename = f'optimizer.pt'
-                file_path = os.path.join(self.save_root, filename)
+                file_path = self.optimizer_state_save_path()
+                os.makedirs(os.path.dirname(file_path), exist_ok=True)
                 try:
                     state_dict = unwrap_model(self.optimizer).state_dict()
                 except Exception as e:
@@ -2173,9 +2192,10 @@ class BaseSDTrainProcess(BaseTrainProcess):
             # only works for adafactor, but it should have thrown an error prior to this otherwise
             self.optimizer.enable_paramiter_swapping(self.train_config.paramiter_swapping_factor)
 
-        # check if it exists
-        optimizer_state_filename = f'optimizer.pt'
-        optimizer_state_file_path = os.path.join(self.save_root, optimizer_state_filename)
+        # new path first; fall back to the training folder when that file is absent
+        optimizer_state_file_path = self.optimizer_state_save_path()
+        if not os.path.exists(optimizer_state_file_path):
+            optimizer_state_file_path = os.path.join(self.save_root, "optimizer.pt")
         if os.path.exists(optimizer_state_file_path):
             # try to load
             # previous param groups

@@ -34,7 +34,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Keep in step with FORK_NOTES.md's "Upstream files modified" table.
-EXPECTED_TOUCHPOINTS = 78
+EXPECTED_TOUCHPOINTS = 79
 
 # (file, needle, what it is). Substring match, not regex — these are anchors that
 # survive reformatting, not exact lines.
@@ -64,6 +64,9 @@ INSERTIONS = [
     ("ui/src/components/JobsTable.tsx", "JobSearch", "job name search mount"),
     ("ui/src/components/JobsTable.tsx", "useJobNameSort", "persisted job name sorting"),
     ("ui/src/components/JobsTable.tsx", "useCollapsedQueues", "collapsible queues"),
+    ("ui/src/components/JobsTable.tsx", "training folders are kept on disk", "bulk delete keeps training folders"),
+    ("ui/src/components/JobActionBar.tsx", "training folder is kept on disk", "delete confirmation keeps the folder"),
+    ("ui/src/app/api/jobs/[jobID]/delete/route.ts", "training folder stays on disk", "job delete keeps the folder"),
     ("ui/src/components/GPUMonitor.tsx", "usePeerMachines", "peer GPU cards"),
     ("ui/src/components/GPUWidget.tsx", "machineLabel", "peer GPU label"),
     ("ui/src/components/ActiveJobWidget.tsx", "displayJobInfo", "stale stopping info"),
@@ -109,6 +112,7 @@ INSERTIONS = [
 # in a comment right where the code used to be, and that must not read as a relapse.
 ABSENCES = [
     ("ui/src/components/Modal.tsx", "backdrop-blur", "full-viewport backdrop blur (perf)"),
+    ("ui/src/app/api/jobs/[jobID]/delete/route.ts", "fs.promises.rm", "job delete must not remove the training folder"),
 ]
 
 _BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)

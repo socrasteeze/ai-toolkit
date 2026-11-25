@@ -149,9 +149,10 @@ export default function JobsTable({ onlyActive = false, job_type = null }: JobsT
     const jobsToDelete = jobs.filter(job => selectedIds.has(job.id));
     if (jobsToDelete.length === 0) return;
     const runningCount = jobsToDelete.filter(job => job.status === 'running').length;
+    // fork: bulk delete uses the same DB-only route. Training folders stay on disk.
     let message = `Are you sure you want to delete ${jobsToDelete.length} job${
       jobsToDelete.length === 1 ? '' : 's'
-    }? This will also permanently remove them from your disk.`;
+    }? ${jobsToDelete.length === 1 ? 'The training folder is kept on disk.' : 'The training folders are kept on disk.'}`;
     if (runningCount > 0) {
       message += ` WARNING: ${runningCount} of them ${
         runningCount === 1 ? 'is' : 'are'

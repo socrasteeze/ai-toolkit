@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/server/prisma';
-import { getTrainingFolder } from '@/server/settings';
-import path from 'path';
-import fs from 'fs';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ jobID: string }> }) {
   const { jobID } = await params;
@@ -15,12 +12,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: 'Job not found' }, { status: 404 });
   }
 
-  const trainingRoot = await getTrainingFolder();
-  const trainingFolder = path.join(trainingRoot, job.name);
-
-  // force:true makes this a no-op if the folder is already gone
-  await fs.promises.rm(trainingFolder, { recursive: true, force: true });
-
+  // fork: delete the DB job only. The training folder stays on disk
+  // (checkpoints, samples, logs, loss_log.db). Do not restore the folder rm.
   await prisma.job.delete({
     where: { id: jobID },
   });

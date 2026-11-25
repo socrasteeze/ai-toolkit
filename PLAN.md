@@ -3286,3 +3286,11 @@ created on save. The default root is `D:\atk_state`. A process or job key
 file is there, and otherwise the old `save_root\optimizer.pt`. A missing file on either
 side is not an error. The next job process picks this up; a process already training
 does not.
+
+## Job delete keeps the training folder (2026-11-24)
+
+Deleting a job used to `fs.promises.rm` the job's training folder, then delete the
+Prisma row. Checkpoints, samples, logs, and `loss_log.db` went with it. The route
+now deletes only the database row. The single-job and bulk-delete confirmations say
+the training folder is kept. File, sample, and dataset deletes are unchanged: those
+are not job deletion. There is no second job-delete path.

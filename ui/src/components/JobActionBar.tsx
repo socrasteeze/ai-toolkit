@@ -189,7 +189,8 @@ export default function JobActionBar({
         disabled={isBusy}
         onClick={() => {
           if (isBusy) return;
-          let message = `Are you sure you want to delete the job "${job.name}"? This will also permanently remove it from your disk.`;
+          // fork: job delete keeps the training folder. Do not say the files are removed.
+          let message = `Are you sure you want to delete the job "${job.name}"? The training folder is kept on disk.`;
           if (job.status === 'running') {
             message += ' WARNING: The job is currently running. You should stop it first if you can.';
           }

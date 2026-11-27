@@ -6,7 +6,7 @@ import { loadMacstats } from '@/server/macstats';
 import { createLoadSampler, readCpuTemperature, readMemory } from '@/server/cpuStats';
 import { CpuInfo, GpuInfo, GPUApiResponse, MonitorHistoryPoint, MonitorInit, MonitorSample } from '@/types';
 import { historyPointFromSample, MONITOR_HISTORY_LENGTH, MONITOR_TICK_MS } from '@/utils/monitorSample';
-import { smiNumber } from '@/server/smiNumber';
+import { gpuSensorsBlank, parseGpuLine } from '@/server/parseGpuLine';
 
 const execFileAsync = promisify(execFile);
 
@@ -30,78 +30,18 @@ const NV_ENV = { ...process.env, CUDA_DEVICE_ORDER: 'PCI_BUS_ID' };
 // Fork invariant: external GPU probes must never wait forever.
 const NVIDIA_SMI_TIMEOUT_MS = 10_000;
 // No stdout line for this long means the loop child is buffering or hung.
+// The same window is how long a restarted loop may keep printing name-only
+// rows before we give up and stay on the one-shot path.
 const NV_WATCHDOG_MS = 15_000;
+// A stale NVML session can print forever. Recycle a healthy loop on this
+// interval so that session cannot last for days. Not every tick.
+const NV_LOOP_RECYCLE_MS = 5 * 60 * 1000;
 // A line-less gap this long after the last line closes out a batch (all
 // lines of one iteration arrive together; iterations are MONITOR_TICK_MS
 // apart, so this can never bleed into the next batch).
 const NV_BATCH_FLUSH_MS = 100;
 // Temperature refresh is decoupled from the tick (see refreshCpuTemp)
 const CPU_TEMP_REFRESH_MS = 5000;
-
-// Power limits for GPUs whose driver reports none (nvidia-smi gives [N/A]).
-// These unified SoCs have no settable GPU limit, so show the rated TDP of the
-// whole chip. GB10 (DGX Spark) is 140 W. RTX Spark N1X: the 5120-core part is
-// laptop-only, rated 45-80 W (OEM configurable); the 6144-core part is 140 W
-// on desktop and 45-80 W in laptops but shares its name, so it falls through
-// to the desktop figure.
-const KNOWN_POWER_LIMITS_W: [RegExp, number][] = [
-  [/\bGB10\b/, 140],
-  [/RTX Spark.*5120-core/, 80],
-  [/RTX Spark/, 140],
-];
-
-function knownPowerLimit(name: string): number {
-  return KNOWN_POWER_LIMITS_W.find(([re]) => re.test(name))?.[1] ?? NaN;
-}
-
-function parseGpuLine(line: string): GpuInfo | null {
-  const [
-    index,
-    name,
-    driverVersion,
-    temperature,
-    gpuUtil,
-    memoryUtil,
-    memoryTotal,
-    memoryFree,
-    memoryUsed,
-    powerDraw,
-    powerLimit,
-    clockGraphics,
-    clockMemory,
-    fanSpeed,
-  ] = line.split(', ').map(item => item.trim());
-  const indexN = smiNumber(index);
-  if (indexN === null) return null;
-  const reportedLimit = smiNumber(powerLimit, true);
-  const fallbackLimit = knownPowerLimit(name);
-  return {
-    index: indexN,
-    name,
-    driverVersion,
-    temperature: smiNumber(temperature),
-    utilization: {
-      gpu: smiNumber(gpuUtil),
-      memory: smiNumber(memoryUtil),
-    },
-    memory: {
-      total: smiNumber(memoryTotal),
-      free: smiNumber(memoryFree),
-      used: smiNumber(memoryUsed),
-    },
-    power: {
-      draw: smiNumber(powerDraw, true),
-      limit: reportedLimit ?? (Number.isFinite(fallbackLimit) ? fallbackLimit : null),
-    },
-    clocks: {
-      graphics: smiNumber(clockGraphics),
-      memory: smiNumber(clockMemory),
-    },
-    fan: {
-      speed: smiNumber(fanSpeed),
-    },
-  };
-}
 
 // Integrated NVIDIA GPUs that share system RAM with the CPU.
 const UNIFIED_MEMORY_GPU = /\b(GB10|RTX Spark)\b/i;
@@ -149,6 +89,11 @@ class SystemMonitor {
   private nvOneShotMode = false;
   private nvOneShotInFlight = false;
   private lastNvLineAt = 0;
+  private nvSpawnedAt = 0;
+  // Latest loop batch parsed, but every sensor was null. Not published.
+  private nvLoopBlank = false;
+  // One respawn per blank episode. A still-blank loop falls through to one-shot.
+  private nvBlankRestarted = false;
   private tickInFlight = false;
   private lastCpuTemp = 0;
   private cpuTempInFlight = false;
@@ -217,7 +162,19 @@ class SystemMonitor {
       } else if (this.nvOneShotMode) {
         await this.sampleNvOneShot();
       } else {
+        if (this.nvLoopBlank) {
+          // One restart per episode. Publishing waits on a fresh one-shot so
+          // this tick is not another frame of dashes.
+          if (!this.nvBlankRestarted) {
+            console.warn('Monitor: nvidia-smi loop reported no sensors, restarting it');
+            this.nvEverGotLine = false;
+            this.nvBlankRestarted = true;
+            this.restartNvLoop();
+          }
+          await this.sampleNvOneShot();
+        }
         this.nvWatchdog();
+        if (!this.nvOneShotMode && !this.nvLoopBlank) this.recycleNvLoopIfDue();
       }
     } catch (error) {
       console.error('Monitor: GPU sample failed:', error);
@@ -435,8 +392,12 @@ class SystemMonitor {
     this.nvStdoutBuffer = '';
     this.nvBatch = [];
     this.lastNvLineAt = Date.now();
+    this.nvSpawnedAt = this.lastNvLineAt;
 
-    child.stdout!.on('data', (chunk: Buffer) => this.onNvData(chunk.toString()));
+    child.stdout!.on('data', (chunk: Buffer) => {
+      if (this.nvChild !== child) return;
+      this.onNvData(chunk.toString());
+    });
     child.stderr!.on('data', () => {
       // nvidia-smi warnings are not actionable here
     });
@@ -466,8 +427,10 @@ class SystemMonitor {
       if (!line.trim()) continue;
       const gpu = parseGpuLine(line);
       if (!gpu) continue;
-      this.nvEverGotLine = true;
       this.lastNvLineAt = Date.now();
+      // A name-only row is not a live sample. Leaving this false lets the
+      // watchdog fall back to one-shot when the respawned loop stays dead.
+      if (!gpuSensorsBlank(gpu)) this.nvEverGotLine = true;
       this.nvBatch.push(gpu);
     }
     if (this.nvFlushTimer) clearTimeout(this.nvFlushTimer);
@@ -477,23 +440,65 @@ class SystemMonitor {
   private flushNvBatch(): void {
     this.nvFlushTimer = null;
     if (this.nvBatch.length === 0) return;
-    this.latestGpu = {
-      hasNvidiaSmi: true,
-      isMac: false,
-      gpus: this.nvBatch.sort((a, b) => a.index - b.index),
-    };
+    const gpus = this.nvBatch.sort((a, b) => a.index - b.index);
     this.nvBatch = [];
+    if (gpus.some(gpuSensorsBlank)) {
+      this.nvLoopBlank = true;
+      return;
+    }
+    this.nvLoopBlank = false;
+    this.nvBlankRestarted = false;
+    this.latestGpu = { hasNvidiaSmi: true, isMac: false, gpus };
+  }
+
+  private killNvChild(): void {
+    const child = this.nvChild;
+    this.nvChild = null;
+    if (this.nvFlushTimer) {
+      clearTimeout(this.nvFlushTimer);
+      this.nvFlushTimer = null;
+    }
+    this.nvStdoutBuffer = '';
+    this.nvBatch = [];
+    if (!child) return;
+    try {
+      child.kill('SIGKILL');
+    } catch {
+      // already gone
+    }
+  }
+
+  private restartNvLoop(): void {
+    this.killNvChild();
+    this.startNvLoop();
+  }
+
+  private recycleNvLoopIfDue(): void {
+    if (this.nvUnavailable || this.nvOneShotMode || !this.nvChild) return;
+    if (Date.now() - this.lastNvLineAt > NV_WATCHDOG_MS) return;
+    if (Date.now() - this.nvSpawnedAt < NV_LOOP_RECYCLE_MS) return;
+    console.warn('Monitor: recycling nvidia-smi loop');
+    this.restartNvLoop();
   }
 
   private nvWatchdog(): void {
     if (this.nvUnavailable || !this.nvChild) return;
-    if (Date.now() - this.lastNvLineAt <= NV_WATCHDOG_MS) return;
-    console.warn('Monitor: no output from nvidia-smi loop, restarting it');
-    // Loop mode that never produced a single line isn't going to start —
-    // switch to a one-shot spawn per tick instead of kill/respawn forever.
+    const silent = Date.now() - this.lastNvLineAt > NV_WATCHDOG_MS;
+    // Blank rows keep the silence timer fresh. A respawn that still has no
+    // sensors has to fall through on its own, or the dashes last forever.
+    const blankTooLong = this.nvLoopBlank && !this.nvEverGotLine && Date.now() - this.nvSpawnedAt > NV_WATCHDOG_MS;
+    if (!silent && !blankTooLong) return;
     if (!this.nvEverGotLine) {
+      console.warn(
+        blankTooLong
+          ? 'Monitor: nvidia-smi loop still has no sensors, using one-shot'
+          : 'Monitor: no output from nvidia-smi loop, using one-shot',
+      );
       this.nvOneShotMode = true;
+      this.killNvChild();
+      return;
     }
+    console.warn('Monitor: no output from nvidia-smi loop, restarting it');
     this.nvChild.kill('SIGKILL');
   }
 

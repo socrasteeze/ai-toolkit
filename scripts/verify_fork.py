@@ -72,10 +72,12 @@ INSERTIONS = [
     ("ui/src/components/ActiveJobWidget.tsx", "displayJobInfo", "stale stopping info"),
     ("ui/src/utils/jobs.ts", "displayJobInfo", "stale stopping info"),
     ("ui/src/utils/monitorSample.ts", "gpu.utilization.gpu ?? 0", "nullable GPU history"),
-    ("ui/src/server/monitor.ts", "smiNumber", "unreported GPU sensors"),
+    ("ui/src/server/monitor.ts", "gpuSensorsBlank", "blank nvidia-smi sample restart"),
+    ("ui/src/server/monitor.ts", "NV_LOOP_RECYCLE_MS", "nvidia-smi loop recycle"),
+    ("ui/src/server/parseGpuLine.ts", "smiNumber", "unreported GPU sensors"),
     ("ui/src/app/api/gpu/route.ts", "smiNumber", "unreported GPU sensors"),
     ("ui/src/app/globals.css", ".no-scrollbar", "hidden status scrollbar utility"),
-    ("ui/src/app/globals.css", "-webkit-backdrop-filter", "standalone header blur"),
+    ("ui/src/app/globals.css", ".app-top-bar", "standalone solid header"),
     ("ui/src/app/layout.tsx", "app-page-area", "standalone page inset"),
     ("ui/src/components/layout.tsx", "app-top-bar", "standalone header hook"),
     ("ui/src/components/JobLossGraph.tsx", "bindTouchZoom", "touch loss graph zoom"),
@@ -111,6 +113,7 @@ INSERTIONS = [
 # Checked against the file with comments stripped: the fork documents these removals
 # in a comment right where the code used to be, and that must not read as a relapse.
 ABSENCES = [
+    ("ui/src/app/globals.css", "backdrop-filter", "standalone header blur"),
     ("ui/src/components/Modal.tsx", "backdrop-blur", "full-viewport backdrop blur (perf)"),
     ("ui/src/app/api/jobs/[jobID]/delete/route.ts", "fs.promises.rm", "job delete must not remove the training folder"),
 ]

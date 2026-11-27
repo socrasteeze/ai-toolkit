@@ -2993,7 +2993,7 @@ rendered the actual components with synthetic hooks and logs, without live job A
 ## Installed UI on iPhone (2026-11-22)
 
 The standalone shell reserves the status bar and home indicator. The top bar spans
-the top inset and uses a translucent backdrop above the scrolling page. The loss
+the top inset and is the same opaque gray as desktop, with no backdrop blur. The loss
 graph waits for its host to have a measurable size and accepts horizontal touch
 drags for zoom. The virtualized sample gallery uses native lazy loading for still
 images in standalone mode and refreshes media URLs after key rotation.
